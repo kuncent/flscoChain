@@ -1,0 +1,59 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Build output
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.local
+*.secret
+
+# FISCO-BCOS runtime data
+nodes/
+fisco-bcos/
+fisco/
+*.log
+logs/
+
+# Uploads / storage (runtime) — 实际路径在 backend/app/storage/
+backend/app/storage/uploads/
+backend/storage/uploads/
+backend/app/storage/db/*.db
+backend/app/storage/db/*.sqlite*
+backend/storage/db/*.sqlite*
+backend/chain.sqlite3
+backend/*.sqlite3
+*.sqlite3
+*.sqlite
+
+# Frontend
+frontend/dist/
+frontend/.vite/
+
+# Certs (generated)
+*.crt
+*.key
+*.pem
+
+# 调试 / 临时脚本（不纳入版本库）
+backend/_*.py
+backend/verify_business.py
+_tools/

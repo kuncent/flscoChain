@@ -1,0 +1,34 @@
+[Unit]
+Description=FISCO Chain Learning Platform - Backend
+After=network.target docker.service
+Requires=network.target
+
+[Service]
+Type=simple
+User=chain-app
+Group=chain-app
+WorkingDirectory=/opt/chain/backend
+EnvironmentFile=/opt/chain/backend/.env
+ExecStart=/opt/chain/backend/.venv/bin/uvicorn \
+    app.main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 4 \
+    --log-level info \
+    --access-log \
+    --proxy-headers \
+    --forwarded-allow-ips '*'
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+
+# 安全加固（需要写 /opt/chain/backend/app/storage 下的 DB 与 uploads，显式允许）
+# NoNewPrivileges=true
+# PrivateTmp=true
+# ProtectSystem=strict
+# ReadWritePaths=/opt/chain/backend/app/storage
+
+[Install]
+WantedBy=multi-user.target

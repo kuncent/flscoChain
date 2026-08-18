@@ -1,0 +1,69 @@
+version: "3.8"
+
+# FISCO-BCOS 4 节点联盟链（实训用）
+# 使用官方 build_chain.sh 生成的节点配置挂载至容器
+services:
+  fisco-node0:
+    image: fiscoorg/fisco-bcos:latest
+    container_name: fisco-node0
+    hostname: node0
+    working_dir: /fisco/nodes/127.0.0.1/node0
+    command: ["./fisco-bcos", "-c", "config.ini"]
+    volumes:
+      - ./nodes/127.0.0.1/node0:/fisco/nodes/127.0.0.1/node0
+    ports:
+      - "20200:20200"   # RPC
+      - "8545:8545"     # Channel
+    networks:
+      - fisco-net
+
+  fisco-node1:
+    image: fiscoorg/fisco-bcos:latest
+    container_name: fisco-node1
+    hostname: node1
+    working_dir: /fisco/nodes/127.0.0.1/node1
+    command: ["./fisco-bcos", "-c", "config.ini"]
+    volumes:
+      - ./nodes/127.0.0.1/node1:/fisco/nodes/127.0.0.1/node1
+    networks:
+      - fisco-net
+
+  fisco-node2:
+    image: fiscoorg/fisco-bcos:latest
+    container_name: fisco-node2
+    hostname: node2
+    working_dir: /fisco/nodes/127.0.0.1/node2
+    command: ["./fisco-bcos", "-c", "config.ini"]
+    volumes:
+      - ./nodes/127.0.0.1/node2:/fisco/nodes/127.0.0.1/node2
+    networks:
+      - fisco-net
+
+  fisco-node3:
+    image: fiscoorg/fisco-bcos:latest
+    container_name: fisco-node3
+    hostname: node3
+    working_dir: /fisco/nodes/127.0.0.1/node3
+    command: ["./fisco-bcos", "-c", "config.ini"]
+    volumes:
+      - ./nodes/127.0.0.1/node3:/fisco/nodes/127.0.0.1/node3
+    networks:
+      - fisco-net
+
+  # FISCO 控制台（部署合约 / 调用合约）
+  fisco-console:
+    image: fiscoorg/fisco-bcos-console:latest
+    container_name: fisco-console
+    working_dir: /fisco/console
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./console:/fisco/console
+    depends_on:
+      - fisco-node0
+    networks:
+      - fisco-net
+
+networks:
+  fisco-net:
+    driver: bridge
