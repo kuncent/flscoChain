@@ -152,7 +152,7 @@ async def login(req: LoginReq):
     async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
         try:
             r = await client.post(
-                f"{base}/api/user/login",
+                f"{base}/api/user/fsoc/login",
                 data=form,
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
@@ -196,7 +196,7 @@ async def generate_zhiyun_token(
     async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
         try:
             r = await client.get(
-                f"{base}/api/user/generateZhiYunToken",
+                f"{base}/api/user/fsoc/generateZhiYunToken",
                 params={"username": username, "password": password},
             )
         except httpx.RequestError as e:
