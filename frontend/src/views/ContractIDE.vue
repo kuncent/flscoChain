@@ -52,6 +52,7 @@
         <div class="ops">
           <el-button size="small" @click="save" :disabled="!curFid">保存</el-button>
           <el-button size="small" type="primary" @click="compile" :disabled="!curFile">编译</el-button>
+          <el-button size="small" type="warning" @click="audit" :disabled="!curFile">安全审计</el-button>
           <el-button size="small" type="success" @click="deploy" :disabled="!curFile">部署</el-button>
         </div>
       </div>
@@ -74,6 +75,7 @@
           <span class="tab" :class="{ active: tab === 'errors' }" @click="tab = 'errors'">编译/运行错误</span>
           <span class="tab" :class="{ active: tab === 'result' }" @click="tab = 'result'">部署结果</span>
           <span class="tab" :class="{ active: tab === 'abi' }" @click="tab = 'abi'" v-if="abiFunctions.length">ABI 接口 ({{ abiFunctions.length }})</span>
+          <span class="tab" :class="{ active: tab === 'audit' }" @click="tab = 'audit'">安全审计 ({{ auditResult?.issues_count ?? 0 }})</span>
         </div>
         <!-- 错误 -->
         <div class="out-body" v-if="tab === 'errors'">
@@ -102,7 +104,7 @@
           <div v-else class="placeholder-out">（执行编译/部署后输出在此）</div>
         </div>
         <!-- ABI 接口 -->
-        <div class="out-body" v-else>
+        <div class="out-body" v-else-if="tab === 'abi'">
           <div class="abi-tip">部署后，这些函数将自动在「接口调试」页生成可调用表单。view/pure 为只读，其余为状态变更（消耗 Gas、产生事件）。</div>
           <div class="abi-fn" v-for="fn in abiFunctions" :key="fn.signature">
             <span class="fn-name dq-mono">{{ fn.name }}</span>
@@ -110,6 +112,48 @@
             <span class="dq-tag" :class="fn.mutability === 'view' || fn.mutability === 'pure' ? '' : 'warn'">{{ fn.mutability }}</span>
             <span class="fn-ret dq-mono" v-if="fn.outputs">→ {{ fn.outputs }}</span>
           </div>
+        </div>
+        <!-- 安全审计 -->
+        <div class="out-body" v-else-if="tab === 'audit'">
+          <div v-if="auditResult" class="audit-container">
+            <div class="audit-score" :class="scoreClass">
+              <span class="score-num">{{ auditResult.score }}</span>
+              <span class="score-label">安全评分</span>
+            </div>
+            <div class="audit-summary">
+              <div class="summary-item">
+                <span class="summary-label">问题总数</span>
+                <span class="summary-value">{{ auditResult.issues_count }}</span>
+              </div>
+              <div class="summary-item severity-high">
+                <span class="summary-label">高危</span>
+                <span class="summary-value">{{ auditResult.high }}</span>
+              </div>
+              <div class="summary-item severity-medium">
+                <span class="summary-label">中危</span>
+                <span class="summary-value">{{ auditResult.medium }}</span>
+              </div>
+              <div class="summary-item severity-low">
+                <span class="summary-label">低危</span>
+                <span class="summary-value">{{ auditResult.low }}</span>
+              </div>
+            </div>
+            <div class="audit-issues" v-if="auditResult.issues?.length">
+              <div class="audit-item" v-for="(issue, idx) in auditResult.issues" :key="idx" :class="'severity-' + issue.severity">
+                <div class="issue-header">
+                  <span class="severity-tag">{{ issue.severity.toUpperCase() }}</span>
+                  <span class="issue-type dq-mono">{{ issue.type }}</span>
+                  <span class="issue-line dq-mono" v-if="issue.line">行 {{ issue.line }}</span>
+                </div>
+                <div class="issue-message">{{ issue.message }}</div>
+                <div class="issue-suggestion" v-if="issue.suggestion">
+                  <span class="suggestion-label">建议：</span>{{ issue.suggestion }}
+                </div>
+              </div>
+            </div>
+            <div v-else class="audit-empty">未发现安全问题</div>
+          </div>
+          <div v-else class="audit-empty">点击「安全审计」按钮开始检测</div>
         </div>
       </div>
     </div>
@@ -143,7 +187,8 @@ const newPath = ref('')
 const builtin = ref<any[]>([])
 const errors = ref<string[]>([])
 const result = ref<any>(null)
-const tab = ref<'errors' | 'result' | 'abi'>('errors')
+const tab = ref<'errors' | 'result' | 'abi' | 'audit'>('errors')
+const auditResult = ref<any>(null)
 const lastAbi = ref<any[]>([])
 const editorReady = ref(false)
 // shallowRef 避免 Vue 对 Monaco 大对象做响应式 Proxy，节省 100ms+
@@ -181,10 +226,32 @@ async function loadProjects() {
   }
 }
 
+/* 工程命名规范：中文/字母/数字/下划线/中划线，≤30 字符（与后端一致） */
+const PROJECT_NAME_RE = /^[\w\u4e00-\u9fa5\- ]{1,30}$/
+function validateProjectName(v: string): boolean {
+  if (!v || !v.trim()) { return false }
+  if (!PROJECT_NAME_RE.test(v.trim())) { return false }
+  return true
+}
+
 async function newProject() {
-  const { value } = await ElMessageBox.prompt('工程名称', '新建工程', { inputPattern: /.+/, inputErrorMessage: '必填' })
-  await ideApi.createProject(value)
-  await loadProjects()
+  const { value } = await ElMessageBox.prompt(
+    '工程名称（中文 / 字母 / 数字 / 下划线 / 中划线，≤30 字符）',
+    '新建工程',
+    {
+      inputPattern: PROJECT_NAME_RE,
+      inputErrorMessage: '命名不规范：仅支持中文、字母、数字、下划线、中划线，长度 1-30 字符',
+      inputValidator: (v: string) => validateProjectName(v),
+    },
+  )
+  try {
+    await ideApi.createProject(value.trim())
+    await loadProjects()
+    ElMessage.success(`工程「${value.trim()}」创建成功`)
+  } catch (e: any) {
+    // 后端错误透出（重名 / 非法字符等）
+    ElMessage.error(e?.response?.data?.detail || e?.message || '工程创建失败')
+  }
 }
 
 async function loadFiles() {
@@ -194,11 +261,25 @@ async function loadFiles() {
   else curFile.value = null
 }
 
+/* 合约文件命名规范：*.sol 结尾（Solidity 源文件） */
+const SOL_RE = /^[\w\u4e00-\u9fa5\-]+\.sol$/
+
 async function createFile() {
   if (!curPid.value || !newPath.value) return
-  await ideApi.saveFile({ project_id: curPid.value, path: newPath.value, content: '' })
-  newPath.value = ''
-  await loadFiles()
+  let path = newPath.value.trim()
+  if (path && !path.toLowerCase().endsWith('.sol')) path += '.sol'
+  if (!SOL_RE.test(path)) {
+    ElMessage.warning('合约文件名不规范：仅支持中文、字母、数字、下划线、中划线，且以 .sol 结尾')
+    return
+  }
+  try {
+    await ideApi.saveFile({ project_id: curPid.value, path, content: '' })
+    newPath.value = ''
+    await loadFiles()
+    ElMessage.success(`合约文件 ${path} 已创建，可在此编译部署调试`)
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || e?.message || '文件创建失败')
+  }
 }
 
 async function openFile(f: any) {
@@ -302,6 +383,28 @@ async function deploy() {
     tab.value = 'errors'
   }
 }
+
+async function audit() {
+  if (!curFile.value) return
+  try {
+    const r: any = await contractApi.audit({
+      source: editor.getValue(),
+      name: curFile.value.path.replace('.sol', ''),
+    })
+    auditResult.value = r
+    tab.value = 'audit'
+    ElMessage.success('安全审计完成')
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.detail || e.message || '安全审计失败')
+  }
+}
+
+const scoreClass = computed(() => {
+  const s = auditResult.value?.score ?? 0
+  if (s >= 80) return 'score-good'
+  if (s >= 60) return 'score-warn'
+  return 'score-bad'
+})
 
 // 构造函数参数表单
 async function promptCtorArgs(inputs: any[]): Promise<any[] | null> {
@@ -496,4 +599,53 @@ onBeforeUnmount(() => {
   .fn-args { color: var(--dq-text-dim); font-size: 11px; }
   .fn-ret { color: var(--dq-accent); font-size: 11px; margin-left: auto; }
 }
+
+// 安全审计样式
+.audit-container { display: flex; flex-direction: column; gap: 12px; }
+.audit-score {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 16px; border-radius: 8px; background: var(--dq-bg-2);
+  .score-num { font-size: 32px; font-weight: 700; line-height: 1; }
+  .score-label { font-size: 12px; color: var(--dq-text-dim); margin-top: 6px; }
+  &.score-good .score-num { color: var(--dq-success); }
+  &.score-warn .score-num { color: var(--dq-warning); }
+  &.score-bad .score-num { color: var(--dq-error); }
+}
+.audit-summary {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  .summary-item {
+    display: flex; flex-direction: column; align-items: center; padding: 10px 8px;
+    border-radius: 6px; background: var(--dq-bg-2);
+    .summary-label { font-size: 11px; color: var(--dq-text-dim); margin-bottom: 4px; }
+    .summary-value { font-size: 18px; font-weight: 600; }
+    &.severity-high .summary-value { color: var(--dq-error); }
+    &.severity-medium .summary-value { color: var(--dq-warning); }
+    &.severity-low .summary-value { color: var(--dq-primary); }
+  }
+}
+.audit-issues { display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; }
+.audit-item {
+  padding: 10px 12px; border-radius: 6px; border-left: 3px solid;
+  background: var(--dq-bg-2);
+  &.severity-high { border-left-color: var(--dq-error); }
+  &.severity-medium { border-left-color: var(--dq-warning); }
+  &.severity-low { border-left-color: var(--dq-primary); }
+  .issue-header {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+    .severity-tag {
+      font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; color: #fff;
+      .severity-high & { background: var(--dq-error); }
+      .severity-medium & { background: var(--dq-warning); }
+      .severity-low & { background: var(--dq-primary); }
+    }
+    .issue-type { font-size: 11px; color: var(--dq-text); }
+    .issue-line { font-size: 10px; color: var(--dq-text-dim); margin-left: auto; }
+  }
+  .issue-message { font-size: 12px; color: var(--dq-text); line-height: 1.5; margin-bottom: 4px; }
+  .issue-suggestion {
+    font-size: 11px; color: var(--dq-text-dim); line-height: 1.5;
+    .suggestion-label { color: var(--dq-primary); font-weight: 500; }
+  }
+}
+.audit-empty { text-align: center; padding: 24px 0; color: var(--dq-text-dim); font-size: 12px; }
 </style>

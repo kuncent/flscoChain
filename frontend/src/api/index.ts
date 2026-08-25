@@ -36,14 +36,34 @@ export const gradesApi = {
     http.post('/grades/compute-training', data),
   /** 批量刷新所有已绑定 wallet 记录的实训成绩 + 综合成绩 */
   refreshTraining: () => http.post('/grades/refresh-training'),
+  /** 学生端：按 wallet 查看自己的成绩 */
+  myGrades: (wallet: string) =>
+    http.get('/grades/my', { params: { wallet } }) as Promise<any>,
+  /** 报告→成绩闭环：按 wallet 自动创建/更新成绩草稿 */
+  autoDraft: (data: { wallet: string; student_id?: string; student_name?: string; course?: string }) =>
+    http.post('/grades/auto-draft', null, { params: data }) as Promise<any>,
 }
 
 export const chainApi = {
   status: () => http.get('/chain/status') as Promise<any>,
   tutorial: (wallet = 'default') => http.get('/chain/tutorial', { params: { wallet } }) as Promise<any>,
   execStep: (step: number, wallet = 'default') => http.post('/chain/tutorial/exec', { step, wallet }) as Promise<any>,
+  execCommand: (step: number, command: string, wallet = 'default') =>
+    http.post('/chain/tutorial/command', { step, command, wallet }) as Promise<any>,
   progress: (wallet = 'default') => http.get('/chain/tutorial/progress', { params: { wallet } }) as Promise<any>,
   resetProgress: (wallet = 'default') => http.post('/chain/tutorial/progress/reset', { wallet }) as Promise<any>,
+}
+
+// 云桌面文件操作 API
+export const cloudApi = {
+  // 读取虚拟文件
+  readFile: (path: string) => http.get('/cloud/files', { params: { path } }) as Promise<any>,
+  // 保存虚拟文件
+  saveFile: (data: { path: string; content: string }) => http.post('/cloud/files', data) as Promise<any>,
+  // 获取目录树结构
+  getTree: (path?: string) => http.get('/cloud/tree', { params: { path } }) as Promise<any>,
+  // 命令自动补全
+  autocomplete: (prefix: string) => http.get('/cloud/autocomplete', { params: { prefix } }) as Promise<any>,
 }
 
 export const contractApi = {
@@ -54,6 +74,7 @@ export const contractApi = {
   deployed: () => http.get('/contracts/deployed'),
   getDeployed: (addr: string) => http.get(`/contracts/deployed/${addr}`),
   call: (data: any) => http.post('/contracts/call', data),
+  audit: (data: { source: string; name: string }) => http.post('/contracts/audit', data),
 }
 
 export const ideApi = {
@@ -76,6 +97,14 @@ export const explorerApi = {
   contracts: () => http.get('/explorer/contracts'),
   contract: (addr: string) => http.get(`/explorer/contracts/${addr}`),
   address: (addr: string) => http.get(`/explorer/address/${addr}`),
+  // 方向一：Gas 分析
+  gasAnalysis: (limit = 100) => http.get('/explorer/gas/analysis', { params: { limit } }),
+  gasTrend: (hours = 24) => http.get('/explorer/gas/trend', { params: { hours } }),
+  // 方向二：代币经济 + 数据一致性
+  tokenEconomics: () => http.get('/explorer/token/economics'),
+  dataConsistency: () => http.get('/explorer/data/consistency'),
+  // 方向三：性能监控
+  performanceMetrics: () => http.get('/explorer/performance/metrics'),
 }
 
 export const monitorApi = {
@@ -106,6 +135,18 @@ export const walletApi = {
   transfers: (wallet: string) => http.get(`/wallet/transfers/${wallet}`),
 }
 
+export const achievementApi = {
+  list: () => http.get('/achievements'),
+  myAchievements: () => http.get('/achievements/my'),
+  check: (wallet: string) => http.post('/achievements/check', { wallet }),
+  stats: () => http.get('/achievements/stats'),
+  challenges: () => http.get('/achievements/challenges'),
+  myChallenges: () => http.get('/achievements/challenges/my'),
+  startChallenge: (challenge_id: string) => http.post('/achievements/challenges/start', { challenge_id }),
+  updateProgress: (challenge_id: string, progress: number) =>
+    http.post('/achievements/challenges/progress', { challenge_id, progress }),
+}
+
 export const reportApi = {
   /** 获取实训报告聚合数据 */
   aggregate: () => http.get('/report/aggregate'),
@@ -128,15 +169,27 @@ export const ecoApi = {
   /** 一键编译 + 部署内置绿色合约 */
   deployContract: (name: string, deployer: string = '0xlearner') =>
     http.post('/eco/contracts/deploy', { name, deployer }),
-  issueEnergy: (wallet: string, role_key: string) => http.post('/eco/energy/issue', { wallet, role_key }),
+  issueEnergy: (wallet: string, role_key: string, proof: Record<string, any> = {}, force = false) =>
+    http.post('/eco/energy/issue', { wallet, role_key, proof, force }),
   energyRecords: (wallet?: string) => http.get('/eco/energy/records', { params: { wallet } }),
   energyBalance: (wallet: string) => http.get('/eco/energy/balance', { params: { wallet } }),
   trees: () => http.get('/eco/trees'),
   addTree: (data: any) => http.post('/eco/trees/add', data),
   exchangeCertificate: (wallet: string, species_id: number) => http.post('/eco/certificates/exchange', { wallet, species_id }),
   certificates: (owner?: string) => http.get('/eco/certificates/list', { params: { owner } }),
-  exchangeBadge: (wallet: string, badge_type: string) => http.post('/eco/badges/exchange', { wallet, badge_type }),
+  exchangeBadge: (wallet: string, badge_type: string, type_id?: number) =>
+    http.post('/eco/badges/exchange', { wallet, badge_type, type_id }),
   badges: (owner?: string) => http.get('/eco/badges/list', { params: { owner } }),
+  /** 勋章 / 骑行券类型列表 */
+  badgeTypes: () => http.get('/eco/badges/types'),
+  /** 管理员 / 联盟角色新增勋章（或骑行券）类型 */
+  addBadgeType: (data: {
+    wallet: string; badge_type: string; name: string; icon?: string; image_url?: string;
+    cost_energy: number; supply: number; desc?: string
+  }) => http.post('/eco/badges/types/add', data),
+  /** 联盟角色铸造发放勋章 / 骑行券给居民 */
+  mintBadge: (data: { wallet: string; role_key: string; type_id: number; to_wallet: string; quantity: number }) =>
+    http.post('/eco/badges/mint', data),
   wallet: (wallet: string) => http.get(`/eco/wallet/${wallet}`),
   /** 记录操作成功/失败/警告（供实训报告打分 & 错误分析） */
   recordLog: (data: { wallet: string; module: string; action: string; level: string; message: string; detail?: string }) =>

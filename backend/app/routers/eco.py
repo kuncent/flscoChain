@@ -46,30 +46,57 @@ ROLES = [
      "desc": "城市地铁运营方，乘坐地铁(≥10km)发放50点绿色能量",
      "energy_rule": {"action": "地铁通勤", "points": 50, "proof_field": "distance_km", "min": 10, "unit": "km",
                      "proof_no_field": "trip_no",   # 业务单号：地铁乘车号（同一张乘车记录不重复发放）
+                     "proof_fields": [
+                         {"key": "station_in",  "label": "进站口", "type": "text",   "required": True, "placeholder": "如：国贸站"},
+                         {"key": "station_out", "label": "出站口", "type": "text",   "required": True, "placeholder": "如：西二旗站"},
+                         {"key": "board_time",  "label": "进站时间", "type": "text", "required": True, "placeholder": "如 2026-08-25 08:05"},
+                         {"key": "line",        "label": "线路",   "type": "text",   "required": False, "placeholder": "如：1号线"},
+                         {"key": "distance_km", "label": "乘坐里程(km)", "type": "number", "required": True, "placeholder": "需 ≥ 10 km"},
+                     ],
                      "proof_example": '{"line":"1号线","distance_km":12,"trip_no":"BJ202608070001"}'},
      "can_issue_badge": True, "can_issue_voucher": False, "can_manage_trees": False},
     {"key": "bus",      "name": "公交集团", "icon": "🚌", "color": "#ffcf4d", "wallet": "0xbus",
      "desc": "城市公交运营方，乘坐公交(≥5分钟)发放20点绿色能量",
      "energy_rule": {"action": "公交出行", "points": 20, "proof_field": "ride_minutes", "min": 5, "unit": "min",
                      "proof_no_field": "trip_no",   # 业务单号：公交乘车号
+                     "proof_fields": [
+                         {"key": "route",        "label": "公交线路", "type": "text",   "required": True, "placeholder": "如：86路"},
+                         {"key": "board_time",   "label": "上车时间", "type": "text",   "required": True, "placeholder": "如 2026-08-25 08:20"},
+                         {"key": "ride_minutes", "label": "乘车时长(分钟)", "type": "number", "required": True, "placeholder": "需 ≥ 5 min"},
+                     ],
                      "proof_example": '{"route":"86路","ride_minutes":20,"trip_no":"BUS20260807001"}'},
      "can_issue_badge": True, "can_issue_voucher": False, "can_manage_trees": False},
     {"key": "bike",     "name": "共享单车", "icon": "🚲", "color": "#f5379b", "wallet": "0xbike",
      "desc": "共享单车运营方，骑行(≥2km)发放15点能量，可发放骑行券",
      "energy_rule": {"action": "共享单车骑行", "points": 15, "proof_field": "distance_km", "min": 2, "unit": "km",
                      "proof_no_field": "order_id",  # 业务单号：单车订单号
+                     "proof_fields": [
+                         {"key": "order_id",    "label": "骑行订单号", "type": "text",   "required": True, "placeholder": "如：BK2026080701234"},
+                         {"key": "distance_km", "label": "骑行里程(km)", "type": "number", "required": True, "placeholder": "需 ≥ 2 km"},
+                         {"key": "duration_min","label": "骑行时长(分钟)", "type": "number", "required": False, "placeholder": "选填，如 15"},
+                     ],
                      "proof_example": '{"order_id":"BK2026080701234","distance_km":3.2,"duration_min":15}'},
      "can_issue_badge": True, "can_issue_voucher": True, "can_manage_trees": False},
     {"key": "takeout",  "name": "外卖平台", "icon": "📦", "color": "#ff7849", "wallet": "0xtakeout",
      "desc": "绿色外卖服务平台，选择「无需餐具」发放10点绿色能量",
      "energy_rule": {"action": "绿色外卖(无需餐具)", "points": 10, "proof_field": "no_cutlery", "min": 1, "unit": "flag",
                      "proof_no_field": "order_id",  # 业务单号：外卖订单号（同一订单不重复发）
+                     "proof_fields": [
+                         {"key": "order_id",   "label": "外卖订单号", "type": "text",   "required": True, "placeholder": "如：MT2026080700123"},
+                         {"key": "merchant",   "label": "商家名称", "type": "text",     "required": False, "placeholder": "选填，如：轻食沙拉"},
+                         {"key": "no_cutlery", "label": "已选择「无需餐具」", "type": "switch", "required": True, "placeholder": ""},
+                     ],
                      "proof_example": '{"order_id":"MT2026080700123","no_cutlery":true,"platform_order":"ELM2026080701"}'},
      "can_issue_badge": True, "can_issue_voucher": False, "can_manage_trees": False},
     {"key": "recycling","name": "回收公司", "icon": "♻️", "color": "#52c41a", "wallet": "0xrecycle",
      "desc": "旧物回收公司，回收(≥1kg)发放100点绿色能量",
      "energy_rule": {"action": "可回收物回收", "points": 100, "proof_field": "weight_kg", "min": 1, "unit": "kg",
                      "proof_no_field": "order_no",  # 业务单号：回收单号（同一回收不重复发）
+                     "proof_fields": [
+                         {"key": "order_no",  "label": "回收单号", "type": "text",   "required": True, "placeholder": "如：RC20260807001"},
+                         {"key": "category",  "label": "回收物分类", "type": "text", "required": True, "placeholder": "如：塑料瓶 / 纸箱"},
+                         {"key": "weight_kg", "label": "回收重量(kg)", "type": "number", "required": True, "placeholder": "需 ≥ 1 kg"},
+                     ],
                      "proof_example": '{"order_id":"RC20260807001","weight_kg":2.5,"category":"塑料瓶"}'},
      "can_issue_badge": True, "can_issue_voucher": False, "can_manage_trees": False},
 ]
@@ -87,11 +114,15 @@ BUILTIN_CONTRACTS = [
     {"name": "EcoBadge",         "standard": "ERC1155", "file": "EcoBadge.sol"},
 ]
 
-# 勋章 / 骑行券配置：EcoBadge 合约中 BADGE_ID=1, VOUCHER_ID=2
-BADGE_CONFIG = {
-    "badge":   {"cost": 10, "token_id": 1, "name": "生态勋章"},
-    "voucher": {"cost": 20, "token_id": 2, "name": "骑行券"},
-}
+# 默认勋章 / 骑行券类型（EcoBadge 合约中 BADGE_ID=1, VOUCHER_ID=2）
+DEFAULT_BADGE_TYPES = [
+    {"badge_type": "badge",   "name": "生态勋章", "icon": "🏅", "cost_energy": 10,
+     "token_id": 1, "supply": 100, "issuer_role": "",  "image_url": "",
+     "desc": "绿色出行达人的荣誉勋章（默认类型，全体联盟节点可发放）"},
+    {"badge_type": "voucher", "name": "骑行券",   "icon": "🎫", "cost_energy": 20,
+     "token_id": 2, "supply": 100, "issuer_role": "bike", "image_url": "",
+     "desc": "可兑换一次免费共享单车骑行（仅共享单车公司发放）"},
+]
 
 # 管理员别名 —— 兑换时能量消耗回收目标
 ADMIN_ALIAS = "0xadmin"
@@ -127,7 +158,27 @@ class CertExchangeReq(BaseModel):
 
 class BadgeExchangeReq(BaseModel):
     wallet: str
-    badge_type: str  # badge | voucher
+    badge_type: str          # badge | voucher（内置类型快捷方式）
+    type_id: Optional[int] = None   # 指定兑换的勋章/骑行券类型 ID（生态勋章支持管理员自定义多类型）
+
+
+class BadgeTypeAddReq(BaseModel):
+    wallet: str              # 操作者钱包（必须是联盟角色：admin / metro / bus / bike / takeout / recycling）
+    badge_type: str          # badge | voucher
+    name: str
+    icon: str = "🏅"
+    image_url: str = ""
+    cost_energy: int         # 兑换所需能量值
+    supply: int              # 发行数量上限
+    desc: str = ""
+
+
+class BadgeMintReq(BaseModel):
+    wallet: str              # 操作者钱包（联盟角色钱包，交易的 FROM）
+    role_key: str            # 操作者当前选中的联盟角色
+    type_id: int             # 勋章/骑行券类型 ID
+    to_wallet: str           # 接收者（居民钱包）
+    quantity: int = 1        # 铸造数量
 
 
 class OpErrorRecordReq(BaseModel):
@@ -193,6 +244,17 @@ def _validate_energy_proof(role: dict, proof: dict, force: bool = False) -> dict
             "threshold": threshold, "msg": "教师演示：跳过业务凭证校验",
         }
 
+    # 必填业务字段校验（进站口 / 出站口 / 进站时间 / 订单号 / 回收分类等）
+    missing = []
+    for f in rule.get("proof_fields") or []:
+        if f.get("required"):
+            v = pf.get(f["key"])
+            if v is None or v == "" or (isinstance(v, str) and not v.strip()):
+                missing.append(f.get("label") or f["key"])
+    if missing:
+        return {"ok": False, "threshold": threshold, "proof_no": proof_no,
+                "msg": f"{role['name']} 发放能量缺少必填业务数据：{'、'.join(missing)}。请补全业务凭证后重新提交"}
+
     if rule.get("proof_field") == "distance_km":  # 地铁 / 单车
         val = pf.get("distance_km")
         try:
@@ -237,6 +299,20 @@ def _validate_energy_proof(role: dict, proof: dict, force: bool = False) -> dict
 
     # admin 等没有能量规则的角色
     return {"ok": False, "threshold": "N/A", "proof_no": proof_no, "msg": f"角色 {role['name']} 没有能量发放规则"}
+
+
+def _selected_role(wallet: str) -> Optional[dict]:
+    """查询钱包当前选择的联盟角色（eco_role_selections），未选择返回 None。"""
+    if not wallet:
+        return None
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT role_key FROM eco_role_selections WHERE lower(wallet)=lower(?)",
+            (wallet,),
+        ).fetchone()
+    if not row:
+        return None
+    return _find_role(row["role_key"])
 
 
 def _find_contract(name: str):
@@ -337,6 +413,53 @@ def _get_energy_balance(wallet: str) -> str:
         return str(r.get("result") or ledger_balance)
     except Exception:
         return str(ledger_balance)
+
+
+def _sync_chain_balance(wallet: str) -> None:
+    """把持久化业务账本余额回填到链上（账本 > 链上时由管理员 mint 差额）。
+
+    本地沙盒链（py-evm）在服务重启后会重置，为保证「兑换 / 挂牌购买」的链上转账
+    能够真实执行，需要将账本与链上余额对齐。回填通过 GreenEnergy.mint 由管理员
+    钱包发出；差额本身已在账本中，故不重复写 eco_energy_records。
+    """
+    ledger = _get_energy_ledger_balance(wallet)
+    if ledger <= 0:
+        return
+    addr, abi = _find_contract("GreenEnergy")
+    if not addr:
+        return
+    c = get_chain_client()
+    try:
+        r = c.call_contract(addr, "balanceOf", [c.resolve_account(wallet)], wallet, abi)
+        chain_bal = _to_int(r.get("result", "0")) if r.get("ok") else 0
+    except Exception:
+        chain_bal = 0
+    diff = ledger - chain_bal
+    if diff <= 0:
+        return
+    r = c.call_contract(
+        addr, "mint",
+        [c.resolve_account(wallet), diff, "账本回填"],
+        ADMIN_ALIAS, abi,
+    )
+    if not r.get("ok"):
+        return
+    # 回填不入账本（账本本来就有这笔余额），仅记录链上补给痕迹到能量记录表会虚增账本，
+    # 因此不写 eco_energy_records，只打印日志。
+    print(f"[eco] 账本回填 {wallet}: +{diff} 能量 (mint by 0xadmin)")
+
+
+def _get_badge_type(conn, *, type_id: Optional[int] = None, badge_type: Optional[str] = None) -> Optional[dict]:
+    """按类型 ID 或内置类型（badge/voucher 的默认类型）查询勋章/骑行券类型定义。"""
+    row = None
+    if type_id:
+        row = conn.execute("SELECT * FROM eco_badge_types WHERE id=?", (type_id,)).fetchone()
+    elif badge_type:
+        row = conn.execute(
+            "SELECT * FROM eco_badge_types WHERE badge_type=? ORDER BY id ASC LIMIT 1",
+            (badge_type,),
+        ).fetchone()
+    return dict(row) if row else None
 
 
 def _active_listing_for_asset(conn, asset_type: str, asset_id: int):
@@ -518,6 +641,22 @@ def issue_energy(req: EnergyIssueReq):
     if not req.wallet:
         raise HTTPException(400, "接收能量的钱包 wallet 必填")
 
+    # 权限闭环：操作者（对应 req.wallet 的学生）当前选中的联盟角色必须与发放角色一致，
+    # 避免未切换角色即可随意调用发币接口；教师演示可使用 force=true 跳过。
+    if not req.force:
+        sel = _selected_role(req.wallet)
+        if not sel:
+            raise HTTPException(
+                403,
+                f"操作者未选择联盟角色：请先在「绿色低碳联盟链」页面切换到【{role['name']}】后再发放能量",
+            )
+        if sel["key"] != role["key"]:
+            raise HTTPException(
+                403,
+                f"操作者当前选择的是【{sel['name']}】，与本次发放角色【{role['name']}】不一致。"
+                f"请先在「绿色低碳联盟链」切换为对应联盟角色",
+            )
+
     ge_addr, ge_abi = _find_contract("GreenEnergy")
     if not ge_addr:
         raise HTTPException(400, "GreenEnergy 合约未部署，请先部署合约")
@@ -616,6 +755,8 @@ def issue_energy(req: EnergyIssueReq):
         "contract": ge_addr,
         "method": "GreenEnergy.mint(to,value,reason)",
     }
+    _track("eco_energy_issue", target=role["key"], ref_id=proof_no, wallet=req.wallet,
+           extra={"role": role["name"], "points": points, "action": action})
 
 
 @router.get("/energy/records")
@@ -697,6 +838,9 @@ def exchange_certificate(req: CertExchangeReq):
     c = get_chain_client()
     admin_addr = c.resolve_account(ADMIN_ALIAS)
 
+    # 2.5 账本 → 链上余额回填（重启后沙盒链余额归零，回填后转账才能真实执行）
+    _sync_chain_balance(req.wallet)
+
     # 3. 调用 GreenEnergy.transfer(admin, cost) 从 wallet 转给 admin
     r_transfer = c.call_contract(
         ge_addr, "transfer",
@@ -737,6 +881,8 @@ def exchange_certificate(req: CertExchangeReq):
             (str(token_id), req.species_id, tree["name"], req.wallet, cost,
              pc_addr, tx_hash, cert_no, now()),
         )
+    _track("eco_cert_exchange", target=tree["name"], ref_id=cert_no, wallet=req.wallet,
+           extra={"species_id": req.species_id, "cost": cost, "token_id": str(token_id)})
     return {"ok": True, "token_id": str(token_id), "cert_no": cert_no, "tx_hash": tx_hash}
 
 
@@ -756,13 +902,22 @@ def list_certificates(owner: str):
 # ===========================================================================
 @router.post("/badges/exchange")
 def exchange_badge(req: BadgeExchangeReq):
-    """花费绿色能量兑换生态勋章或骑行券。"""
-    cfg = BADGE_CONFIG.get(req.badge_type)
-    if not cfg:
-        raise HTTPException(400, f"未知类型: {req.badge_type}，支持 badge / voucher")
-    cost = cfg["cost"]
-    token_id = cfg["token_id"]
-    badge_name = cfg["name"]
+    """居民花费绿色能量兑换生态勋章 / 骑行券（能量转入管理员国库，实现能量回收闭环）。
+
+    与「联盟角色发放」的区别：兑换消耗居民自己的绿色能量（cost_energy），
+    铸造（mint）由管理员合约账户执行，普通居民不能自铸。
+    """
+    with get_conn() as conn:
+        bt = _get_badge_type(conn, type_id=req.type_id, badge_type=req.badge_type)
+        if not bt:
+            raise HTTPException(400, f"未知勋章类型: {req.badge_type}（type_id={req.type_id}）")
+        cost = int(bt["cost_energy"])
+        token_id = int(bt["token_id"])
+        badge_name = bt["name"]
+        bt_id = bt["id"]
+        # 发行量上限校验（供应不足则提示等待联盟节点补发）
+        if int(bt["minted"]) >= int(bt["supply"]):
+            raise HTTPException(400, f"「{badge_name}」发行量已达上限 {bt['supply']}，暂不可兑换")
 
     # 1. 查找 GreenEnergy 合约，检查余额
     ge_addr, ge_abi = _find_contract("GreenEnergy")
@@ -775,7 +930,10 @@ def exchange_badge(req: BadgeExchangeReq):
     c = get_chain_client()
     admin_addr = c.resolve_account(ADMIN_ALIAS)
 
-    # 2. 调用 GreenEnergy.transfer(admin, cost) 从 wallet 转给 admin
+    # 1.5 账本 → 链上余额回填（重启后沙盒链余额归零，回填后转账才能真实执行）
+    _sync_chain_balance(req.wallet)
+
+    # 2. 能量回收：调用 GreenEnergy.transfer(admin, cost) 从 wallet 转给管理员国库
     r_transfer = c.call_contract(
         ge_addr, "transfer",
         [admin_addr, cost],
@@ -784,28 +942,31 @@ def exchange_badge(req: BadgeExchangeReq):
     if not r_transfer.get("ok"):
         raise HTTPException(400, "能量扣除失败: " + str(r_transfer.get("error", "")))
 
-    # 3. 查找 EcoBadge 合约，调用 mint(wallet, token_id, 1, "")
+    # 3. 查找 EcoBadge 合约，由管理员合约账户 mint 到居民钱包
     eb_addr, eb_abi = _find_contract("EcoBadge")
     if not eb_addr:
         raise HTTPException(400, "EcoBadge 合约未部署")
     r_mint = c.call_contract(
         eb_addr, "mint",
-        [c.resolve_account(req.wallet), token_id, 1, ""],
-        req.wallet, eb_abi,
+        [c.resolve_account(req.wallet), token_id, 1, bt["image_url"] or ""],
+        ADMIN_ALIAS, eb_abi,
     )
     if not r_mint.get("ok"):
         raise HTTPException(400, "勋章铸造失败: " + str(r_mint.get("error", "")))
     tx_hash = r_mint.get("tx_hash", "")
 
-    # 4. 记录到 eco_badges 表
+    # 4. 记录到 eco_badges 表 + 类型已铸数量 +1
     with get_conn() as conn:
         conn.execute(
             "INSERT INTO eco_badges(token_id,badge_type,name,owner,cost_energy,issued_by,contract_address,tx_hash,created_at) "
             "VALUES(?,?,?,?,?,?,?,?,?)",
             (token_id, req.badge_type, badge_name, req.wallet, cost,
-             req.wallet, eb_addr, tx_hash, now()),
+             ADMIN_ALIAS, eb_addr, tx_hash, now()),
         )
-    return {"ok": True, "badge_type": req.badge_type, "tx_hash": tx_hash}
+        conn.execute("UPDATE eco_badge_types SET minted = minted + 1 WHERE id=?", (bt_id,))
+    _track("eco_badge_exchange", target=badge_name, ref_id=str(token_id), wallet=req.wallet,
+           extra={"badge_type": req.badge_type, "type_id": req.type_id, "cost": cost})
+    return {"ok": True, "badge_type": req.badge_type, "type_id": bt_id, "tx_hash": tx_hash}
 
 
 @router.get("/badges/list")
@@ -817,6 +978,153 @@ def list_badges(owner: str):
             (owner,),
         ).fetchall()
     return {"items": [dict(r) for r in rows]}
+
+
+# ---------------------------------------------------------------------------
+# 6.1 勋章 / 骑行券类型管理（联盟角色铸造入口）
+# ---------------------------------------------------------------------------
+@router.get("/badges/types")
+def list_badge_types():
+    """返回全部勋章 / 骑行券类型定义（含发行上限与已铸数量，供兑换 / 铸造界面渲染）。"""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM eco_badge_types ORDER BY id ASC").fetchall()
+    return [dict(r) for r in rows]
+
+
+@router.post("/badges/types/add")
+def add_badge_type(req: BadgeTypeAddReq):
+    """联盟角色新增勋章 / 骑行券类型定义（ERC1155）。
+
+    权限（与实训业务模型一致）：
+    - badge 勋章：管理员 + 任意联盟节点均可新增（需先在绿色低碳联盟链选定角色）；
+    - voucher 骑行券：仅共享单车公司（bike）可维护（EcoBadge 合约固定 VOUCHER_ID=2，仅允许一份）。
+    """
+    if req.badge_type not in ("badge", "voucher"):
+        raise HTTPException(400, "badge_type 必须是 badge 或 voucher")
+    if req.cost_energy <= 0:
+        raise HTTPException(400, "所需能量值必须大于 0")
+    if req.supply <= 0:
+        raise HTTPException(400, "发行数量（supply）必须大于 0")
+
+    role = _selected_role(req.wallet)
+    if not role:
+        raise HTTPException(403, "操作者未选择联盟角色：请先在「绿色低碳联盟链」页面选择角色后再新增")
+    if req.badge_type == "voucher" and role["key"] != "bike":
+        raise HTTPException(403, "骑行券仅共享单车公司（bike）可新增，请切换到「共享单车」角色")
+
+    with get_conn() as conn:
+        if req.badge_type == "voucher":
+            # 骑行券固定 token_id=2，仅维护一份
+            exist = conn.execute(
+                "SELECT id FROM eco_badge_types WHERE badge_type='voucher' ORDER BY id ASC LIMIT 1"
+            ).fetchone()
+            if exist:
+                conn.execute(
+                    "UPDATE eco_badge_types SET name=?, icon=?, image_url=?, cost_energy=?, "
+                    "supply=?, issuer_role=?, desc=? WHERE id=?",
+                    (req.name, req.icon, req.image_url, req.cost_energy, req.supply,
+                     role["key"], req.desc, exist["id"]),
+                )
+                return {"ok": True, "id": exist["id"], "updated": True,
+                        "token_id": 2, "badge_type": "voucher"}
+            token_id = 2
+        else:
+            # 新勋章类型：token_id 自增（避开内置 BADGE_ID=1 / VOUCHER_ID=2）
+            max_id = conn.execute(
+                "SELECT COALESCE(MAX(token_id), 0) FROM eco_badge_types WHERE badge_type='badge'"
+            ).fetchone()[0]
+            token_id = max_id + 1
+            if token_id <= 1:
+                token_id = 3 if max_id == 1 else max_id + 1
+            # 避开 VOUCHER_ID=2 与 BADGE_ID=1 冲突
+            while token_id in (1, 2):
+                token_id += 1
+        cur = conn.execute(
+            "INSERT INTO eco_badge_types(badge_type,name,icon,image_url,cost_energy,supply,"
+            "minted,issuer_role,token_id,desc,created_at) VALUES(?,?,?,?,?,?,0,?,?,?,?)",
+            (req.badge_type, req.name, req.icon, req.image_url, req.cost_energy,
+             req.supply, role["key"], token_id, req.desc, now()),
+        )
+    _track("badge_type_add", target=req.badge_type, wallet=req.wallet or "",
+           extra={"type_id": cur.lastrowid, "issuer_role": role["key"]})
+    return {"ok": True, "id": cur.lastrowid, "token_id": token_id, "badge_type": req.badge_type}
+
+
+@router.post("/badges/mint")
+def mint_badge(req: BadgeMintReq):
+    """联盟角色铸造发放勋章 / 骑行券给居民（ERC1155 mint，链上 FROM = 联盟角色钱包）。
+
+    与「居民兑换」的区别（业务闭环的两条链路）：
+    - 兑换（/badges/exchange）：居民花费自己的绿色能量，由管理员合约账户铸造，能量回收；
+    - 铸造发放（本接口）：联盟节点运营行为直接向居民发放，不消耗居民能量（如企业激励）。
+
+    权限：操作者必须先选择联盟角色；voucher 仅共享单车公司（bike）可发放。
+    """
+    role = _find_role(req.role_key)
+    if not role:
+        raise HTTPException(400, f"未知角色: {req.role_key}")
+    if not req.wallet:
+        raise HTTPException(400, "操作者钱包 wallet 必填")
+    if req.quantity <= 0:
+        raise HTTPException(400, "铸造数量必须大于 0")
+
+    # 权限：操作者当前选中角色必须与声明一致（普通居民无铸造能力）
+    sel = _selected_role(req.wallet)
+    if not sel or sel["key"] != role["key"]:
+        raise HTTPException(
+            403,
+            f"铸造权限不足：操作者当前角色为「{sel['name'] if sel else '未选择'}」，"
+            f"与声明的「{role['name']}」不一致。请先在「绿色低碳联盟链」切换对应联盟角色",
+        )
+    if not req.to_wallet:
+        raise HTTPException(400, "接收者钱包 to_wallet 必填")
+
+    with get_conn() as conn:
+        bt = _get_badge_type(conn, type_id=req.type_id)
+    if not bt:
+        raise HTTPException(400, f"未知勋章类型 type_id={req.type_id}")
+    if bt["badge_type"] == "voucher" and role["key"] != "bike":
+        raise HTTPException(403, "骑行券仅共享单车公司（bike）可发放")
+    remaining = int(bt["supply"]) - int(bt["minted"])
+    if int(req.quantity) > remaining:
+        raise HTTPException(
+            400,
+            f"「{bt['name']}」发行量上限 {bt['supply']}，已铸造 {bt['minted']}，"
+            f"剩余可铸造 {remaining}，本次请求 {req.quantity}",
+        )
+
+    eb_addr, eb_abi = _find_contract("EcoBadge")
+    if not eb_addr:
+        raise HTTPException(400, "EcoBadge 合约未部署")
+
+    c = get_chain_client()
+    issuer_wallet = role.get("wallet") or f"0x{role['key']}"
+    r = c.call_contract(
+        eb_addr, "mint",
+        [c.resolve_account(req.to_wallet), int(bt["token_id"]), int(req.quantity),
+         bt["image_url"] or ""],
+        issuer_wallet, eb_abi,
+    )
+    if not r.get("ok"):
+        raise HTTPException(400, f"铸造失败（交易发起方 {issuer_wallet}）: {r.get('error','')}")
+    tx_hash = r.get("tx_hash", "")
+
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO eco_badges(token_id,badge_type,name,owner,cost_energy,issued_by,"
+            "contract_address,tx_hash,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+            (int(bt["token_id"]), bt["badge_type"], bt["name"], req.to_wallet, 0,
+             issuer_wallet, eb_addr, tx_hash, now()),
+        )
+        conn.execute(
+            "UPDATE eco_badge_types SET minted = minted + ? WHERE id=?",
+            (int(req.quantity), bt["id"]),
+        )
+    _track("badge_mint", target=bt["badge_type"], wallet=req.wallet or "",
+           extra={"type_id": bt["id"], "to": req.to_wallet, "qty": req.quantity,
+                  "issued_by": issuer_wallet})
+    return {"ok": True, "badge_type": bt["badge_type"], "type_id": bt["id"],
+            "to": req.to_wallet, "quantity": int(req.quantity), "tx_hash": tx_hash}
 
 
 # ===========================================================================
@@ -1227,3 +1535,29 @@ def init_eco_db():
             created_at TEXT NOT NULL
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_market_status ON eco_market_listings(status)")
+        # 勋章 / 骑行券类型（发行量上限、铸造方角色、兑换成本）
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS eco_badge_types (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            badge_type TEXT NOT NULL,          -- badge | voucher
+            name TEXT NOT NULL,
+            icon TEXT,
+            image_url TEXT,
+            cost_energy INTEGER NOT NULL DEFAULT 0,
+            supply INTEGER NOT NULL DEFAULT 0, -- 发行数量上限
+            minted INTEGER NOT NULL DEFAULT 0, -- 已铸造数量
+            issuer_role TEXT NOT NULL DEFAULT '', -- 铸造方联盟角色（空=全体）
+            token_id INTEGER NOT NULL,
+            desc TEXT,
+            created_at TEXT NOT NULL
+        )""")
+        # 默认勋章 / 骑行券类型播种（仅当表为空时插入，避免重复）
+        bt_count = conn.execute("SELECT COUNT(*) FROM eco_badge_types").fetchone()[0]
+        if bt_count == 0:
+            for bt in DEFAULT_BADGE_TYPES:
+                conn.execute(
+                    "INSERT INTO eco_badge_types(badge_type,name,icon,image_url,cost_energy,supply,"
+                    "minted,issuer_role,token_id,desc,created_at) VALUES(?,?,?,?,?,?,0,?,?,?,?)",
+                    (bt["badge_type"], bt["name"], bt["icon"], bt["image_url"], bt["cost_energy"],
+                     bt["supply"], bt["issuer_role"], bt["token_id"], bt["desc"], now()),
+                )

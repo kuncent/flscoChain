@@ -58,7 +58,7 @@
         </div>
       </div>
 
-      <!-- 右：Gas 消耗柱状图（原生 SVG 不依赖 echarts） -->
+      <!-- 右：Gas 消耗柱状图 -->
       <div class="dq-glass gas-card">
         <div class="gas-head">
           <div>
@@ -72,24 +72,16 @@
         </div>
         <div class="gas-chart">
           <svg viewBox="0 0 600 140" preserveAspectRatio="none" class="gas-svg">
-            <!-- 背景网格 -->
             <g stroke="rgba(255,255,255,0.035)" stroke-width="1">
               <line x1="0" y1="35" x2="600" y2="35"/>
               <line x1="0" y1="70" x2="600" y2="70"/>
               <line x1="0" y1="105" x2="600" y2="105"/>
             </g>
-            <!-- 柱体 -->
             <g v-for="(b, i) in blocksForChart" :key="i">
-              <rect
-                :x="b.x" :y="b.y"
-                :width="b.w" :height="b.h"
-                :fill="b.fill"
-                rx="2"
-              >
+              <rect :x="b.x" :y="b.y" :width="b.w" :height="b.h" :fill="b.fill" rx="2">
                 <title>区块 #{{ b.n }} · Gas {{ b.gas.toLocaleString() }}</title>
               </rect>
             </g>
-            <!-- 均线（虚线） -->
             <path :d="avgLinePath" fill="none" stroke="#ffcf4d" stroke-width="1.2" stroke-dasharray="4,4" opacity="0.75">
               <title>Gas 均值基准线</title>
             </path>
@@ -102,7 +94,7 @@
     </div>
 
     <div class="grid-2" style="margin-top:14px">
-      <!-- 区块列表：增加出块耗时 badge -->
+      <!-- 区块列表 -->
       <div class="dq-card">
         <div class="dq-card-title">最近区块 <span class="dq-tag info" style="margin-left:auto">{{ blocks.length }} / {{ total }}</span></div>
         <el-table :data="blocks" border size="small" max-height="420" class="exp-table" stripe>
@@ -165,6 +157,16 @@
           <el-table-column label="Gas" width="90">
             <template #default="{ row }"><span class="dq-mono dim">{{ (row.gas_used || 0).toLocaleString() }}</span></template>
           </el-table-column>
+          <el-table-column label="成本(Gwei)" width="110">
+            <template #default="{ row }">
+              <span class="dq-mono dim">{{ formatGasCost(row.gas_cost_gwei) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="确认数" width="90">
+            <template #default="{ row }">
+              <span class="dq-tag" :class="getConfirmationClass(row.confirmations)">{{ row.confirmations || 0 }}</span>
+            </template>
+          </el-table-column>
         </el-table>
         <el-button size="small" @click="loadTxs" style="margin-top:10px">刷新</el-button>
       </div>
@@ -193,7 +195,95 @@
 
     <EmptyIllustration v-else type="contract" style="margin-top:14px" />
 
-    <!-- 详情抽屉（结构化展示） -->
+    <!-- 链上分析面板 -->
+    <div class="analysis-panels" style="margin-top:14px">
+      <el-tabs v-model="activeTab" type="border-card">
+        <el-tab-pane label="Gas 分析" name="gas">
+          <div class="analysis-content">
+            <div class="kpi-grid" v-if="gasAnalysis">
+              <div class="kpi-card"><div class="kpi-label">平均 Gas Used</div><div class="kpi-value">{{ gasAnalysis.avg_gas_used?.toLocaleString() || 0 }}</div></div>
+              <div class="kpi-card"><div class="kpi-label">最大 Gas Used</div><div class="kpi-value warn">{{ gasAnalysis.max_gas_used?.toLocaleString() || 0 }}</div></div>
+              <div class="kpi-card"><div class="kpi-label">最小 Gas Used</div><div class="kpi-value">{{ gasAnalysis.min_gas_used?.toLocaleString() || 0 }}</div></div>
+              <div class="kpi-card"><div class="kpi-label">平均 Gas Price</div><div class="kpi-value">{{ gasAnalysis.avg_gas_price_gwei || 0 }} Gwei</div></div>
+              <div class="kpi-card"><div class="kpi-label">总 Gas 成本</div><div class="kpi-value">{{ formatGasCost(gasAnalysis.total_gas_cost_gwei) }} Gwei</div></div>
+              <div class="kpi-card"><div class="kpi-label">统计交易数</div><div class="kpi-value">{{ gasAnalysis.tx_count || 0 }}</div></div>
+            </div>
+            <el-empty v-else description="暂无数据" />
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="代币经济" name="token">
+          <div class="analysis-content">
+            <div v-if="tokenEconomics?.tokens?.length">
+              <div v-for="token in tokenEconomics.tokens" :key="token.contract_address" class="token-card">
+                <div class="token-header">
+                  <div class="token-name">{{ token.token_name }}</div>
+                  <div class="token-address dq-mono">{{ short(token.contract_address) }}</div>
+                </div>
+                <div class="token-stats">
+                  <div class="stat-item"><span class="stat-label">流通量</span><span class="stat-value">{{ formatNumber(token.total_supply) }}</span></div>
+                  <div class="stat-item"><span class="stat-label">持有者</span><span class="stat-value">{{ token.holder_count }}</span></div>
+                  <div class="stat-item"><span class="stat-label">转账次数</span><span class="stat-value">{{ token.transfer_count }}</span></div>
+                </div>
+                <div v-if="token.top_holders?.length" class="top-holders">
+                  <div class="holders-title">Top 持有者</div>
+                  <div v-for="(holder, idx) in token.top_holders" :key="idx" class="holder-row">
+                    <span class="holder-rank">#{{ idx + 1 }}</span>
+                    <span class="holder-address dq-mono">{{ short(holder.address) }}</span>
+                    <span class="holder-balance">{{ formatNumber(holder.balance) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <el-empty v-else description="暂无 ERC20 代币" />
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="数据一致性" name="consistency">
+          <div class="analysis-content">
+            <div v-if="consistency" class="consistency-panel">
+              <div class="consistency-status" :class="consistency.status">
+                <el-icon v-if="consistency.status === 'healthy'"><CircleCheck /></el-icon>
+                <el-icon v-else><Warning /></el-icon>
+                <span>{{ consistency.status === 'healthy' ? '链上数据健康' : `发现 ${consistency.issue_count} 个问题` }}</span>
+              </div>
+              <div class="consistency-stats">
+                <div class="stat-item"><span class="stat-label">当前块高</span><span class="stat-value">#{{ consistency.current_block }}</span></div>
+                <div class="stat-item"><span class="stat-label">合约数量</span><span class="stat-value">{{ consistency.contract_count }}</span></div>
+                <div class="stat-item"><span class="stat-label">近期交易</span><span class="stat-value">{{ consistency.tx_count }}</span></div>
+              </div>
+              <div v-if="consistency.issues?.length" class="issues-list">
+                <div class="issues-title">问题详情</div>
+                <div v-for="(issue, idx) in consistency.issues" :key="idx" class="issue-item" :class="issue.severity">
+                  <div class="issue-header">
+                    <span class="issue-type">{{ issue.type }}</span>
+                    <span class="issue-severity dq-tag" :class="issue.severity">{{ issue.severity }}</span>
+                  </div>
+                  <div class="issue-message">{{ issue.message }}</div>
+                </div>
+              </div>
+            </div>
+            <el-empty v-else description="暂无数据" />
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="性能监控" name="performance">
+          <div class="analysis-content">
+            <div class="kpi-grid" v-if="performance">
+              <div class="kpi-card"><div class="kpi-label">TPS</div><div class="kpi-value">{{ performance.tps || 0 }}</div></div>
+              <div class="kpi-card"><div class="kpi-label">平均出块时间</div><div class="kpi-value">{{ performance.avg_block_time || 0 }}s</div></div>
+              <div class="kpi-card"><div class="kpi-label">平均 Gas Used</div><div class="kpi-value">{{ performance.avg_gas_used?.toLocaleString() || 0 }}</div></div>
+              <div class="kpi-card"><div class="kpi-label">Gas 利用率</div><div class="kpi-value">{{ performance.gas_utilization_percent || 0 }}%</div></div>
+              <div class="kpi-card"><div class="kpi-label">当前块高</div><div class="kpi-value">#{{ performance.current_block }}</div></div>
+              <div class="kpi-card"><div class="kpi-label">网络状态</div><div class="kpi-value" :class="performance.network_health">{{ performance.network_health }}</div></div>
+            </div>
+            <el-empty v-else description="暂无数据" />
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+    </div>
+
+    <!-- 详情抽屉 -->
     <el-drawer v-model="drawer" size="660px" :title="drawerTitle">
       <div class="detail-wrap" v-if="detail">
         <!-- 区块详情 -->
@@ -228,7 +318,7 @@
           <EmptyIllustration v-if="!(detail.transactions || []).length" type="explorer" :hide-text="true" />
         </template>
 
-        <!-- 交易详情（参数解码可视化 + ABI/Event 解码表） -->
+        <!-- 交易详情 -->
         <template v-else-if="detailType === 'tx'">
           <div class="dq-flow-card"><div class="dq-flow-card__inner">
             <div class="detail-head">
@@ -253,6 +343,12 @@
               <span class="v"><span class="dq-tag accent">合约部署</span></span>
             </div>
             <div class="dq-kv"><span class="k">Gas 消耗</span><span class="v dq-mono">{{ (detail.gas_used || 0).toLocaleString() }}</span></div>
+            <div class="dq-kv"><span class="k">Gas 价格</span><span class="v dq-mono">{{ detail.gas_price || 0 }} Wei ({{ ((detail.gas_price || 0) / 1e9).toFixed(2) }} Gwei)</span></div>
+            <div class="dq-kv"><span class="k">Gas 成本</span><span class="v dq-mono">{{ formatGasCost(detail.gas_cost_gwei) }} Gwei</span></div>
+            <div class="dq-kv">
+              <span class="k">确认数</span>
+              <span class="v"><span class="dq-tag" :class="getConfirmationClass(detail.confirmations)">{{ detail.confirmations || 0 }}</span></span>
+            </div>
             <div class="dq-kv">
               <span class="k">状态</span>
               <span class="v">
@@ -271,14 +367,7 @@
           </div>
           <div v-if="parsedArgsArr.length" class="args-table-wrap">
             <table class="args-table">
-              <thead>
-                <tr>
-                  <th style="width:40px">#</th>
-                  <th>参数名</th>
-                  <th>类型</th>
-                  <th>解码值</th>
-                </tr>
-              </thead>
+              <thead><tr><th style="width:40px">#</th><th>参数名</th><th>类型</th><th>解码值</th></tr></thead>
               <tbody>
                 <tr v-for="row in parsedArgsArr" :key="row.key">
                   <td class="idx dq-mono">{{ row.idx }}</td>
@@ -310,9 +399,7 @@
                   <span class="dq-mono dim log-addr" :title="log.address">合约: {{ short(log.address) }}</span>
                 </div>
                 <table class="logs-table">
-                  <thead>
-                    <tr><th style="width:100px">字段</th><th>值</th></tr>
-                  </thead>
+                  <thead><tr><th style="width:100px">字段</th><th>值</th></tr></thead>
                   <tbody>
                     <tr v-for="(t, j) in log.topics" :key="'t'+j">
                       <td class="fname"><span class="topic-tag">topic{{ j }}</span></td>
@@ -380,7 +467,7 @@
 import { ref, computed, onActivated, onMounted } from 'vue'
 import { explorerApi } from '@/api'
 import { ElMessage } from 'element-plus'
-import { Search, Link, Cpu, Document, Files, Lightning, Timer, Right, Coin, Connection, BellFilled, MagicStick, User } from '@element-plus/icons-vue'
+import { Search, Link, Cpu, Document, Files, Lightning, Timer, Right, Coin, Connection, BellFilled, MagicStick, User, CircleCheck, Warning } from '@element-plus/icons-vue'
 import CountUp from '@/components/CountUp.vue'
 import EmptyIllustration from '@/components/EmptyIllustration.vue'
 import { useAppStore } from '@/stores/app'
@@ -402,7 +489,13 @@ const drawerTitle = ref('')
 const detail = ref<any>(null)
 const detailType = ref<'block' | 'tx' | 'address'>('block')
 
-/* 把 parsed_args 从 {key:val} 转成 [{key, val, idx}] 数组，避免 Vue v-for 三元索引 TS 报错 */
+// 分析面板数据
+const activeTab = ref('gas')
+const gasAnalysis = ref<any>(null)
+const tokenEconomics = ref<any>(null)
+const consistency = ref<any>(null)
+const performance = ref<any>(null)
+
 const parsedArgsArr = computed(() => {
   const obj = detail.value?.parsed_args
   if (!obj) return []
@@ -419,7 +512,28 @@ const modeLabel = computed(() => {
 const short = (h: string) => (h && h.length > 16) ? h.slice(0, 10) + '...' + h.slice(-4) : (h || '-')
 const fmtTime = (t: number) => _fmtTime(t)
 
-/* ---------- 出块耗时（delta）计算 ---------- */
+const formatGasCost = (gwei: number) => {
+  if (!gwei) return '0'
+  if (gwei < 0.001) return gwei.toExponential(2)
+  return gwei.toFixed(3)
+}
+
+const formatNumber = (num: string | number) => {
+  const n = typeof num === 'string' ? parseInt(num) : num
+  if (!n) return '0'
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B'
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M'
+  if (n >= 1e3) return (n / 1e3).toFixed(2) + 'K'
+  return n.toString()
+}
+
+const getConfirmationClass = (confirmations: number) => {
+  if (confirmations >= 12) return 'success'
+  if (confirmations >= 6) return 'info'
+  if (confirmations >= 1) return 'warn'
+  return 'error'
+}
+
 function computeDeltas(list: any[]) {
   for (let i = 0; i < list.length; i++) {
     if (i + 1 < list.length && list[i].timestamp && list[i + 1].timestamp) {
@@ -431,7 +545,6 @@ function computeDeltas(list: any[]) {
   }
 }
 
-/* ---------- Gas 柱图 ---------- */
 const maxGas = computed(() => Math.max(1, ...blocks.value.map((b) => Number(b.gas_used) || 0)))
 const avgGas = computed(() => {
   if (!blocks.value.length) return 0
@@ -439,7 +552,7 @@ const avgGas = computed(() => {
   return Math.round(total / blocks.value.length)
 })
 const blocksForChart = computed(() => {
-  const list = blocks.value.slice().reverse() // 按时间升序，从旧→新
+  const list = blocks.value.slice().reverse()
   if (!list.length) return []
   const n = list.length
   const W = 600, gap = 4, barW = (W - gap * (n + 1)) / n
@@ -447,12 +560,6 @@ const blocksForChart = computed(() => {
   return list.map((b, i) => {
     const gas = Number(b.gas_used) || 0
     const h = Math.max(2, (gas / max) * 110)
-    const isAvg = Math.abs(gas - avgGas.value) / Math.max(1, avgGas.value) < 0.08
-    const fill = isAvg
-      ? 'url(#grad-avg)'
-      : gas > avgGas.value * 1.25
-        ? 'url(#grad-high)'
-        : 'url(#grad-normal)'
     return {
       x: gap + i * (barW + gap),
       y: 130 - h,
@@ -485,7 +592,6 @@ const avgLinePath = computed(() => {
   return `M ${firstX} ${avgY} L ${lastX} ${avgY}`
 })
 
-/* ---------- 协议类型样式 ---------- */
 function stdClass(name: string) {
   if (!name) return 's-custom'
   const s = name.toLowerCase()
@@ -495,7 +601,6 @@ function stdClass(name: string) {
   return 's-custom'
 }
 
-/* ---------- ABI / Event 辅助 ---------- */
 function guessType(v: any): string {
   if (v == null) return 'null'
   if (typeof v === 'bigint') return 'uint256'
@@ -524,7 +629,6 @@ function knownEventSig(t: string): string | null {
   return EVENT_SIGS[t?.toLowerCase?.()] || null
 }
 
-/* ---------- 加载逻辑 ---------- */
 const loadOverview = async () => { overview.value = await explorerApi.overview() }
 const loadBlocks = async () => {
   const r: any = await explorerApi.blocks(page.value, size.value)
@@ -541,6 +645,23 @@ const loadTxs = async () => {
   }
 }
 const loadContracts = async () => { contracts.value = ((await explorerApi.contracts()) as any).items || [] }
+
+const loadAnalysis = async () => {
+  try {
+    const [gas, token, cons, perf] = await Promise.all([
+      explorerApi.gasAnalysis(),
+      explorerApi.tokenEconomics(),
+      explorerApi.dataConsistency(),
+      explorerApi.performanceMetrics(),
+    ])
+    gasAnalysis.value = gas
+    tokenEconomics.value = token
+    consistency.value = cons
+    performance.value = perf
+  } catch (e) {
+    console.error('加载分析数据失败', e)
+  }
+}
 
 function clearFilter() {
   curAddr.value = ''
@@ -577,14 +698,12 @@ const goAddr = async (a: string) => {
   detail.value = r; detailType.value = 'address'; drawerTitle.value = '地址画像'; drawer.value = true
 }
 
-const loadAll = () => { loadOverview(); loadBlocks(); loadTxs(); loadContracts() }
-/* 首次进入触发 onMounted，KeepAlive 缓存后再次进入触发 onActivated，两者都执行加载 */
+const loadAll = () => { loadOverview(); loadBlocks(); loadTxs(); loadContracts(); loadAnalysis() }
 onMounted(loadAll)
 onActivated(loadAll)
 </script>
 
 <style scoped lang="scss">
-/* ---------- 顶部布局 ---------- */
 .exp-top { display: grid; grid-template-columns: 1fr 1.4fr; gap: 14px; margin-top: 14px; }
 .kpi-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; align-content: start; }
 .kpi { padding: 12px;
@@ -608,7 +727,6 @@ onActivated(loadAll)
   .kpi-sub { font-size: 11px; color: var(--dq-text-dim); margin-top: 2px; }
 }
 
-/* ---------- Gas 柱图 ---------- */
 .gas-card { padding: 14px; }
 .gas-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; gap: 10px;
   .gas-title { font-size: 14px; font-weight: 600; color: var(--dq-text); }
@@ -617,27 +735,15 @@ onActivated(loadAll)
 }
 .gas-chart { position: relative; }
 .gas-svg { width: 100%; height: 140px; display: block; }
-.gas-x {
-  display: flex; justify-content: space-between;
-  margin-top: 4px;
-  .gx { font-size: 10px; color: var(--dq-text-dimmer); }
-}
+.gas-x { display: flex; justify-content: space-between; margin-top: 4px; .gx { font-size: 10px; color: var(--dq-text-dimmer); } }
 
-/* ---------- 区块 / 交易表 ---------- */
 .exp-table { margin-bottom: 10px; }
-.blk-cell { display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  .blk-badge { padding: 1px 5px; font-size: 10px; gap: 2px; }
-}
-.txgas-cell { display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  .gas-used { font-size: 11px; }
-}
-.flow-cell { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; min-width: 0;
-  .flow-arrow { color: var(--dq-primary); font-size: 12px; flex-shrink: 0; }
-}
+.blk-cell { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; .blk-badge { padding: 1px 5px; font-size: 10px; gap: 2px; } }
+.txgas-cell { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; .gas-used { font-size: 11px; } }
+.flow-cell { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; min-width: 0; .flow-arrow { color: var(--dq-primary); font-size: 12px; flex-shrink: 0; } }
 .link { color: var(--dq-primary); cursor: pointer; &:hover { text-decoration: underline; } }
 .dim { color: var(--dq-text-dim); }
 
-/* ---------- 协议色 ---------- */
 .std-tag {
   display: inline-flex; align-items: center; gap: 3px;
   padding: 2px 8px; border-radius: 4px;
@@ -649,7 +755,6 @@ onActivated(loadAll)
   &.s-custom  { color: #7b8aab; background: rgba(123,138,171,0.1); border-color: rgba(123,138,171,0.3); }
 }
 
-/* ---------- 详情：header 卡片（流动描边） ---------- */
 .detail-wrap { font-size: 13px; padding-right: 4px; }
 .detail-head { display: flex; gap: 12px; align-items: center; }
 .dh-ico {
@@ -661,88 +766,77 @@ onActivated(loadAll)
   &.c-ico { background: rgba(245,55,155,0.15); color: var(--dq-accent); }
   &.a-ico { background: rgba(123,138,171,0.18); color: #97a5c6; }
 }
-.dh-info { flex: 1; min-width: 0;
-  .dh-name { font-size: 17px; font-weight: 700; color: var(--dq-text); }
-  .dh-sub { font-size: 12px; color: var(--dq-text-dim); margin-top: 2px; }
-  .addr-val { font-size: 11px; letter-spacing: 0; }
-}
+.dh-info { flex: 1; min-width: 0; .dh-name { font-size: 17px; font-weight: 700; color: var(--dq-text); } .dh-sub { font-size: 12px; color: var(--dq-text-dim); margin-top: 2px; } .addr-val { font-size: 11px; letter-spacing: 0; } }
 .dh-badges { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
 .detail-body { padding: 2px 2px; }
 .break { word-break: break-all; }
 
-/* ---------- ABI 参数表 ---------- */
 .args-table-wrap { margin: 8px 0 4px; }
-.args-table {
-  width: 100%; border-collapse: collapse;
-  background: rgba(0,230,195,0.03);
-  border: 1px solid rgba(0,230,195,0.2);
-  border-radius: 8px; overflow: hidden;
-  font-size: 12.5px;
+.args-table { width: 100%; border-collapse: collapse; background: rgba(0,230,195,0.03); border: 1px solid rgba(0,230,195,0.2); border-radius: 8px; overflow: hidden; font-size: 12.5px;
   th, td { padding: 8px 10px; text-align: left; border-bottom: 1px dashed var(--dq-border); vertical-align: top; }
   thead th { background: rgba(0,230,195,0.06); color: var(--dq-primary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; }
   tbody tr:last-child td { border-bottom: none; }
-  .idx { color: var(--dq-text-dimmer); }
-  .pname { color: var(--dq-info); font-weight: 600; }
-  .pval { color: var(--dq-text); font-size: 12px; }
+  .idx { color: var(--dq-text-dimmer); } .pname { color: var(--dq-info); font-weight: 600; } .pval { color: var(--dq-text); font-size: 12px; }
 }
 
-/* ---------- 事件日志 ---------- */
 .log-list { display: flex; flex-direction: column; gap: 10px; }
-.log-card {
-  background: var(--dq-bg-2);
-  border-left: 3px solid var(--dq-accent);
-  border-radius: 8px; padding: 10px 12px;
-}
-.log-card-head {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px dashed var(--dq-border);
-  .log-idx { font-family: var(--dq-mono); font-weight: 700; color: var(--dq-accent); font-size: 12px; }
-  .log-addr { font-size: 11px; }
-}
-.logs-table {
-  width: 100%; border-collapse: collapse; font-size: 12px;
+.log-card { background: var(--dq-bg-2); border-left: 3px solid var(--dq-accent); border-radius: 8px; padding: 10px 12px; }
+.log-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px dashed var(--dq-border); .log-idx { font-family: var(--dq-mono); font-weight: 700; color: var(--dq-accent); font-size: 12px; } .log-addr { font-size: 11px; } }
+.logs-table { width: 100%; border-collapse: collapse; font-size: 12px;
   th, td { padding: 5px 8px; text-align: left; border-bottom: 1px dashed rgba(255,255,255,0.04); vertical-align: top; }
   th { color: var(--dq-text-dim); font-size: 11px; font-weight: 600; background: rgba(255,255,255,0.015); }
   tbody tr:last-child td { border-bottom: none; }
   .fname { width: 110px; }
-  .topic-tag {
-    display: inline-block; font-family: var(--dq-mono); font-size: 10px;
-    padding: 1px 6px; border-radius: 3px;
-    color: var(--dq-accent); background: rgba(245,55,155,0.1);
-    border: 1px solid rgba(245,55,155,0.25);
-    &.data { color: var(--dq-info); background: rgba(77,141,255,0.1); border-color: rgba(77,141,255,0.25); }
-  }
-  .ev-sig { margin-right: 6px; margin-bottom: 2px; }
-  .t-hex { color: var(--dq-text-dim); }
+  .topic-tag { display: inline-block; font-family: var(--dq-mono); font-size: 10px; padding: 1px 6px; border-radius: 3px; color: var(--dq-accent); background: rgba(245,55,155,0.1); border: 1px solid rgba(245,55,155,0.25); &.data { color: var(--dq-info); background: rgba(77,141,255,0.1); border-color: rgba(77,141,255,0.25); } }
+  .ev-sig { margin-right: 6px; margin-bottom: 2px; } .t-hex { color: var(--dq-text-dim); }
 }
-.log-decoded {
-  margin-top: 8px;
-  background: linear-gradient(135deg, rgba(245,55,155,0.05), rgba(0,230,195,0.04));
-  border: 1px solid rgba(123,138,171,0.2);
-  border-radius: 6px; padding: 8px 10px;
+.log-decoded { margin-top: 8px; background: linear-gradient(135deg, rgba(245,55,155,0.05), rgba(0,230,195,0.04)); border: 1px solid rgba(123,138,171,0.2); border-radius: 6px; padding: 8px 10px;
   .ld-label { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--dq-text-dim); margin-bottom: 6px; }
-  .ld-row { display: flex; gap: 10px; padding: 3px 0; font-size: 12px;
-    .ld-k { min-width: 110px; color: var(--dq-info); flex-shrink: 0; }
-    .ld-v { color: var(--dq-text); flex: 1; word-break: break-all; }
+  .ld-row { display: flex; gap: 10px; padding: 3px 0; font-size: 12px; .ld-k { min-width: 110px; color: var(--dq-info); flex-shrink: 0; } .ld-v { color: var(--dq-text); flex: 1; word-break: break-all; } }
+}
+
+.tx-mini { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--dq-bg-2); border-radius: 6px; margin-bottom: 5px; cursor: pointer; transition: background .15s; font-size: 12px; &:hover { background: rgba(0,230,195,0.06); } .dim { font-size: 11px; } }
+
+/* 分析面板 */
+.analysis-panels {
+  :deep(.el-tabs) { background: var(--dq-bg-2); border: 1px solid var(--dq-border); border-radius: 8px; }
+  :deep(.el-tabs__header) { background: var(--dq-bg-3); border-bottom: 1px solid var(--dq-border); }
+  :deep(.el-tabs__content) { padding: 16px; }
+}
+.analysis-content {
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .kpi-card { background: var(--dq-bg-3); border: 1px solid var(--dq-border); border-radius: 8px; padding: 12px; text-align: center;
+    .kpi-label { font-size: 12px; color: var(--dq-text-dim); margin-bottom: 6px; }
+    .kpi-value { font-family: var(--dq-mono); font-size: 20px; font-weight: 700; color: var(--dq-primary); &.warn { color: var(--dq-warn); } &.healthy { color: var(--dq-success); } &.idle { color: var(--dq-text-dim); } }
   }
 }
 
-/* ---------- 小交易列表 ---------- */
-.tx-mini {
-  display: flex; align-items: center; gap: 8px; padding: 7px 10px;
-  background: var(--dq-bg-2); border-radius: 6px; margin-bottom: 5px;
-  cursor: pointer; transition: background .15s;
-  font-size: 12px;
-  &:hover { background: rgba(0,230,195,0.06); }
-  .dim { font-size: 11px; }
+.token-card { background: var(--dq-bg-3); border: 1px solid var(--dq-border); border-radius: 8px; padding: 16px; margin-bottom: 12px;
+  .token-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; .token-name { font-size: 16px; font-weight: 600; color: var(--dq-text); } .token-address { font-size: 12px; color: var(--dq-text-dim); } }
+  .token-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; .stat-item { text-align: center; .stat-label { font-size: 12px; color: var(--dq-text-dim); display: block; margin-bottom: 4px; } .stat-value { font-family: var(--dq-mono); font-size: 18px; font-weight: 600; color: var(--dq-primary); } } }
+  .top-holders { .holders-title { font-size: 13px; font-weight: 600; color: var(--dq-text); margin-bottom: 8px; }
+    .holder-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px dashed var(--dq-border); &:last-child { border-bottom: none; }
+      .holder-rank { font-family: var(--dq-mono); font-size: 12px; color: var(--dq-text-dimmer); width: 24px; }
+      .holder-address { flex: 1; font-size: 12px; color: var(--dq-text-dim); }
+      .holder-balance { font-family: var(--dq-mono); font-size: 13px; color: var(--dq-primary); font-weight: 600; }
+    }
+  }
 }
 
-@media (max-width: 1180px) {
-  .exp-top { grid-template-columns: 1fr; }
-  .kpi-row { grid-template-columns: repeat(4, 1fr); }
-  .grid-2 { grid-template-columns: 1fr !important; }
+.consistency-panel {
+  .consistency-status { display: flex; align-items: center; gap: 8px; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; font-weight: 600;
+    &.healthy { background: rgba(0, 230, 195, 0.1); color: var(--dq-success); border: 1px solid rgba(0, 230, 195, 0.3); }
+    &.issues_found { background: rgba(255, 107, 107, 0.1); color: var(--dq-error); border: 1px solid rgba(255, 107, 107, 0.3); }
+  }
+  .consistency-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; .stat-item { text-align: center; background: var(--dq-bg-3); padding: 12px; border-radius: 8px; .stat-label { font-size: 12px; color: var(--dq-text-dim); display: block; margin-bottom: 4px; } .stat-value { font-family: var(--dq-mono); font-size: 18px; font-weight: 600; color: var(--dq-primary); } } }
+  .issues-list { .issues-title { font-size: 14px; font-weight: 600; color: var(--dq-text); margin-bottom: 12px; }
+    .issue-item { background: var(--dq-bg-3); border-left: 3px solid var(--dq-border); border-radius: 6px; padding: 12px; margin-bottom: 8px; &.high { border-left-color: var(--dq-error); } &.medium { border-left-color: var(--dq-warn); } &.low { border-left-color: var(--dq-info); }
+      .issue-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; .issue-type { font-family: var(--dq-mono); font-size: 13px; font-weight: 600; color: var(--dq-text); } .issue-severity { font-size: 11px; &.high { color: var(--dq-error); background: rgba(255, 107, 107, 0.1); } &.medium { color: var(--dq-warn); background: rgba(255, 207, 77, 0.1); } &.low { color: var(--dq-info); background: rgba(77, 141, 255, 0.1); } } }
+      .issue-message { font-size: 12px; color: var(--dq-text-dim); line-height: 1.5; }
+    }
+  }
 }
-@media (max-width: 760px) {
-  .kpi-row { grid-template-columns: repeat(2, 1fr); }
-}
+
+@media (max-width: 1180px) { .exp-top { grid-template-columns: 1fr; } .kpi-row { grid-template-columns: repeat(4, 1fr); } .grid-2 { grid-template-columns: 1fr !important; } }
+@media (max-width: 760px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
 </style>

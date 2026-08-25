@@ -51,6 +51,10 @@ class Transaction:
     method: Optional[str]
     parsed_args: Optional[Dict[str, Any]]
     gas_used: int = 0
+    gas_price: int = 0
+    gas_cost_wei: int = 0
+    gas_cost_gwei: float = 0.0
+    confirmations: int = 0
     logs: List[Any] = field(default_factory=list)
 
 
@@ -69,6 +73,7 @@ class ChainClient:
     def get_accounts(self) -> List[str]: ...
     def resolve_account(self, alias: str) -> str: ...
     def has_code(self, address: str) -> bool: ...
+    def get_balance(self, address: str) -> int: ...
 
 
 # ===========================================================================
@@ -142,6 +147,12 @@ class RealEvmChainClient(ChainClient):
         except Exception:
             return False
 
+    # ---------- 余额 ----------
+    def get_balance(self, address: str) -> int:
+        """查询账户原生代币余额（wei），返回真实链上数值。"""
+        a = address if address.startswith("0x") else self.resolve_account(address)
+        return int(self._tester.get_balance(a))
+
     # ---------- 区块 ----------
     def block_number(self) -> int:
         return self._tester.get_block_by_number("latest")["number"]
@@ -208,6 +219,12 @@ class RealEvmChainClient(ChainClient):
                 "data": _hex(lg["data"]),
                 "log_index": lg.get("log_index", 0),
             })
+        gas_used = int(receipt.get("gas_used", 0))
+        gas_price = GAS_PRICE
+        gas_cost_wei = gas_used * gas_price
+        gas_cost_gwei = gas_cost_wei / 1e9
+        current_block = self.block_number()
+        confirmations = max(0, current_block - block_number)
         tx = Transaction(
             hash=_hex(tx_hash),
             block_number=block_number,
@@ -221,7 +238,11 @@ class RealEvmChainClient(ChainClient):
             contract_address=_hex(receipt["contract_address"]) if receipt.get("contract_address") else None,
             method=method,
             parsed_args=parsed_args,
-            gas_used=int(receipt.get("gas_used", 0)),
+            gas_used=gas_used,
+            gas_price=gas_price,
+            gas_cost_wei=gas_cost_wei,
+            gas_cost_gwei=gas_cost_gwei,
+            confirmations=confirmations,
             logs=logs,
         )
         self._txs.append(tx)
@@ -477,6 +498,10 @@ class MockChainClient(ChainClient):
     def has_code(self, address: str) -> bool:
         return True
 
+    def get_balance(self, address: str) -> int:
+        """Mock 模式返回模拟余额（1 ETH）。"""
+        return 10**18
+
 
 # ===========================================================================
 # 真实 FISCO-BCOS 节点客户端（JSON-RPC + eth-account 签名）
@@ -617,6 +642,13 @@ class FiscoRpcClient(ChainClient):
         except Exception:
             return False
 
+    # ---------- 余额 ----------
+    def get_balance(self, address: str) -> int:
+        """查询账户原生代币余额（wei），通过真实 JSON-RPC 返回链上数值。"""
+        a = address if address.startswith("0x") else self.resolve_account(address)
+        bal = self._rpc_call("eth_getBalance", [a, "latest"])
+        return int(bal, 16) if bal else 0
+
     # ---------- 区块 ----------
     def block_number(self) -> int:
         return int(self._rpc_call("eth_blockNumber"), 16)
@@ -685,6 +717,12 @@ class FiscoRpcClient(ChainClient):
                 "log_index": int(lg.get("logIndex", "0x0"), 16),
             })
         blk = self.get_block(block_number)
+        gas_used = int(receipt.get("gasUsed", "0x0"), 16)
+        gas_price = GAS_PRICE
+        gas_cost_wei = gas_used * gas_price
+        gas_cost_gwei = gas_cost_wei / 1e9
+        current_block = self.block_number()
+        confirmations = max(0, current_block - block_number)
         return Transaction(
             hash=tx_data.get("hash", ""),
             block_number=block_number,
@@ -698,7 +736,11 @@ class FiscoRpcClient(ChainClient):
             contract_address=receipt.get("contractAddress"),
             method=None,
             parsed_args=None,
-            gas_used=int(receipt.get("gasUsed", "0x0"), 16),
+            gas_used=gas_used,
+            gas_price=gas_price,
+            gas_cost_wei=gas_cost_wei,
+            gas_cost_gwei=gas_cost_gwei,
+            confirmations=confirmations,
             logs=logs,
         )
 

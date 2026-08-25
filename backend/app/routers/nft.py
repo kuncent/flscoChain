@@ -32,6 +32,15 @@ class MintReq(BaseModel):
 def mint(req: MintReq):
     if req.standard not in ("ERC721", "ERC1155"):
         raise HTTPException(400, "standard must be ERC721 or ERC1155")
+    if not (req.title or "").strip():
+        raise HTTPException(400, "作品名称不能为空")
+    # 铸造权限分级：居民须先获得联盟链生态身份（选择联盟角色）才能铸造数字资产
+    with get_conn() as conn:
+        sel = conn.execute(
+            "SELECT role_key FROM eco_role_selections WHERE wallet=?", (req.author,)
+        ).fetchone()
+    if not sel:
+        raise HTTPException(403, "请先在「绿色低碳联盟链」页面选择联盟角色身份，再铸造数字资产")
     c = get_chain_client()
     token_id_int = uuid.uuid4().int & 0xFFFFFFFF  # 32 位 tokenId
     token_id = str(token_id_int)
@@ -123,35 +132,41 @@ def buy(req: BuyReq):
         nft = conn.execute("SELECT * FROM nfts WHERE token_id=?", (req.token_id,)).fetchone()
         if not nft:
             raise HTTPException(404, "nft not found")
+    # 当前持有人（转售后 owner 会变更，不能再用固定 author 当卖家）
+    seller_wallet = nft["owner"] or nft["author"]
+    if seller_wallet == req.buyer:
+        raise HTTPException(400, "不能购买自己持有的 NFT")
     c = get_chain_client()
     tx_hash = ""
     # 真实 ERC20 转账（买方 → 卖方）
     if req.token_contract and req.price != "0":
         abi = _load_abi(req.token_contract)
         r = c.call_contract(req.token_contract, "transfer",
-                            [c.resolve_account(nft["author"]), int(req.price)],
+                            [c.resolve_account(seller_wallet), int(req.price)],
                             req.buyer, abi)
         if not r.get("ok"):
             raise HTTPException(400, "付款失败: " + str(r.get("error", "")))
         tx_hash = r.get("tx_hash", "")
-    # 真实 NFT 转移（ERC721 safeTransferFrom / ERC1155 safeTransferFrom）
+    # 真实 NFT 转移（ERC721 transferFrom / ERC1155 safeTransferFrom，FROM = 当前持有人）
     nft_abi = _load_abi(nft["contract_address"])
     if nft_abi:
-        seller = c.resolve_account(nft["author"])
+        seller = c.resolve_account(seller_wallet)
         buyer = c.resolve_account(req.buyer)
         tid = int(nft["token_id"])
         if nft["standard"] == "ERC721":
             r2 = c.call_contract(nft["contract_address"], "transferFrom",
-                                 [seller, buyer, tid], nft["author"], nft_abi)
+                                 [seller, buyer, tid], seller_wallet, nft_abi)
         else:
             r2 = c.call_contract(nft["contract_address"], "safeTransferFrom",
-                                 [seller, buyer, tid, 1], nft["author"], nft_abi)
+                                 [seller, buyer, tid, 1], seller_wallet, nft_abi)
+        if not r2.get("ok"):
+            raise HTTPException(400, "NFT 转移失败: " + str(r2.get("error", "")))
         tx_hash = r2.get("tx_hash", tx_hash)
     with get_conn() as conn:
         conn.execute(
             "INSERT INTO nft_trades(token_id,from_addr,to_addr,price,token_contract,tx_hash,created_at) "
             "VALUES(?,?,?,?,?,?,?)",
-            (req.token_id, nft["author"], req.buyer, req.price, req.token_contract, tx_hash, now()),
+            (req.token_id, seller_wallet, req.buyer, req.price, req.token_contract, tx_hash, now()),
         )
         conn.execute("UPDATE nfts SET owner=?, price=? WHERE token_id=?", (req.buyer, req.price, req.token_id))
     return {"ok": True, "tx_hash": tx_hash}

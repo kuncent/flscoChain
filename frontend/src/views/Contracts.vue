@@ -12,8 +12,11 @@
         <el-button size="small" @click="load" style="margin-left:auto">刷新</el-button>
       </div>
       <el-table :data="list" border stripe v-if="list.length">
-        <el-table-column prop="name" label="合约名" min-width="140">
-          <template #default="{ row }"><span class="name-cell">{{ row.name }}</span></template>
+        <el-table-column prop="name" label="合约名" min-width="200">
+          <template #default="{ row }">
+            <span class="name-cell">{{ row.name }}</span>
+            <span v-if="row.builtin" class="dq-tag info" style="margin-left:6px">系统内置</span>
+          </template>
         </el-table-column>
         <el-table-column prop="address" label="地址" min-width="220">
           <template #default="{ row }">

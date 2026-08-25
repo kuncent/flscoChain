@@ -14,9 +14,9 @@
         <div class="flow-step">
           <div class="fs-no accent">01</div>
           <div class="fs-info">
-            <div class="fs-title">铸造 / 兑换资产</div>
-            <div class="fs-desc">通用 NFT 调 mint() 铸造；绿色资产通过能量兑换产生（植树证书 / 勋章 / 骑行券）</div>
-            <div class="fs-tags"><span class="fs-kw accent">mint</span><span class="fs-kw">兑换</span><span class="fs-kw">Transfer(0→to)</span></div>
+            <div class="fs-title">联盟链铸造 / 居民兑换</div>
+            <div class="fs-desc">铸造入口在「绿色低碳联盟链」：联盟角色铸造勋章 / 骑行券，居民用绿色能量兑换证书 / 勋章 / 骑行券</div>
+            <div class="fs-tags"><span class="fs-kw">选择角色</span><span class="fs-kw accent">mint</span><span class="fs-kw">能量兑换</span></div>
           </div>
         </div>
         <div class="flow-arrow">→</div>
@@ -24,8 +24,8 @@
           <div class="fs-no accent">02</div>
           <div class="fs-info">
             <div class="fs-title">挂单出售</div>
-            <div class="fs-desc">通用 NFT 用任一 ERC20 计价；绿色资产用 GreenEnergy 能量计价</div>
-            <div class="fs-tags"><span class="fs-kw muted">listing</span><span class="fs-kw muted">ERC20 计价</span><span class="fs-kw accent">能量计价</span></div>
+            <div class="fs-desc">居民在「ERC20 钱包 · 我的绿色资产」设定能量价格挂牌，绿色资产用 GreenEnergy 能量计价</div>
+            <div class="fs-tags"><span class="fs-kw muted">listing</span><span class="fs-kw">挂牌</span><span class="fs-kw accent">能量计价</span></div>
           </div>
         </div>
         <div class="flow-arrow">→</div>
@@ -71,7 +71,9 @@
     <div class="toolbar dq-card" style="margin-top:14px">
       <div class="dq-card-title">
         资产列表
-        <el-button v-if="filter !== 'green'" size="small" type="primary" @click="mintDlg = true" style="margin-left:auto">一键铸造 NFT</el-button>
+        <span class="dq-tip" style="margin-left:auto; font-weight:400" v-if="filter !== 'green'">
+          铸造 / 兑换请前往「绿色低碳联盟链」（本页为资产交易买卖中心）
+        </span>
         <el-button v-else size="small" type="success" @click="$router.push('/eco')" style="margin-left:auto">前往绿色实战兑换</el-button>
       </div>
       <el-radio-group v-model="filter" @change="load">
@@ -154,36 +156,13 @@
     </div>
 
     <div v-if="filter !== 'green' && !list.length" style="margin-top:14px">
-      <EmptyIllustration v-if="!loading" type="nft" />
+      <EmptyIllustration
+        v-if="!loading"
+        type="nft"
+        title="暂无 NFT 在售"
+        subtitle="铸造与兑换入口在「绿色低碳联盟链」，居民在钱包挂牌后资产在此流通"
+      />
     </div>
-
-    <!-- 铸造对话框 -->
-    <el-dialog v-model="mintDlg" title="一键生成 NFT" width="520px">
-      <el-form label-width="100px">
-        <el-form-item label="协议">
-          <el-radio-group v-model="mint.standard">
-            <el-radio label="ERC721">ERC721（唯一）</el-radio>
-            <el-radio label="ERC1155">ERC1155（多份）</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="标题"><el-input v-model="mint.title" /></el-form-item>
-        <el-form-item label="描述"><el-input v-model="mint.description" type="textarea" :rows="2" /></el-form-item>
-        <el-form-item label="图片">
-          <el-upload :show-file-list="false" :http-request="uploadImg" accept="image/*">
-            <el-button>上传图片</el-button>
-          </el-upload>
-          <div v-if="mint.image_url" class="preview"><img :src="mint.image_url" /></div>
-        </el-form-item>
-        <el-form-item label="价格 (Token)"><el-input v-model="mint.price" placeholder="如 100" /></el-form-item>
-        <el-form-item label="自定义合约">
-          <el-input v-model="mint.contract_address" placeholder="留空使用默认；可填用户编写的 ERC721/1155 合约地址" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="mintDlg = false">取消</el-button>
-        <el-button type="primary" @click="doMint">铸造</el-button>
-      </template>
-    </el-dialog>
 
     <!-- 购买对话框 -->
     <el-dialog v-model="buyDlg" title="购买 NFT (使用 ERC20 Token)" width="460px">
@@ -287,9 +266,6 @@ function loadTxRecords(): any[] {
   } catch { return [] }
 }
 function saveTxRecords() { localStorage.setItem(NFT_TX_KEY, JSON.stringify(txRecords.value)) }
-
-const mintDlg = ref(false)
-const mint = reactive({ standard: 'ERC721', title: '', description: '', image_url: '', price: '100', contract_address: '' })
 
 const buyDlg = ref(false)
 const cur = ref<any>(null)
@@ -443,43 +419,6 @@ const delistGreen = async (g: any) => {
   } finally {
     delistingId.value = null
   }
-}
-
-const uploadImg = async (opt: any) => {
-  const r: any = await nftApi.upload(opt.file)
-  mint.image_url = r.url
-  ElMessage.success('图片已上传')
-}
-
-const NFT_COUNT_KEY = 'learn_nft_count_v1'
-function bumpNftCount() {
-  const cur = Number(localStorage.getItem(NFT_COUNT_KEY)) || 0
-  localStorage.setItem(NFT_COUNT_KEY, String(cur + 1))
-}
-const doMint = async () => {
-  if (!mint.title) return ElMessage.warning('请填标题')
-  const r: any = await nftApi.mint({ ...mint, author: app.currentWallet })
-  // 记录到本地交易流水
-  const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
-  txRecords.value.push({
-    kind: `铸造 ${mint.standard}`,
-    from: '0x0000000000000000000000000000000000000000',
-    to: app.currentWallet,
-    to_is_contract: false,
-    amount: `#${r?.token_id || 'new'}`,
-    token: mint.title,
-    gas: '460000',
-    tx_hash: r?.tx_hash || `mint_${Date.now()}`,
-    time: now,
-    status: 'ok',
-  })
-  saveTxRecords()
-  bumpNftCount()
-  try { app.confetti({ particleCount: 100, spread: 80, origin: { y: 0.4 }, ticks: 180 }) } catch {}
-  ElMessage.success('铸造成功')
-  mintDlg.value = false
-  mint.title = ''; mint.description = ''; mint.image_url = ''; mint.price = '100'
-  load()
 }
 
 const openBuy = (n: any) => {

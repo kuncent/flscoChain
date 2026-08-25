@@ -203,9 +203,80 @@ def seed_init_data() -> None:
 
     print("[seed] 开始自动播种实训基础数据 ...")
 
-    # 1. 部署 3 份系统合约
+    # 1. 部署 3 份系统合约（链重启后必须重新部署，保证前端 has_code 校验通过）
     for contract in BUILTIN_CONTRACTS:
         _deploy_builtin(contract["name"], contract["standard"], contract["file"])
 
-    # 2. 新增树种（管理员操作）
-    tree1 = _add_tree("银杏树",
+    # 1.1 将 GreenEnergy 登记为默认「绿色能量钱包」代币（ERC20 钱包余额列表可见）
+    ge_addr, _ = _find_contract("GreenEnergy")
+    if ge_addr:
+        with get_conn() as conn:
+            conn.execute("DELETE FROM tokens WHERE name='GreenEnergy'")
+            conn.execute(
+                "INSERT INTO tokens(address,name,symbol,decimals,total_supply,owner,created_at) "
+                "VALUES(?,?,?,?,?,?,?)",
+                (ge_addr, "GreenEnergy", "GE", 0, "1000000000", ADMIN_WALLET, now()),
+            )
+        print("[seed] 绿色能量钱包已登记: GreenEnergy (GE)")
+
+    # 1.2 内置「系统内置合约」IDE 工程（默认第一个工程，学生新增工程排在其后）
+    _seed_builtin_project()
+
+    # 2. 业务种子数据仅在数据库为空时播种一次（后端重启链重置但数据库持久，避免重复）
+    with get_conn() as conn:
+        tree_count = conn.execute("SELECT COUNT(*) FROM eco_tree_species").fetchone()[0]
+    if tree_count:
+        print("[seed] 检测到已有业务播种数据，跳过重复播种")
+        return
+
+    # 2.1 新增 2 个树种（管理员操作）
+    tree1 = _add_tree("银杏树", 1500, "国家一级保护植物，被誉为\u201c活化石\u201d，固碳能力强")
+    tree2 = _add_tree("樟子松", 1000, "耐寒耐旱，适合北方沙地绿化造林，防风固沙先锋树种")
+
+    # 2.2 向学习者钱包发放绿色能量（覆盖 5 个联盟角色的能量发放规则，共 195 点）
+    _issue_energy(LEARNER_WALLET, "metro", "地铁集团", "地铁通勤", 50)
+    _issue_energy(LEARNER_WALLET, "bus", "公交集团", "公交出行", 20)
+    _issue_energy(LEARNER_WALLET, "bike", "共享单车", "共享单车骑行", 15)
+    _issue_energy(LEARNER_WALLET, "takeout", "外卖平台", "绿色外卖(无需餐具)", 10)
+    _issue_energy(LEARNER_WALLET, "recycling", "回收公司", "可回收物回收", 100)
+
+    # 2.3 兑换 1 份植树证书 + 1 个生态勋章（内置资产，绿色资产市场初始非空）
+    if tree1:
+        _exchange_certificate(LEARNER_WALLET, tree1, "银杏树", 1500)
+    if tree2:
+        _exchange_badge(LEARNER_WALLET, "badge", 1, "生态勋章", 10)
+        with get_conn() as conn:
+            conn.execute("UPDATE eco_badge_types SET minted = minted + 1 WHERE token_id=1")
+
+    print("[seed] 实训基础数据播种完成")
+
+
+def _seed_builtin_project() -> None:
+    """内置「系统内置合约」IDE 工程：包含 6 份标准合约模板，学生可直接打开学习。"""
+    pid = "builtin"
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO projects(id,name,created_at,updated_at,is_builtin) VALUES(?,?,?,?,1) "
+            "ON CONFLICT(id) DO UPDATE SET updated_at=excluded.updated_at",
+            (pid, "系统内置合约", now(), now()),
+        )
+    builtin_files = [
+        "GreenEnergy.sol",
+        "PlantCertificate.sol",
+        "EcoBadge.sol",
+        "ERC20.sol",
+        "ERC721.sol",
+        "ERC1155.sol",
+    ]
+    with get_conn() as conn:
+        for fname in builtin_files:
+            src = settings.contracts_dir / fname
+            if not src.exists():
+                continue
+            conn.execute(
+                "INSERT INTO project_files(id,project_id,path,content,updated_at) "
+                "VALUES(?,?,?,?,?) ON CONFLICT(project_id,path) "
+                "DO UPDATE SET content=excluded.content, updated_at=excluded.updated_at",
+                (f"{pid}-{fname}", pid, fname, src.read_text(encoding="utf-8"), now()),
+            )
+    print("[seed] 内置 IDE 工程「系统内置合约」已就绪（6 份合约模板）")

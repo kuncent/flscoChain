@@ -40,6 +40,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'wallet',     name: 'wallet',     component: asyncPage(() => import('@/views/Wallet.vue')),       meta: { title: 'ERC20 钱包',     icon: 'Wallet'    } },
       { path: 'eco',        name: 'eco',        component: asyncPage(() => import('@/views/EcoPractice.vue')),  meta: { title: '绿色低碳联盟链',  icon: 'Promotion' } },
       { path: 'report',     name: 'report',     component: asyncPage(() => import('@/views/Report.vue')),       meta: { title: '实训报告',       icon: 'Document'  } },
+      { path: 'my-grades',  name: 'my-grades',  component: asyncPage(() => import('@/views/MyGrades.vue')),     meta: { title: '我的成绩',       icon: 'Trophy'    } },
       // 教师专属：学生成绩管理
       {
         path: 'grades',

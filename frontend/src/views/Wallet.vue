@@ -80,7 +80,11 @@
         <div class="bal-list">
           <div class="bal-item" v-for="b in balances" :key="b.token_address">
             <div class="b-left">
-              <div class="b-name">{{ b.name }} <span class="dq-mono dim">({{ b.symbol }})</span></div>
+              <div class="b-name">
+                <span v-if="isGreenEnergy(b)" style="margin-right:4px">⚡</span>{{ b.name }}
+                <span class="dq-mono dim">({{ b.symbol }})</span>
+                <span v-if="isGreenEnergy(b)" class="dq-tag accent" style="margin-left:6px">绿色能量</span>
+              </div>
               <div class="dq-mono dim addr">{{ short(b.token_address) }}</div>
             </div>
             <div class="b-right">
@@ -97,18 +101,31 @@
       <!-- 发行 Token -->
       <div class="dq-card">
         <div class="dq-card-title">发行 ERC20 Token</div>
+        <el-alert
+          v-if="!isAdminWallet"
+          type="warning"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 10px"
+          title="发行权限仅限联盟管理员钱包（0xadmin）"
+          description="当前钱包不是管理员，请先点击右上角「当前操作钱包」切换为 0xadmin 后再发行"
+        />
         <el-form label-width="90px" size="small">
           <el-form-item label="名称"><el-input v-model="issue.name" placeholder="如 LearnToken" /></el-form-item>
           <el-form-item label="符号"><el-input v-model="issue.symbol" placeholder="如 LTK" /></el-form-item>
           <el-form-item label="精度"><el-input-number v-model="issue.decimals" :min="0" :max="18" /></el-form-item>
           <el-form-item label="发行量"><el-input v-model="issue.total_supply" placeholder="如 1000000" /></el-form-item>
           <el-form-item>
-            <el-button type="primary" @click="doIssue">
+            <el-button type="primary" :disabled="!isAdminWallet" @click="doIssue">
               <el-icon><UploadFilled /></el-icon> 真实发行
             </el-button>
           </el-form-item>
         </el-form>
-        <div class="dq-tip"><span class="dt-label">说明:</span>点击发行会在真实链部署 ERC20 合约，构造函数将发行量铸造到你的地址。</div>
+        <div class="dq-tip">
+          <span class="dt-label">说明:</span>点击发行会在真实链部署 ERC20 合约，构造函数将发行量铸造到你的地址。
+          所有学生共享同一条联盟链<i>公共账本</i>：任何学生发行的代币对全员可见、可查询、可转账，
+          发行的合约源码会自动登记到「智能合约 IDE」工程，与监听器数据保持一致。
+        </div>
       </div>
 
       <!-- 转账 -->
@@ -132,6 +149,138 @@
         <div class="dq-tip"><span class="dt-label">说明:</span>转账调用 transfer 函数，消耗 Gas，触发 Transfer 事件，可在浏览器查看。</div>
       </div>
     </div>
+
+    <!-- 绿色能量钱包 + 绿色资产（业务闭环） -->
+    <div class="eco-row" style="margin-top:14px">
+      <!-- 绿色能量钱包 -->
+      <div class="dq-card">
+        <div class="dq-card-title">
+          ⚡ 绿色能量钱包
+          <span class="dq-live" style="margin-left:auto"><span class="dot"></span>GreenEnergy ERC20</span>
+        </div>
+        <div class="ge-balance dq-glass">
+          <div class="ge-num">{{ greenEnergyBalance }}</div>
+          <div class="ge-sub">绿色能量余额（链上真实查询）</div>
+        </div>
+        <div class="ge-hint dq-tip">
+          <span class="dt-label">获取能量:</span>
+          选择联盟业务角色并提交真实业务凭证（地铁 ≥10km / 公交 ≥5min / 骑行 ≥2km / 无需餐具 / 回收 ≥1kg），
+          校验通过后绿色能量直接发放到当前钱包，余额实时更新。
+        </div>
+        <div class="ge-ops">
+          <el-button type="primary" @click="openEnergyDlg">
+            ⚡ 提交凭证获取能量
+          </el-button>
+          <el-button @click="$router.push('/eco')">🌿 前往绿色低碳联盟链</el-button>
+        </div>
+      </div>
+
+      <!-- 我的绿色资产 -->
+      <div class="dq-card">
+        <div class="dq-card-title">
+          🌱 我的绿色资产
+          <span class="dq-tag accent" style="margin-left:auto">{{ ecoAssets.length }} 项</span>
+        </div>
+        <div class="eco-assets" v-if="ecoAssets.length">
+          <div class="eco-asset" v-for="a in ecoAssets" :key="a.key">
+            <div class="ea-left">
+              <span class="ea-icon">{{ a.icon }}</span>
+              <div>
+                <div class="ea-name">{{ a.name }}</div>
+                <div class="dq-mono dim ea-id">{{ a.idText }}</div>
+              </div>
+            </div>
+            <div class="ea-right">
+              <span v-if="a.listed" class="dq-tag info">📍 在售中</span>
+              <template v-else>
+                <span class="dq-tag" :class="a.standard === 'ERC721' ? 'accent' : 'warn'">{{ a.standard }}</span>
+                <el-button size="small" type="primary" plain :loading="listingKey === a.key" @click="openListDlg(a)">
+                  挂牌
+                </el-button>
+              </template>
+            </div>
+          </div>
+        </div>
+        <div v-else class="empty-tip">
+          暂无绿色资产。在「绿色低碳联盟链」消耗能量兑换植树证书 / 勋章 / 骑行券后将在此展示，
+          并可挂牌到绿色资产市场流通。
+        </div>
+      </div>
+    </div>
+
+    <!-- 绿色资产挂牌对话框 -->
+    <el-dialog v-model="ecoListDlg" title="挂牌出售绿色资产" width="440px">
+      <div class="li-row" v-if="ecoCurAsset">
+        <span>资产名称</span><b>{{ ecoCurAsset.name }}</b>
+      </div>
+      <el-form label-width="90px" style="margin-top: 10px">
+        <el-form-item label="挂牌价格">
+          <el-input-number v-model="ecoListPrice" :min="1" :step="10" style="width: 100%" />
+          <div class="dq-tip" style="margin-top: 4px">
+            <span class="dt-label">说明:</span>以绿色能量计价，其他居民购买时自动执行 ERC20 转账 + NFT 转移。
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="ecoListDlg = false">取消</el-button>
+        <el-button type="primary" :loading="ecoListing" @click="doEcoList">确认挂牌</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 绿色能量获取对话框（角色 + 业务凭证） -->
+    <el-dialog v-model="energyDlg" title="提交业务凭证 · 获取绿色能量" width="560px">
+      <el-form label-width="118px" size="small">
+        <el-form-item label="发放角色">
+          <el-select v-model="energyRoleKey" style="width: 100%" @change="onEnergyRoleChange">
+            <el-option
+              v-for="r in energyRoles"
+              :key="r.key"
+              :label="`${r.icon} ${r.name} · ${r.energy_rule.action} +${r.energy_rule.points} 能量`"
+              :value="r.key"
+            />
+          </el-select>
+          <div class="dq-tip" style="margin-top: 4px">
+            <span class="dt-label">说明:</span>该能量由所选联盟业务方（地铁 / 公交 / 单车 / 外卖 / 回收）代表发放，当前钱包作为居民接收。
+          </div>
+        </el-form-item>
+        <template v-if="curEnergyRole">
+          <el-form-item label="接收钱包">
+            <el-input :model-value="wallet" disabled />
+          </el-form-item>
+          <el-form-item v-for="f in energyProofFields" :key="f.key" :label="f.label">
+            <el-switch
+              v-if="f.type === 'switch'"
+              v-model="energyProof[f.key]"
+              active-text="已选择无需餐具"
+            />
+            <el-input-number
+              v-else-if="f.type === 'number'"
+              v-model="energyProof[f.key]"
+              :min="0"
+              :placeholder="f.placeholder"
+              style="width: 100%"
+              controls-position="right"
+            />
+            <el-input v-else v-model="energyProof[f.key]" :placeholder="f.placeholder" />
+          </el-form-item>
+          <el-form-item>
+            <div class="energy-threshold dq-tip">
+              ⚠️ 发放条件：{{ energyThresholdHint }}；凭证校验通过后发放
+              <b>{{ curEnergyRule?.points }} 点</b>绿色能量。
+            </div>
+          </el-form-item>
+        </template>
+        <template v-else>
+          <el-empty description="请先选择发放角色" :image-size="60" />
+        </template>
+      </el-form>
+      <template #footer>
+        <el-button @click="energyDlg = false">取消</el-button>
+        <el-button type="primary" :loading="issuingEnergy" @click="doGetEnergy">
+          校验并获取能量
+        </el-button>
+      </template>
+    </el-dialog>
 
     <!-- 已发行 Token -->
     <div class="dq-card" style="margin-top:14px" v-if="tokens.length">
@@ -170,7 +319,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onActivated, onMounted } from 'vue'
-import { walletApi } from '@/api'
+import { walletApi, ecoApi } from '@/api'
 import { useAppStore } from '@/stores/app'
 import { ElMessage } from 'element-plus'
 import { Coin, Wallet as WalletIcon, Document, Refresh, UploadFilled, Promotion } from '@element-plus/icons-vue'
@@ -237,14 +386,234 @@ const loadBalances = async () => { balances.value = ((await walletApi.balances(w
 const loadTokens = async () => { tokens.value = ((await walletApi.tokens()) as any).items || [] }
 const loadTransfers = async () => { transfers.value = ((await walletApi.transfers(wallet.value)) as any).items || [] }
 
+/* ==================== 绿色能量钱包 + 绿色资产（业务闭环） ==================== */
+/** 是否 GreenEnergy（绿色能量代币，seed 注册 name=GreenEnergy / symbol=GE） */
+const isGreenEnergy = (b: any) =>
+  String(b.name || '').toLowerCase().includes('greenenergy') ||
+  String(b.symbol || '').toUpperCase() === 'GE' ||
+  String(b.name || '').includes('绿色能量')
+
+const greenEnergyBalance = computed(() => {
+  const b = balances.value.find(isGreenEnergy)
+  return b ? Number(b.balance ?? 0) : 0
+})
+
+const myCertificates = ref<any[]>([])
+const myBadges = ref<any[]>([])
+const marketList = ref<any[]>([])
+
+interface EcoAssetItem {
+  key: string
+  icon: string
+  name: string
+  idText: string
+  standard: string
+  asset_type: string
+  asset_id: number
+  listed: boolean
+}
+
+const ecoAssets = computed<EcoAssetItem[]>(() => {
+  const out: EcoAssetItem[] = []
+  for (const c of myCertificates.value) {
+    out.push({
+      key: `cert_${c.id}`,
+      icon: '🌱',
+      name: c.species_name || '植树证书',
+      idText: `Token ID: ${c.token_id}`,
+      standard: 'ERC721',
+      asset_type: 'certificate',
+      asset_id: Number(c.id),
+      listed: isEcoListed('certificate', Number(c.id)),
+    })
+  }
+  for (const b of myBadges.value) {
+    out.push({
+      key: `${b.badge_type}_${b.id}`,
+      icon: b.badge_type === 'voucher' ? '🎫' : '🏅',
+      name: b.name || (b.badge_type === 'voucher' ? '骑行券' : '生态勋章'),
+      idText: `Token ID: ${b.token_id}`,
+      standard: 'ERC1155',
+      asset_type: b.badge_type === 'voucher' ? 'voucher' : 'badge',
+      asset_id: Number(b.id),
+      listed: isEcoListed(b.badge_type === 'voucher' ? 'voucher' : 'badge', Number(b.id)),
+    })
+  }
+  return out
+})
+
+const isEcoListed = (asset_type: string, asset_id: number) =>
+  marketList.value.some(
+    (m) => m.asset_type === asset_type && Number(m.asset_id) === Number(asset_id) && m.status === 'active',
+  )
+
+const ecoListDlg = ref(false)
+const ecoListing = ref(false)
+const ecoListPrice = ref(50)
+const listingKey = ref('')
+const ecoCurAsset = ref<EcoAssetItem | null>(null)
+
+const openListDlg = (a: EcoAssetItem) => {
+  ecoCurAsset.value = a
+  ecoListPrice.value = a.asset_type === 'certificate' ? 500 : a.asset_type === 'voucher' ? 100 : 50
+  ecoListDlg.value = true
+}
+
+const doEcoList = async () => {
+  if (!ecoCurAsset.value) return
+  if (ecoListPrice.value <= 0) {
+    ElMessage.warning('价格必须大于 0')
+    return
+  }
+  ecoListing.value = true
+  listingKey.value = ecoCurAsset.value.key
+  try {
+    await ecoApi.marketList({
+      seller: wallet.value,
+      asset_type: ecoCurAsset.value.asset_type,
+      asset_id: ecoCurAsset.value.asset_id,
+      price_energy: ecoListPrice.value,
+    })
+    ElMessage.success(`已挂牌：${ecoCurAsset.value.name} · ${ecoListPrice.value} 能量`)
+    ecoListDlg.value = false
+    await loadEcoAssets()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || e?.message || '挂牌失败')
+  } finally {
+    ecoListing.value = false
+    listingKey.value = ''
+  }
+}
+
+const loadEcoAssets = async () => {
+  try {
+    const r: any = await ecoApi.marketItems()
+    marketList.value = r?.items || []
+  } catch {
+    marketList.value = []
+  }
+  // 仅加载当前钱包持有的绿色资产
+  try {
+    const r: any = await ecoApi.certificates(wallet.value)
+    myCertificates.value = r?.items || r || []
+  } catch {
+    myCertificates.value = []
+  }
+  try {
+    const r: any = await ecoApi.badges(wallet.value)
+    myBadges.value = r?.items || r || []
+  } catch {
+    myBadges.value = []
+  }
+}
+
+/* ==================== 钱包内获取绿色能量（角色 + 业务凭证） ==================== */
+/** 联盟管理员钱包：发行新代币唯一身份（与后端 ADMIN_WALLET 一致） */
+const ADMIN_WALLET = '0xadmin'
+const isAdminWallet = computed(() => String(wallet.value || '').toLowerCase() === ADMIN_WALLET)
+
+const energyRoles = ref<any[]>([])
+const energyDlg = ref(false)
+const energyRoleKey = ref('')
+const energyProof = reactive<Record<string, any>>({})
+const issuingEnergy = ref(false)
+
+/** 当前选中的发放角色定义 */
+const curEnergyRole = computed(() =>
+  energyRoles.value.find((r) => r.key === energyRoleKey.value) || null,
+)
+const curEnergyRule = computed(() => curEnergyRole.value?.energy_rule || null)
+const energyProofFields = computed(() => curEnergyRule.value?.proof_fields || [])
+const energyThresholdHint = computed(() => {
+  const r = curEnergyRule.value
+  if (!r) return ''
+  if (r.proof_field === 'no_cutlery') return 'no_cutlery = true（必须选择「无需餐具」）'
+  return `${r.proof_field} ≥ ${r.min} ${r.unit}`
+})
+
+/** 打开获取能量对话框：加载联盟角色（仅保留可发能量的业务角色） */
+const openEnergyDlg = async () => {
+  if (!energyRoles.value.length) {
+    try {
+      const r: any = await ecoApi.roles()
+      energyRoles.value = (r?.items || r || []).filter((x: any) => x && x.energy_rule)
+    } catch (e: any) {
+      ElMessage.error(e?.response?.data?.detail || e?.message || '联盟角色加载失败')
+      return
+    }
+  }
+  if (!energyRoleKey.value && energyRoles.value.length) {
+    energyRoleKey.value = energyRoles.value[0].key
+    resetEnergyProof()
+  }
+  energyDlg.value = true
+}
+
+/** 切换角色时重置凭证字段 */
+const onEnergyRoleChange = () => resetEnergyProof()
+
+const resetEnergyProof = () => {
+  for (const k of Object.keys(energyProof)) delete energyProof[k]
+  for (const f of energyProofFields.value) {
+    if (f.type === 'switch') energyProof[f.key] = false
+    else if (f.type === 'number') energyProof[f.key] = undefined
+    else energyProof[f.key] = ''
+  }
+}
+
+/** 提交业务凭证 → 角色绑定 → 后端校验 → 能量发放到当前钱包 */
+const doGetEnergy = async () => {
+  const role = curEnergyRole.value
+  if (!role) {
+    ElMessage.warning('请选择发放角色')
+    return
+  }
+  // 必填业务字段前端预校验
+  const missing: string[] = []
+  for (const f of energyProofFields.value) {
+    if (!f.required) continue
+    const v = energyProof[f.key]
+    if (v === undefined || v === null || v === '' || (typeof v === 'string' && !v.trim())) {
+      missing.push(f.label || f.key)
+    }
+  }
+  if (missing.length) {
+    ElMessage.warning(`缺少必填业务数据：${missing.join('、')}，请补全业务凭证`)
+    return
+  }
+  issuingEnergy.value = true
+  try {
+    // 业务闭环：先绑定当前钱包为所选联盟角色（后台校验发放身份），再发起能量发放
+    await ecoApi.selectRole(wallet.value, role.key)
+    const r: any = await ecoApi.issueEnergy(wallet.value, role.key, energyProof)
+    ElMessage.success(
+      `${role.icon} ${role.name} 发放成功：+${r?.points ?? role.energy_rule.points} 绿色能量（已到账当前钱包）`,
+    )
+    energyDlg.value = false
+    await loadBalances()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || e?.message || '能量发放失败')
+  } finally {
+    issuingEnergy.value = false
+  }
+}
+
 const doIssue = async () => {
+  if (!isAdminWallet.value) {
+    ElMessage.warning(`发行新代币仅限联盟管理员钱包（${ADMIN_WALLET}），请先切换「当前操作钱包」`)
+    return
+  }
   if (!issue.name || !issue.symbol) return ElMessage.warning('请填写名称与符号')
-  const r: any = await walletApi.issue({ ...issue, owner: wallet.value })
-  ElMessage.success(`发行成功: ${r.address}`)
-  /* 部署完成彩粒 */
-  try { app.confetti({ particleCount: 80, spread: 70, origin: { y: 0.45 }, ticks: 160 }) } catch {}
-  issue.name = ''; issue.symbol = ''; issue.total_supply = '1000000'
-  loadTokens(); loadBalances()
+  try {
+    const r: any = await walletApi.issue({ ...issue, owner: wallet.value })
+    ElMessage.success(`发行成功: ${r.address}`)
+    /* 部署完成彩粒 */
+    try { app.confetti({ particleCount: 80, spread: 70, origin: { y: 0.45 }, ticks: 160 }) } catch {}
+    issue.name = ''; issue.symbol = ''; issue.total_supply = '1000000'
+    loadTokens(); loadBalances()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || e?.message || '发行失败')
+  }
 }
 
 const doTransfer = async () => {
@@ -255,7 +624,7 @@ const doTransfer = async () => {
   loadBalances(); loadTransfers()
 }
 
-const loadAll = () => { loadBalances(); loadTokens(); loadTransfers() }
+const loadAll = () => { loadBalances(); loadTokens(); loadTransfers(); loadEcoAssets() }
 /* 首次进入触发 onMounted，KeepAlive 缓存后再次进入触发 onActivated，两者都执行加载 */
 onMounted(loadAll)
 onActivated(loadAll)
@@ -343,6 +712,56 @@ onActivated(loadAll)
 }
 
 .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+
+/* ---- 绿色能量钱包 + 绿色资产 ---- */
+.eco-row {
+  display: grid; grid-template-columns: 1fr 1.4fr; gap: 14px;
+  align-items: stretch;
+}
+.ge-balance {
+  padding: 16px 18px; margin-bottom: 12px;
+  text-align: center;
+  .ge-num {
+    font-family: var(--dq-mono); font-size: 44px; font-weight: 800;
+    background: var(--dq-grad-primary);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 24px var(--dq-primary-glow);
+    line-height: 1.15;
+  }
+  .ge-sub { font-size: 11px; color: var(--dq-text-dim); margin-top: 6px; }
+}
+.ge-hint { margin-bottom: 12px; }
+.ge-ops { display: flex; gap: 8px; flex-wrap: wrap; }
+.eco-assets { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; }
+.eco-asset {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px;
+  background: var(--dq-bg-2);
+  border: 1px solid var(--dq-border);
+  border-radius: 8px;
+  .ea-left { display: flex; align-items: center; gap: 10px; }
+  .ea-icon { font-size: 22px; }
+  .ea-name { color: var(--dq-text); font-size: 13px; font-weight: 600; }
+  .ea-id { font-size: 11px; margin-top: 2px; }
+  .ea-right { display: flex; align-items: center; gap: 8px; }
+}
+.li-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px;
+  background: var(--dq-bg-2);
+  border: 1px solid var(--dq-border);
+  border-radius: 8px;
+  span { color: var(--dq-text-dim); font-size: 13px; }
+  b { color: var(--dq-text); font-size: 13px; }
+}
+.empty-tip {
+  color: var(--dq-text-dim); font-size: 13px;
+  padding: 20px 14px; text-align: center; line-height: 1.7;
+}
+@media (max-width: 1000px) {
+  .eco-row { grid-template-columns: 1fr; }
+}
 .bal-list { margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px; }
 .bal-item {
   display: flex; justify-content: space-between; align-items: center;

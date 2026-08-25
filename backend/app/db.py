@@ -57,6 +57,10 @@ def init_db() -> None:
             updated_at TEXT NOT NULL,
             """ + _TENANT_COLS + """
         )""")
+        # 内置系统工程标识（在线迁移：旧库加列）
+        _prj_cols = {row["name"] for row in c.execute("PRAGMA table_info(projects)")}
+        if "is_builtin" not in _prj_cols:
+            c.execute("ALTER TABLE projects ADD COLUMN is_builtin INTEGER NOT NULL DEFAULT 0")
         c.execute("""
         CREATE TABLE IF NOT EXISTS project_files (
             id TEXT PRIMARY KEY,
@@ -257,7 +261,65 @@ def init_db() -> None:
         # wallet 索引必须在列存在之后才能创建
         c.execute("CREATE INDEX IF NOT EXISTS idx_student_grades_wallet ON student_grades(wallet)")
 
+        # ==================== 方向四：成就系统 ====================
+        # 成就定义表
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS achievements (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            icon TEXT NOT NULL DEFAULT '🏆',
+            category TEXT NOT NULL DEFAULT 'general',
+            condition_type TEXT NOT NULL,
+            condition_value INTEGER NOT NULL DEFAULT 1,
+            points INTEGER NOT NULL DEFAULT 10,
+            created_at TEXT NOT NULL
+        )""")
+
+        # 用户成就记录表
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS user_achievements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            wallet TEXT NOT NULL,
+            achievement_id TEXT NOT NULL,
+            earned_at TEXT NOT NULL,
+            progress INTEGER NOT NULL DEFAULT 0,
+            completed INTEGER NOT NULL DEFAULT 0,
+            """ + _TENANT_COLS + """,
+            UNIQUE(wallet, achievement_id)
+        )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_user_achievements_wallet ON user_achievements(wallet)")
+
+        # 挑战任务表
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS challenges (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'general',
+            difficulty TEXT NOT NULL DEFAULT 'easy',
+            points INTEGER NOT NULL DEFAULT 20,
+            condition_type TEXT NOT NULL,
+            condition_value INTEGER NOT NULL DEFAULT 1,
+            expires_at TEXT,
+            created_at TEXT NOT NULL
+        )""")
+
+        # 用户挑战任务进度表
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS user_challenges (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            wallet TEXT NOT NULL,
+            challenge_id TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            progress INTEGER NOT NULL DEFAULT 0,
+            completed INTEGER NOT NULL DEFAULT 0,
+            completed_at TEXT,
+            """ + _TENANT_COLS + """,
+            UNIQUE(wallet, challenge_id)
+        )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_user_challenges_wallet ON user_challenges(wallet)")
+
 
 def now() -> str:
     return datetime.utcnow().isoformat()
-

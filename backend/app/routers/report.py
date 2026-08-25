@@ -7,7 +7,7 @@
   A. 合约部署              20 分：≥1份合约 +10；ERC20/ERC721/ERC1155 各 +3/3/4；上限20
   B. 链上交易              15 分：≥10笔 15；≥5笔 10；≥2笔 5；≥1笔 2
   C. NFT 铸造与交易        10 分：铸造≥1件 +5；交易≥1笔 +5；合计上限10
-  D. 搭链教程（必修）      10 分：完成 6/6 步 10分；≥3/6 6分；≥1/6 2分
+  D. 搭链教程（必修）      10 分：完成 10/10 步 10分；≥5/10 6分；≥1/10 2分
         （额外：尝试并产生失败 step 的"探索型学生"额外 +1~3 分，计入D项"质量加分"）
 
 【高级实战 40 分】（绿色低碳联盟链）
@@ -90,19 +90,28 @@ def _parse_ts_any(val: Any) -> int:
         return 0
 
 
-def _load_eco_brief() -> dict[str, Any]:
+def _load_eco_brief(wallet: str = "") -> dict[str, Any]:
     """加载 eco 高级实战汇总数据（无异常不中断，失败返回空结构）。
 
     V2：扩展学习质量维度（搭链进度/耗时分布、角色多样性、能量发放多样性、树种多样性、行为埋点）。
+    V3：支持 per-wallet 过滤（wallet 非空时仅统计该钱包数据）。
     """
     try:
         with get_conn() as conn:
+            # 构建 wallet 过滤条件
+            wallet_filter = ""
+            wallet_params = ()
+            if wallet:
+                wallet_filter = " WHERE wallet = ?"
+                wallet_params = (wallet,)
+
             # ===== 角色：曾选择过多少不同的 UNIQUE 角色（E项基础）======
             row = conn.execute(
                 "SELECT COUNT(DISTINCT role_key) AS distinct_roles, "
                 "COUNT(*) AS total_switches, "
                 "COUNT(DISTINCT wallet) AS unique_wallets "
-                "FROM eco_role_selections"
+                "FROM eco_role_selections" + wallet_filter,
+                wallet_params
             ).fetchone()
             distinct_roles = row["distinct_roles"] if row else 0
             role_switches = row["total_switches"] if row else 0
@@ -113,18 +122,27 @@ def _load_eco_brief() -> dict[str, Any]:
                 "SELECT COUNT(*) AS n, "
                 "COALESCE(SUM(points),0) AS s, "
                 "COUNT(DISTINCT role_key) AS distinct_roles "
-                "FROM eco_energy_records"
+                "FROM eco_energy_records" + wallet_filter,
+                wallet_params
             ).fetchone()
             energy_issues = row["n"] if row else 0
             energy_total = row["s"] if row else 0
             energy_distinct_roles = row["distinct_roles"] if row else 0
 
             # 每种角色具体发了多少次（排序）
-            breakdown_rows = conn.execute(
-                "SELECT role_key, COUNT(*) AS n, COALESCE(SUM(points),0) AS s "
-                "FROM eco_energy_records "
-                "GROUP BY role_key ORDER BY n DESC"
-            ).fetchall()
+            if wallet:
+                breakdown_rows = conn.execute(
+                    "SELECT role_key, COUNT(*) AS n, COALESCE(SUM(points),0) AS s "
+                    "FROM eco_energy_records " + wallet_filter + " "
+                    "GROUP BY role_key ORDER BY n DESC",
+                    wallet_params
+                ).fetchall()
+            else:
+                breakdown_rows = conn.execute(
+                    "SELECT role_key, COUNT(*) AS n, COALESCE(SUM(points),0) AS s "
+                    "FROM eco_energy_records "
+                    "GROUP BY role_key ORDER BY n DESC"
+                ).fetchall()
             energy_breakdown = [dict(r) for r in breakdown_rows]
 
             # ===== 树种数量 =====
@@ -136,16 +154,25 @@ def _load_eco_brief() -> dict[str, Any]:
                 "SELECT COUNT(*) AS n, "
                 "COALESCE(SUM(cost_energy),0) AS s, "
                 "COUNT(DISTINCT tree_species) AS distinct_trees "
-                "FROM eco_certificates"
+                "FROM eco_certificates" + wallet_filter,
+                wallet_params
             ).fetchone()
             certificates = row["n"] if row else 0
             cert_cost_total = row["s"] if row else 0
             cert_distinct_species = row["distinct_trees"] if row else 0
 
             # ===== 勋章 & 骑行券 =====
-            row = conn.execute("SELECT COUNT(*) AS n FROM eco_badges WHERE badge_type='badge'").fetchone()
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM eco_badges WHERE badge_type='badge'" +
+                (" AND wallet = ?" if wallet else ""),
+                wallet_params if wallet else ()
+            ).fetchone()
             badges = row["n"] if row else 0
-            row = conn.execute("SELECT COUNT(*) AS n FROM eco_badges WHERE badge_type='voucher'").fetchone()
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM eco_badges WHERE badge_type='voucher'" +
+                (" AND wallet = ?" if wallet else ""),
+                wallet_params if wallet else ()
+            ).fetchone()
             vouchers = row["n"] if row else 0
 
             # ===== 三个合约是否部署过 =====
@@ -158,13 +185,23 @@ def _load_eco_brief() -> dict[str, Any]:
                 eco_contracts[cname] = {"deployed": bool(row), "address": row["address"] if row else ""}
 
             # ===== 操作日志统计 =====
-            log = conn.execute(
-                "SELECT COUNT(*) AS total, "
-                "COALESCE(SUM(CASE WHEN level='error' THEN 1 ELSE 0 END),0) AS ec, "
-                "COALESCE(SUM(CASE WHEN level='warn' THEN 1 ELSE 0 END),0) AS wc, "
-                "COALESCE(SUM(CASE WHEN level='success' THEN 1 ELSE 0 END),0) AS sc "
-                "FROM eco_operation_logs"
-            ).fetchone()
+            if wallet:
+                log = conn.execute(
+                    "SELECT COUNT(*) AS total, "
+                    "COALESCE(SUM(CASE WHEN level='error' THEN 1 ELSE 0 END),0) AS ec, "
+                    "COALESCE(SUM(CASE WHEN level='warn' THEN 1 ELSE 0 END),0) AS wc, "
+                    "COALESCE(SUM(CASE WHEN level='success' THEN 1 ELSE 0 END),0) AS sc "
+                    "FROM eco_operation_logs WHERE wallet = ?",
+                    (wallet,)
+                ).fetchone()
+            else:
+                log = conn.execute(
+                    "SELECT COUNT(*) AS total, "
+                    "COALESCE(SUM(CASE WHEN level='error' THEN 1 ELSE 0 END),0) AS ec, "
+                    "COALESCE(SUM(CASE WHEN level='warn' THEN 1 ELSE 0 END),0) AS wc, "
+                    "COALESCE(SUM(CASE WHEN level='success' THEN 1 ELSE 0 END),0) AS sc "
+                    "FROM eco_operation_logs"
+                ).fetchone()
             log_total = log["total"] if log else 0
             log_errors = log["ec"] if log else 0
             log_warns = log["wc"] if log else 0
@@ -173,13 +210,20 @@ def _load_eco_brief() -> dict[str, Any]:
 
             # ===== 学习质量维度 H：搭链教程进度 & 耗时分布（探索型学生奖励）======
             try:
-                t_rows = conn.execute(
-                    "SELECT step, done, output, started_at, finished_at "
-                    "FROM chain_tutorial_progress ORDER BY step"
-                ).fetchall()
+                if wallet:
+                    t_rows = conn.execute(
+                        "SELECT step, done, output, started_at, finished_at "
+                        "FROM chain_tutorial_progress WHERE wallet = ? ORDER BY step",
+                        (wallet,)
+                    ).fetchall()
+                else:
+                    t_rows = conn.execute(
+                        "SELECT step, done, output, started_at, finished_at "
+                        "FROM chain_tutorial_progress ORDER BY step"
+                    ).fetchall()
             except Exception:
                 t_rows = []
-            total_steps = 6
+            total_steps = 10
             done_steps = [r["step"] for r in t_rows if r["done"]]
             failed_steps = [r["step"] for r in t_rows if r["done"] == 0 and (r["output"] or "").strip()]
             # 耗时统计（unix 秒）
@@ -223,12 +267,21 @@ def _load_eco_brief() -> dict[str, Any]:
                 "interface_invoke": 0,    # ≥1 次 +2
             }
             try:
-                b_rows = conn.execute(
-                    "SELECT event_type, COUNT(*) AS n FROM learning_events "
-                    "WHERE event_type IN "
-                    "('ide_open_builtin','ide_save_project','contract_compile_ok','contract_compile_fail','interface_invoke') "
-                    "GROUP BY event_type"
-                ).fetchall()
+                if wallet:
+                    b_rows = conn.execute(
+                        "SELECT event_type, COUNT(*) AS n FROM learning_events "
+                        "WHERE wallet = ? AND event_type IN "
+                        "('ide_open_builtin','ide_save_project','contract_compile_ok','contract_compile_fail','interface_invoke') "
+                        "GROUP BY event_type",
+                        (wallet,)
+                    ).fetchall()
+                else:
+                    b_rows = conn.execute(
+                        "SELECT event_type, COUNT(*) AS n FROM learning_events "
+                        "WHERE event_type IN "
+                        "('ide_open_builtin','ide_save_project','contract_compile_ok','contract_compile_fail','interface_invoke') "
+                        "GROUP BY event_type"
+                    ).fetchall()
                 for r in b_rows:
                     if r["event_type"] == "ide_save_project":
                         beh["ide_save_project_sol"] = int(r["n"])
@@ -239,10 +292,17 @@ def _load_eco_brief() -> dict[str, Any]:
                 pass
 
             # 最近的错误/警告（最多 20 条）
-            log_rows = conn.execute(
-                "SELECT * FROM eco_operation_logs WHERE level IN ('warn','error') "
-                "ORDER BY id DESC LIMIT 20"
-            ).fetchall()
+            if wallet:
+                log_rows = conn.execute(
+                    "SELECT * FROM eco_operation_logs WHERE level IN ('warn','error') AND wallet = ? "
+                    "ORDER BY id DESC LIMIT 20",
+                    (wallet,)
+                ).fetchall()
+            else:
+                log_rows = conn.execute(
+                    "SELECT * FROM eco_operation_logs WHERE level IN ('warn','error') "
+                    "ORDER BY id DESC LIMIT 20"
+                ).fetchall()
 
         return {
             # 角色 & 切换
@@ -294,7 +354,7 @@ def _load_eco_brief() -> dict[str, Any]:
             "logs": {"total": 0, "error_count": 0, "warn_count": 0,
                      "success_count": 0, "error_rate": 0.0, "recent_issues": []},
             "tutorial_progress": {
-                "total_steps": 6, "done_count": 0, "failed_count": 0,
+                "total_steps": 10, "done_count": 0, "failed_count": 0,
                 "done_steps": [], "failed_steps": [], "percent": 0.0,
                 "durations_sec": [], "total_duration_sec": 0, "duration_tag": "unknown",
             },
@@ -371,10 +431,10 @@ def _suggestions(
 
     # ================= D. 搭链教程（10分 + 探索加分）建议 =================
     dc_done = prog.get("done_count") or 0
-    dc_total = prog.get("total_steps") or 6
+    dc_total = prog.get("total_steps") or 10
     dc_fail = prog.get("failed_count") or 0
     if dc_done < dc_total:
-        step_gain = 0 if dc_done >= 6 else (10 if dc_done >= 3 else 2 if dc_done >= 1 else 0)
+        step_gain = 0 if dc_done >= 10 else (6 if dc_done >= 5 else 2 if dc_done >= 1 else 0)
         next_gain = 10 - step_gain
         sgs.append({
             "priority": 1, "level": "error", "category": "D 搭链教程",
@@ -552,7 +612,7 @@ def _calc_score(
       A 合约部署 20 分：≥1份+10；ERC20+3；ERC721+3；ERC1155+4；上限20
       B 链上交易 15 分：≥10笔15；≥5笔10；≥2笔5；≥1笔2
       C NFT 铸造与交易 10 分：铸造≥1件+5；交易≥1笔+5
-      D 搭链教程(必修) 10 分：6/6→10；≥3/6→6；≥1/6→2； 失败尝试 +1~3(仍≤10)
+      D 搭链教程(必修) 10 分：10/10→10；≥5/10→6；≥1/10→2； 失败尝试 +1~3(仍≤10)
 
     【E~H 高级实战 40 分】(绿色低碳联盟链)
       E 角色与节点体验 10 分：6/6→10；≥4→8；≥2→5；≥1→2
@@ -623,9 +683,9 @@ def _calc_score(
     dc_fail = int(prog.get("failed_count") or 0)
     dur_tag = prog.get("duration_tag") or "unknown"
     err_rate = float(logs.get("error_rate") or 0.0)
-    if dc_done >= 6:
+    if dc_done >= 10:
         d = 10
-    elif dc_done >= 3:
+    elif dc_done >= 5:
         d = 6
     elif dc_done >= 1:
         d = 2
@@ -637,10 +697,10 @@ def _calc_score(
     breakdown.append({
         "id": "D", "section": "基础模块·学习质量", "name": "搭链教程(必修)",
         "full": 10, "score": d_with_bonus,
-        "rule": "6/6→10；≥3/6→6；≥1/6→2；失败尝试 +1~3(学习质量探索加分)",
+        "rule": "10/10→10；≥5/10→6；≥1/10→2；失败尝试 +1~3(学习质量探索加分)",
         "quality": {
             "steps_done": dc_done,
-            "steps_total": prog.get("total_steps", 6),
+            "steps_total": prog.get("total_steps", 10),
             "failed_attempts": dc_fail,
             "explore_bonus": explore,
             "duration_tag": dur_tag,
@@ -792,21 +852,47 @@ def _calc_score(
     }
 
 
-def _aggregate_data() -> dict[str, Any]:
-    """聚合实训报告所有数据（搭链进度、合约、交易、NFT、高级实战、评分）。"""
+def _aggregate_data(wallet: str = "") -> dict[str, Any]:
+    """聚合实训报告所有数据（搭链进度、合约、交易、NFT、高级实战、评分）。
+    
+    V3：支持 per-wallet 过滤（wallet 非空时仅统计该钱包数据）。
+    """
     c = get_chain_client()
     height = c.block_number()
-    txs = c.list_txs(5000)
+    
+    # 构建钱包过滤条件
+    wallet_filter = ""
+    wallet_params = ()
+    if wallet:
+        wallet_filter = " WHERE from_addr = ? OR to_addr = ?"
+        wallet_params = (wallet, wallet)
+    
+    # 获取交易列表（按钱包过滤）
+    if wallet:
+        txs = c.list_txs(5000, from_addr=wallet)
+    else:
+        txs = c.list_txs(5000)
 
     # 已部署合约
     with get_conn() as conn:
-        contracts = conn.execute(
-            "SELECT address, name, standard, deployer, created_at, tx_hash "
-            "FROM deployed_contracts ORDER BY created_at DESC"
-        ).fetchall()
-        std_rows = conn.execute(
-            "SELECT COUNT(*) AS n, standard FROM deployed_contracts GROUP BY standard"
-        ).fetchall()
+        if wallet:
+            contracts = conn.execute(
+                "SELECT address, name, standard, deployer, created_at, tx_hash "
+                "FROM deployed_contracts WHERE deployer = ? ORDER BY created_at DESC",
+                (wallet,)
+            ).fetchall()
+            std_rows = conn.execute(
+                "SELECT COUNT(*) AS n, standard FROM deployed_contracts WHERE deployer = ? GROUP BY standard",
+                (wallet,)
+            ).fetchall()
+        else:
+            contracts = conn.execute(
+                "SELECT address, name, standard, deployer, created_at, tx_hash "
+                "FROM deployed_contracts ORDER BY created_at DESC"
+            ).fetchall()
+            std_rows = conn.execute(
+                "SELECT COUNT(*) AS n, standard FROM deployed_contracts GROUP BY standard"
+            ).fetchall()
 
     contract_list = [dict(r) for r in contracts]
     for item in contract_list:
@@ -839,25 +925,41 @@ def _aggregate_data() -> dict[str, Any]:
     # NFT 统计
     try:
         with get_conn() as conn:
-            nft_count = (conn.execute("SELECT COUNT(*) AS n FROM nfts").fetchone())["n"]
-            nft_trade_count = (conn.execute("SELECT COUNT(*) AS n FROM nft_trades").fetchone())["n"]
+            if wallet:
+                nft_count = (conn.execute(
+                    "SELECT COUNT(*) AS n FROM nfts WHERE author = ?", (wallet,)
+                ).fetchone())["n"]
+                nft_trade_count = (conn.execute(
+                    "SELECT COUNT(*) AS n FROM nft_trades WHERE from_addr = ? OR to_addr = ?",
+                    (wallet, wallet)
+                ).fetchone())["n"]
+            else:
+                nft_count = (conn.execute("SELECT COUNT(*) AS n FROM nfts").fetchone())["n"]
+                nft_trade_count = (conn.execute("SELECT COUNT(*) AS n FROM nft_trades").fetchone())["n"]
     except Exception:
         nft_count = 0
         nft_trade_count = 0
 
-    # ERC20 余额 TOP 5
+    # ERC20 余额 TOP 5（按钱包过滤）
     try:
         with get_conn() as conn:
-            bal_rows = conn.execute(
-                "SELECT wallet, token_address, balance FROM wallet_balances "
-                "ORDER BY CAST(balance AS REAL) DESC LIMIT 5"
-            ).fetchall()
+            if wallet:
+                bal_rows = conn.execute(
+                    "SELECT wallet, token_address, balance FROM wallet_balances "
+                    "WHERE wallet = ? ORDER BY CAST(balance AS REAL) DESC LIMIT 5",
+                    (wallet,)
+                ).fetchall()
+            else:
+                bal_rows = conn.execute(
+                    "SELECT wallet, token_address, balance FROM wallet_balances "
+                    "ORDER BY CAST(balance AS REAL) DESC LIMIT 5"
+                ).fetchall()
         top_balances = [dict(r) for r in bal_rows]
     except Exception:
         top_balances = []
 
-    # 高级实战数据
-    eco = _load_eco_brief()
+    # 高级实战数据（传入钱包参数）
+    eco = _load_eco_brief(wallet)
 
     # 服务端自动评分
     score = _calc_score(
@@ -905,9 +1007,14 @@ def _aggregate_data() -> dict[str, Any]:
 def report_aggregate(x_wallet: Optional[str] = Header(default=None, alias="X-Wallet")):
     """前端展示用的报告聚合数据。任何异常都被包装成 JSON，不抛 500/404。"""
     # 行为埋点：学生查看实训报告（对应 alliance_gov 维度的 report_view 指标）
-    _track("report_view", target="aggregate", wallet=x_wallet or "")
+    wallet = x_wallet or ""
+    _track("report_view", target="aggregate", wallet=wallet)
     try:
-        return _aggregate_data()
+        data = _aggregate_data(wallet)
+        # 闭环：报告生成时自动为学生创建/更新成绩草稿
+        if wallet:
+            _auto_draft_grade(wallet)
+        return data
     except Exception as e:  # pragma: no cover - 兜底
         import traceback as _tb
         err = f"{type(e).__name__}: {e}"
@@ -926,8 +1033,94 @@ def report_aggregate(x_wallet: Optional[str] = Header(default=None, alias="X-Wal
             "nft_count": 0,
             "nft_trade_count": 0,
             "top_balances": [],
-            "eco": _load_eco_brief(),
+            "eco": _load_eco_brief(wallet),
             "score": {"total": 0, "level": "数据异常", "breakdown": []},
+            "error_msg": err,
+            "error_trace": _tb.format_exc(limit=6),
+        }
+
+
+def _auto_draft_grade(wallet: str):
+    """报告生成时自动为学生创建/更新成绩草稿（打通 report→grades）。"""
+    try:
+        from .grades import _compute_training_score, _compute_final
+        w = wallet.strip()
+        if not w:
+            return
+        sid = f"W{w[:10]}"
+        sname = f"学生_{w[:6]}"
+        ts = now()
+        training_score, detail = _compute_training_score(w)
+        detail_json = json.dumps(detail, ensure_ascii=False)
+        final_score = _compute_final(training_score, 0)
+        with get_conn() as conn:
+            existing = conn.execute(
+                "SELECT id FROM student_grades WHERE student_id=? AND course=?",
+                (sid, "区块链实训"),
+            ).fetchone()
+            if existing:
+                conn.execute(
+                    """UPDATE student_grades
+                       SET wallet=?, training_score=?, final_score=?,
+                           training_detail=?, updated_at=?
+                       WHERE id=?""",
+                    (w, training_score, final_score, detail_json, ts, existing["id"]),
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO student_grades
+                       (student_id, student_name, course, score, wallet,
+                        training_score, final_score, training_detail,
+                        teacher_id, teacher_name, class_id, school_id, remark,
+                        created_at, updated_at)
+                       VALUES (?, ?, ?, 0, ?, ?, ?, ?, 'system', '系统自动', '', '', '实训报告自动生成草稿', ?, ?)""",
+                    (sid, sname, "区块链实训", w, training_score, final_score, detail_json, ts, ts),
+                )
+    except Exception:
+        # 不影响报告生成主流程
+        pass
+
+
+@router.get("/wallet/{wallet}")
+def report_by_wallet(wallet: str, x_wallet: Optional[str] = Header(default=None, alias="X-Wallet")):
+    """按钱包地址生成个人实训报告（per-wallet 聚合）。
+    
+    用于学生端查看自己的实训成绩和报告，数据仅包含该钱包的活动。
+    """
+    wallet_clean = wallet.strip()
+    if not wallet_clean:
+        return {"error": "钱包地址不能为空"}
+    
+    # 行为埋点：学生查看个人报告
+    _track("report_view", target=f"wallet:{wallet_clean[:10]}...", wallet=wallet_clean)
+    
+    try:
+        data = _aggregate_data(wallet_clean)
+        data["wallet"] = wallet_clean
+        data["is_personal_report"] = True
+        return data
+    except Exception as e:
+        import traceback as _tb
+        err = f"{type(e).__name__}: {e}"
+        return {
+            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "wallet": wallet_clean,
+            "is_personal_report": True,
+            "chain_mode": get_chain_mode_label(),
+            "chain_height": 0,
+            "contract_count": 0,
+            "contract_list": [],
+            "standard_breakdown": {},
+            "tx_count": 0,
+            "total_gas": 0,
+            "gas_avg": 0,
+            "success_rate": 0,
+            "recent_txs": [],
+            "nft_count": 0,
+            "nft_trade_count": 0,
+            "top_balances": [],
+            "eco": _load_eco_brief(wallet_clean),
+            "score": {"total": 0, "level": "暂无数据", "breakdown": []},
             "error_msg": err,
             "error_trace": _tb.format_exc(limit=6),
         }
@@ -971,7 +1164,7 @@ def _render_markdown(d: dict[str, Any]) -> str:
     beh = eco.get("behavior") or {}
     contracts = eco.get("contracts") or {}
     bd_d = int(prog.get("done_count") or 0)
-    bd_t = int(prog.get("total_steps") or 6)
+    bd_t = int(prog.get("total_steps") or 10)
     miss_std = sum(1 for s in ("ERC20", "ERC721", "ERC1155") if (d.get("standard_breakdown") or {}).get(s, 0) <= 0)
     cc = d.get("contract_count", 0)
     i_open = int(beh.get("ide_open_builtin") or 0) + int(beh.get("ide_save_project_sol") or 0)
@@ -1058,7 +1251,7 @@ def _render_markdown(d: dict[str, Any]) -> str:
     lines.append("")
     prog = eco.get("tutorial_progress") or {}
     bd_d = int(prog.get("done_count") or 0)
-    bd_t = int(prog.get("total_steps") or 6)
+    bd_t = int(prog.get("total_steps") or 10)
     bd_fail = int(prog.get("failed_count") or 0)
     bd_pct = float(prog.get("percent") or 0)
     dur_tag = prog.get("duration_tag") or "unknown"
@@ -1074,7 +1267,7 @@ def _render_markdown(d: dict[str, Any]) -> str:
     if bd_d < bd_t:
         lines.append("- 🚧 建议：进入『云桌面·搭链教程』补齐剩余 %d 步；遇到报错不用怕，保留失败场景拿「探索加分」。" % (bd_t - bd_d))
     else:
-        lines.append("✅ 搭链教程 6/6 全部完成，基础扎实！")
+        lines.append("✅ 搭链教程 10/10 全部完成，基础扎实！")
     if bd_fail == 0 and bd_d >= 3:
         lines.append("- 💡 探索加分提示：故意触发 1~3 次节点异常（端口冲突/证书过期），体验 PBFT 故障排查场景，可额外 +1~3 分计入 D 项。")
     lines.append("")
@@ -1336,7 +1529,7 @@ def _render_markdown(d: dict[str, Any]) -> str:
     elif score.get("total", 0) >= 60:
         lines.append("- ✅ 实训合格，建议补做高级实战的能量发放与资产兑换环节。")
     else:
-        lines.append("- 🚧 实训尚未完成，请按学习路径 L1→L9 依次推进：『云桌面·搭链教程』6 步 → 合约 IDE 部署 → 接口调试 → ERC20 钱包交易 → NFT 市场铸造交易 → 激活 3 份生态合约 → 6 角色 → 能量发放 → 资产兑换。")
+        lines.append("- 🚧 实训尚未完成，请按学习路径 L1→L9 依次推进：『云桌面·搭链教程』10 步 → 合约 IDE 部署 → 接口调试 → ERC20 钱包交易 → NFT 市场铸造交易 → 激活 3 份生态合约 → 6 角色 → 能量发放 → 资产兑换。")
     lines.append("")
     lines.append("---")
     lines.append("")

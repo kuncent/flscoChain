@@ -93,7 +93,22 @@ const selectFn = (fn: any, i: number) => {
 }
 
 const invoke = async () => {
-  if (!curFn.value) return
+  if (!curFn.value) {
+    ElMessage.warning('请先在左侧选择一个合约方法')
+    return
+  }
+  // 调用前参数校验：缺失参数时给出明确提示，避免直接调用后端报不明错误
+  const inputs: any[] = curFn.value.inputs || []
+  const missing: string[] = []
+  inputs.forEach((a: any, i: number) => {
+    const v = args.value[i]
+    if (v === '' || v === null || v === undefined) missing.push(a.name || a.type)
+  })
+  if (missing.length) {
+    ElMessage.warning(`方法 ${curFn.value.name} 缺少参数：${missing.join('、')}（共需 ${inputs.length} 个，已填 ${inputs.length - missing.length} 个），请补全后再调用`)
+    result.value = `✗ 方法 ${curFn.value.name} 缺少参数：${missing.join('、')}\n（共需 ${inputs.length} 个，已填 ${inputs.length - missing.length} 个）`
+    return
+  }
   try {
     const r: any = await contractApi.call({
       address: addr.value,
@@ -105,7 +120,10 @@ const invoke = async () => {
     result.value = JSON.stringify(r, null, 2)
     ElMessage.success('调用完成，监听器已记录')
   } catch (e: any) {
-    result.value = '✗ ' + e.message
+    // 优先透出后端可读错误（如 ABI 无该方法 / 参数不匹配），而不是笼统的请求失败
+    const msg = e?.response?.data?.detail || e?.message || '调用失败'
+    result.value = '✗ ' + msg
+    ElMessage.error(msg)
   }
 }
 

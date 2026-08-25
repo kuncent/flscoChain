@@ -416,6 +416,113 @@ def refresh_all_training(_=Depends(_require_teacher)):
 
 
 # ===========================================================================
+# 学生端：按 wallet 查看自己的成绩（无需教师权限）
+# ===========================================================================
+@router.get("/my")
+def my_grades(wallet: str = Query(..., description="学生链上钱包地址")):
+    """学生查看自己的实训成绩（按 wallet 查询，无需教师权限）。
+
+    返回该 wallet 关联的所有成绩记录 + 实时计算的实训成绩明细。
+    如果该 wallet 尚未有成绩记录，则实时计算并返回预览（不入库）。
+    """
+    w = wallet.strip()
+    if not w:
+        raise HTTPException(400, "wallet 必填")
+
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM student_grades WHERE wallet=? ORDER BY course ASC",
+            (w,),
+        ).fetchall()
+
+    items = []
+    for r in rows:
+        item = dict(r)
+        try:
+            item["training_detail"] = json.loads(item.get("training_detail") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            item["training_detail"] = {}
+        items.append(item)
+
+    # 实时计算当前 wallet 的实训成绩（用于对比 / 预览）
+    training_now, detail_now = _compute_training_score(w)
+
+    return {
+        "wallet": w,
+        "grades": items,
+        "total": len(items),
+        "training_now": training_now,
+        "detail_now": detail_now,
+    }
+
+
+# ===========================================================================
+# 报告→成绩闭环：按 wallet 自动创建/更新成绩草稿
+# ===========================================================================
+@router.post("/auto-draft")
+def auto_draft_grade(
+    wallet: str = Query(..., description="学生链上钱包地址"),
+    student_id: str = Query("", description="学号（可选，为空则用 wallet 前 10 位）"),
+    student_name: str = Query("", description="学生姓名（可选）"),
+    course: str = Query("区块链实训", description="课程名称"),
+):
+    """报告生成时自动为学生创建/更新成绩草稿（打通 report→grades）。
+
+    闭环逻辑：学生完成实训 → 查看/下载报告 → 系统自动按 wallet 计算实训成绩
+    → 写入 student_grades 作为草稿（teacher_id='system', score=0 待教师录入）。
+    """
+    w = wallet.strip()
+    if not w:
+        raise HTTPException(400, "wallet 必填")
+
+    sid = student_id.strip() or f"W{w[:10]}"
+    sname = student_name.strip() or f"学生_{w[:6]}"
+    ts = now()
+
+    training_score, detail = _compute_training_score(w)
+    detail_json = json.dumps(detail, ensure_ascii=False)
+    # 草稿阶段 teacher_score=0，等教师录入后更新
+    final_score = _compute_final(training_score, 0)
+
+    with get_conn() as conn:
+        existing = conn.execute(
+            "SELECT id FROM student_grades WHERE student_id=? AND course=?",
+            (sid, course),
+        ).fetchone()
+        if existing:
+            conn.execute(
+                """UPDATE student_grades
+                   SET wallet=?, training_score=?, final_score=?,
+                       training_detail=?, updated_at=?
+                   WHERE id=?""",
+                (w, training_score, final_score, detail_json, ts, existing["id"]),
+            )
+            grade_id = existing["id"]
+            action = "updated"
+        else:
+            cur = conn.execute(
+                """INSERT INTO student_grades
+                   (student_id, student_name, course, score, wallet,
+                    training_score, final_score, training_detail,
+                    teacher_id, teacher_name, class_id, school_id, remark,
+                    created_at, updated_at)
+                   VALUES (?, ?, ?, 0, ?, ?, ?, ?, 'system', '系统自动', '', '', '实训报告自动生成草稿', ?, ?)""",
+                (sid, sname, course, w, training_score, final_score, detail_json, ts, ts),
+            )
+            grade_id = cur.lastrowid
+            action = "created"
+
+    return {
+        "id": grade_id,
+        "action": action,
+        "wallet": w,
+        "training_score": training_score,
+        "final_score": final_score,
+        "detail": detail,
+    }
+
+
+# ===========================================================================
 # 删除
 # ===========================================================================
 @router.delete("/{grade_id}")

@@ -150,3 +150,211 @@ def query_address(addr: str):
         "txs": [_enrich_tx(t) for t in txs],
         "tx_count": len(txs),
     }
+
+
+# ==================== 方向一：Gas 分析 ====================
+@router.get("/gas/analysis")
+def gas_analysis(limit: int = 100):
+    """Gas 消耗分析 - 近 N 笔交易的 Gas 统计。"""
+    c = get_chain_client()
+    txs = c.list_txs(limit)
+
+    if not txs:
+        return {
+            "avg_gas_used": 0,
+            "max_gas_used": 0,
+            "min_gas_used": 0,
+            "total_gas_cost_wei": 0,
+            "total_gas_cost_gwei": 0,
+            "avg_gas_price_gwei": 0,
+            "tx_count": 0,
+        }
+
+    gas_used_list = [t.gas_used for t in txs]
+    gas_cost_wei_list = [t.gas_cost_wei for t in txs]
+
+    return {
+        "avg_gas_used": sum(gas_used_list) // len(gas_used_list),
+        "max_gas_used": max(gas_used_list),
+        "min_gas_used": min(gas_used_list),
+        "total_gas_cost_wei": sum(gas_cost_wei_list),
+        "total_gas_cost_gwei": sum(gas_cost_wei_list) / 1e9,
+        "avg_gas_price_gwei": 8.75,  # GAS_PRICE = 8750000000 wei = 8.75 gwei
+        "tx_count": len(txs),
+    }
+
+
+@router.get("/gas/trend")
+def gas_trend(hours: int = 24):
+    """Gas 价格趋势（近 N 小时）。"""
+    c = get_chain_client()
+    txs = c.list_txs(500)
+    now = int(time.time())
+    cutoff = now - hours * 3600
+
+    trend = []
+    for t in txs:
+        if t.timestamp >= cutoff:
+            trend.append({
+                "timestamp": t.timestamp,
+                "gas_used": t.gas_used,
+                "gas_price_gwei": 8.75,
+                "gas_cost_gwei": t.gas_cost_gwei,
+            })
+
+    return {"trend": trend, "hours": hours}
+
+
+# ==================== 方向二：代币经济分析 ====================
+@router.get("/token/economics")
+def token_economics():
+    """代币经济模型分析 - 流通量、持有者分布、交易趋势。"""
+    c = get_chain_client()
+
+    # 获取所有已部署的 ERC20 合约
+    with get_conn() as conn:
+        erc20s = conn.execute(
+            "SELECT address, name, standard FROM deployed_contracts WHERE standard='ERC20'"
+        ).fetchall()
+
+    economics = []
+    for erc20 in erc20s:
+        addr = erc20["address"]
+        name = erc20["name"]
+
+        # 获取该代币的所有交易
+        txs = [t for t in c.list_txs(1000) if t.to_addr and t.to_addr.lower() == addr.lower()]
+
+        # 统计持有者分布（从 Transfer 事件解析）
+        holders = {}
+        transfer_count = 0
+        for tx in txs:
+            for log in tx.logs:
+                # ERC20 Transfer 事件签名: 0xddf252ad...
+                if len(log.get("topics", [])) >= 3 and log["topics"][0].startswith("0xddf252ad"):
+                    transfer_count += 1
+                    from_addr = "0x" + log["topics"][1][-40:] if len(log["topics"][1]) >= 40 else ""
+                    to_addr = "0x" + log["topics"][2][-40:] if len(log["topics"][2]) >= 40 else ""
+
+                    # 解码 amount
+                    try:
+                        from eth_abi import decode
+                        amount = int(decode(["uint256"], bytes.fromhex(log["data"].replace("0x", "")))[0])
+                    except:
+                        amount = 0
+
+                    # 更新余额
+                    if from_addr:
+                        holders[from_addr] = holders.get(from_addr, 0) - amount
+                    if to_addr:
+                        holders[to_addr] = holders.get(to_addr, 0) + amount
+
+        # 过滤掉余额为 0 或负数的地址
+        holders = {k: v for k, v in holders.items() if v > 0}
+        total_supply = sum(holders.values())
+        holder_count = len(holders)
+
+        # 按余额排序
+        sorted_holders = sorted(holders.items(), key=lambda x: x[1], reverse=True)[:10]
+
+        economics.append({
+            "contract_address": addr,
+            "token_name": name,
+            "total_supply": str(total_supply),
+            "holder_count": holder_count,
+            "transfer_count": transfer_count,
+            "top_holders": [{"address": h[0], "balance": str(h[1])} for h in sorted_holders],
+        })
+
+    return {"tokens": economics}
+
+
+# ==================== 方向二：数据一致性校验 ====================
+@router.get("/data/consistency")
+def data_consistency():
+    """数据一致性校验 - 链上数据与链下数据对比。"""
+    c = get_chain_client()
+
+    issues = []
+
+    # 1. 检查已部署合约的代码是否存在
+    with get_conn() as conn:
+        contracts = conn.execute("SELECT address, name FROM deployed_contracts").fetchall()
+
+    for contract in contracts:
+        addr = contract["address"]
+        if not c.has_code(addr):
+            issues.append({
+                "type": "contract_code_missing",
+                "severity": "high",
+                "message": f"合约 {contract['name']} ({addr}) 在链上无代码",
+            })
+
+    # 2. 检查交易确认数
+    current_block = c.block_number()
+    recent_txs = c.list_txs(50)
+    unconfirmed_txs = [t for t in recent_txs if t.confirmations < 6]
+    if unconfirmed_txs:
+        issues.append({
+            "type": "low_confirmation_count",
+            "severity": "medium",
+            "message": f"有 {len(unconfirmed_txs)} 笔交易确认数不足 6 个区块",
+            "details": [{"hash": t.hash, "confirmations": t.confirmations} for t in unconfirmed_txs[:5]],
+        })
+
+    # 3. 检查区块高度连续性
+    blocks = c.list_blocks(max(0, current_block - 10), current_block)
+    for i in range(len(blocks) - 1):
+        if blocks[i].number - blocks[i + 1].number != 1:
+            issues.append({
+                "type": "block_gap",
+                "severity": "high",
+                "message": f"区块 {blocks[i+1].number} 和 {blocks[i].number} 之间存在间隙",
+            })
+
+    return {
+        "status": "healthy" if not issues else "issues_found",
+        "issue_count": len(issues),
+        "issues": issues,
+        "current_block": current_block,
+        "contract_count": len(contracts),
+        "tx_count": len(recent_txs),
+    }
+
+
+# ==================== 方向三：性能监控 ====================
+@router.get("/performance/metrics")
+def performance_metrics():
+    """性能监控 - TPS、延迟、资源使用。"""
+    c = get_chain_client()
+
+    # 计算 TPS（近 100 笔交易）
+    txs = c.list_txs(100)
+    if len(txs) >= 2:
+        time_span = txs[0].timestamp - txs[-1].timestamp
+        tps = len(txs) / time_span if time_span > 0 else 0
+    else:
+        tps = 0
+
+    # 计算平均出块时间
+    blocks = c.list_blocks(max(0, c.block_number() - 20), c.block_number())
+    if len(blocks) >= 2:
+        block_times = [blocks[i].timestamp - blocks[i + 1].timestamp for i in range(len(blocks) - 1)]
+        avg_block_time = sum(block_times) / len(block_times) if block_times else 0
+    else:
+        avg_block_time = 0
+
+    # 计算平均交易延迟（Gas 使用率）
+    avg_gas_used = sum(t.gas_used for t in txs) // len(txs) if txs else 0
+    gas_limit = 8_000_000
+    gas_utilization = (avg_gas_used / gas_limit * 100) if gas_limit > 0 else 0
+
+    return {
+        "tps": round(tps, 2),
+        "avg_block_time": round(avg_block_time, 2),
+        "avg_gas_used": avg_gas_used,
+        "gas_utilization_percent": round(gas_utilization, 2),
+        "current_block": c.block_number(),
+        "pending_txs": 0,  # 联盟链通常无 pending
+        "network_health": "healthy" if tps > 0 else "idle",
+    }

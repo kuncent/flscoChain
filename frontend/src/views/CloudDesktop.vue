@@ -95,11 +95,20 @@
           <div>{{ cur.principle }}</div>
         </div>
 
-        <!-- 真实命令 -->
-        <div class="section-label">真实命令</div>
+        <!-- 需要执行的命令（严格按顺序执行） -->
+        <div class="section-label">
+          需要执行的命令（按顺序执行 {{ cmdDoneCount }}/{{ cur.commands.length }}）
+        </div>
         <div class="cmds">
-          <div class="dq-cmd-line" v-for="(c, i) in cur.commands" :key="i">
-            <span class="prompt">$</span>
+          <div
+            class="dq-cmd-line"
+            :class="cmdState(i)"
+            v-for="(c, i) in cur.commands"
+            :key="i"
+            @dblclick="fillCommand(c)"
+            title="双击填充到输入框"
+          >
+            <span class="prompt">{{ cmdStateIcon(i) }}</span>
             <code>{{ c }}</code>
           </div>
         </div>
@@ -133,9 +142,6 @@
           <el-button size="small" @click="goPrev" :disabled="active === 0">
             <el-icon><ArrowLeft /></el-icon>上一步
           </el-button>
-          <el-button type="primary" @click="exec" :loading="loading">
-            <el-icon><VideoPlay /></el-icon>&nbsp;{{ doneSteps.includes(cur.step) ? '重新执行' : '在真实链执行' }}
-          </el-button>
           <el-button @click="goNext" :disabled="active >= steps.length - 1">
             下一步&nbsp;<el-icon><ArrowRight /></el-icon>
           </el-button>
@@ -143,22 +149,217 @@
       </div>
     </div>
 
-    <!-- 右侧：云桌面终端 -->
-    <div class="dq-card terminal-card">
-      <div class="dq-card-title">
-        云桌面终端
-        <span class="dq-tag info" style="margin-left:auto">真实输出 · 实时</span>
+    <!-- 右侧：监控面板 + 云桌面终端 -->
+    <div class="right-panel">
+      <!-- 实时监控面板 -->
+      <div class="dq-card monitor-card">
+        <div class="dq-card-title">
+          <el-icon><Monitor /></el-icon>
+          实时监控
+          <span class="monitor-status" :class="nodeStatusClass">
+            <span class="status-dot"></span>
+            {{ nodeStatusText }}
+          </span>
+        </div>
+        <div class="monitor-grid">
+          <div class="monitor-item">
+            <div class="mi-label">区块高度</div>
+            <div class="mi-value">#{{ chainHeight }}</div>
+          </div>
+          <div class="monitor-item">
+            <div class="mi-label">共识节点</div>
+            <div class="mi-value">4/4</div>
+          </div>
+          <div class="monitor-item">
+            <div class="mi-label">出块速度</div>
+            <div class="mi-value">~3s</div>
+          </div>
+          <div class="monitor-item">
+            <div class="mi-label">交易数</div>
+            <div class="mi-value">{{ txCount }}</div>
+          </div>
+        </div>
+        <div class="node-list">
+          <div class="node-item" v-for="node in nodes" :key="node.id">
+            <span class="node-id">{{ node.id }}</span>
+            <span class="node-role">{{ node.role }}</span>
+            <span class="node-status" :class="node.status">
+              <span class="dot"></span>
+              {{ node.status === 'running' ? '运行中' : '已停止' }}
+            </span>
+          </div>
+        </div>
       </div>
-      <div class="term-wrap">
-        <div class="term" ref="termRef"></div>
-      </div>
-      <div class="term-foot">
-        <span class="tf-hint">💡 左侧「在真实链执行」会在此终端输出真实链返回结果（合约地址、交易哈希、Gas 等）</span>
-        <div class="tf-kw">
-          <span>PBFT</span>
-          <span>EVM</span>
-          <span>Solidity</span>
-          <span>Web3</span>
+
+      <!-- 云桌面终端 + 文件浏览器 + 编辑器（标签页切换） -->
+      <div class="dq-card terminal-card">
+        <div class="dq-card-title">
+          云桌面
+          <span class="dq-tag info" style="margin-left:auto">手动输入 · 真实执行</span>
+        </div>
+        
+        <!-- 标签页切换 -->
+        <div class="tab-bar">
+          <div 
+            class="tab-item" 
+            :class="{ active: activeTab === 'terminal' }"
+            @click="activeTab = 'terminal'"
+          >
+            <el-icon><Monitor /></el-icon>
+            终端
+          </div>
+          <div 
+            class="tab-item" 
+            :class="{ active: activeTab === 'files' }"
+            @click="activeTab = 'files'"
+          >
+            <el-icon><FolderOpened /></el-icon>
+            文件浏览器
+          </div>
+          <div 
+            class="tab-item" 
+            :class="{ active: activeTab === 'editor' }"
+            @click="activeTab = 'editor'"
+            :style="{ opacity: currentFile ? 1 : 0.5 }"
+          >
+            <el-icon><Document /></el-icon>
+            编辑器
+            <span v-if="currentFile && fileModified" class="modified-dot"></span>
+          </div>
+        </div>
+
+        <!-- 终端面板 -->
+        <div class="tab-content" v-show="activeTab === 'terminal'">
+          <div class="term-wrap">
+            <div class="term" ref="termRef"></div>
+            <!-- 命令输入框 -->
+            <div class="cmd-input-bar" v-if="cur">
+              <span class="cmd-prompt">$</span>
+              <input
+                ref="cmdInputRef"
+                v-model="cmdInput"
+                class="cmd-input"
+                placeholder="在此手动输入命令并按回车执行（禁止粘贴）..."
+                @keydown.enter="execCommand"
+                @keydown.up="historyUp"
+                @keydown.down="historyDown"
+                @keydown="blockPasteHotkeys"
+                @paste.prevent="onPasteBlock"
+                @copy.prevent
+                @cut.prevent
+                @dragstart.prevent
+                @drop.prevent
+                @contextmenu.prevent
+                spellcheck="false"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+              />
+              <!-- 自动补全提示 -->
+              <div class="autocomplete-dropdown" v-if="showAutocomplete && autocompleteSuggestions.length">
+                <div 
+                  class="autocomplete-item"
+                  v-for="(suggestion, idx) in autocompleteSuggestions"
+                  :key="idx"
+                  @click="selectAutocomplete(suggestion)"
+                  :class="{ selected: idx === selectedSuggestionIdx }"
+                >
+                  {{ suggestion }}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="term-foot">
+            <span class="tf-hint">💡 请按左侧「需要执行的命令」手动输入，回车执行。终端禁止粘贴，语法错误会给出具体提示。</span>
+            <div class="tf-kw">
+              <span>PBFT</span>
+              <span>EVM</span>
+              <span>Solidity</span>
+              <span>Web3</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 文件浏览器面板 -->
+        <div class="tab-content" v-show="activeTab === 'files'">
+          <div class="file-browser">
+            <div class="file-toolbar">
+              <el-button size="small" @click="createNewFile">
+                <el-icon><Plus /></el-icon>新建文件
+              </el-button>
+              <el-button size="small" @click="createNewFolder">
+                <el-icon><FolderAdd /></el-icon>新建文件夹
+              </el-button>
+              <el-button size="small" @click="refreshFileTree">
+                <el-icon><Refresh /></el-icon>刷新
+              </el-button>
+            </div>
+            <div class="file-tree">
+              <div 
+                class="tree-item" 
+                v-for="item in fileTree" 
+                :key="item.path"
+                :style="{ paddingLeft: item.depth * 16 + 8 + 'px' }"
+              >
+                <span 
+                  class="tree-toggle" 
+                  @click="toggleFolder(item)"
+                  v-if="item.type === 'folder'"
+                >
+                  <el-icon v-if="item.expanded"><ArrowDown /></el-icon>
+                  <el-icon v-else><ArrowRight /></el-icon>
+                </span>
+                <span class="tree-icon" v-else></span>
+                <span class="tree-icon">
+                  <el-icon v-if="item.type === 'folder'">
+                    <FolderOpened v-if="item.expanded" />
+                    <Folder v-else />
+                  </el-icon>
+                  <el-icon v-else><Document /></el-icon>
+                </span>
+                <span 
+                  class="tree-name" 
+                  @click="item.type === 'file' && openFile(item)"
+                  :class="{ 'is-file': item.type === 'file' }"
+                >
+                  {{ item.name }}
+                </span>
+                <span class="tree-actions">
+                  <el-button 
+                    size="small" 
+                    type="text" 
+                    @click.stop="deleteFile(item)"
+                    v-if="item.type === 'file'"
+                  >
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 编辑器面板 -->
+        <div class="tab-content" v-show="activeTab === 'editor'">
+          <div class="editor-panel" v-if="currentFile">
+            <div class="editor-toolbar">
+              <span class="file-path">{{ currentFile.path }}</span>
+              <span class="file-status" :class="{ modified: fileModified }">
+                {{ fileModified ? '● 未保存' : '✓ 已保存' }}
+              </span>
+              <el-button size="small" @click="saveFile" :disabled="!fileModified">
+                <el-icon><Check /></el-icon>保存
+              </el-button>
+              <el-button size="small" @click="closeFile">
+                <el-icon><Close /></el-icon>关闭
+              </el-button>
+            </div>
+            <div class="editor-wrap" ref="editorRef"></div>
+          </div>
+          <div class="editor-empty" v-else>
+            <el-icon><Document /></el-icon>
+            <p>请在文件浏览器中选择一个文件以打开编辑器</p>
+          </div>
         </div>
       </div>
     </div>
@@ -166,7 +367,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, onActivated, computed, nextTick, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, onActivated, computed, nextTick, watch, shallowRef } from 'vue'
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
@@ -174,13 +375,354 @@ import { chainApi } from '@/api'
 import { useAppStore } from '@/stores/app'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { safeGet, safeSet, fmtDuration } from '@/utils/storage'
+import * as monaco from 'monaco-editor'
 
 const app = useAppStore()
 const steps = ref<any[]>([])
 const active = ref(0)
 const loading = ref(false)
 const termRef = ref<HTMLElement>()
+const cmdInputRef = ref<HTMLInputElement>()
+const cmdInput = ref('')
+const cmdHistory = ref<string[]>([])
+const historyIdx = ref(-1)
 const kbOpen = ref(true)
+
+/* ---------- 标签页切换 ---------- */
+const activeTab = ref<'terminal' | 'files' | 'editor'>('terminal')
+
+/* ---------- 虚拟文件系统 ---------- */
+interface FileNode {
+  name: string
+  path: string
+  type: 'file' | 'folder'
+  content?: string
+  children?: FileNode[]
+  expanded?: boolean
+  depth: number
+  parent?: string
+}
+
+const FS_KEY = 'cloud_fs_v1'
+
+function getDefaultFS(): FileNode[] {
+  return [
+    {
+      name: 'nodes', path: '/nodes', type: 'folder', expanded: true, depth: 0,
+      children: [
+        {
+          name: 'node0', path: '/nodes/node0', type: 'folder', expanded: false, depth: 1,
+          children: [
+            { name: 'config.ini', path: '/nodes/node0/config.ini', type: 'file', depth: 2, content: `[p2p]\nlisten_ip=0.0.0.0\nlisten_port=30300\nchannel_listen_ip=0.0.0.0\nchannel_listen_port=20200\njsonrpc_listen_ip=0.0.0.0\njsonrpc_listen_port=8545\n\n[consensus]\nconsensus_type=pbft\nmax_tx_num=1000\n\n[state]\ntype=mpt\n\n[storage]\ntype=rocksdb\n` },
+            { name: 'genesis.ini', path: '/nodes/node0/genesis.ini', type: 'file', depth: 2, content: `[consensus]\nconsensus_type=pbft\nmax_block_limit=3\n` },
+          ]
+        },
+        {
+          name: 'node1', path: '/nodes/node1', type: 'folder', expanded: false, depth: 1,
+          children: [
+            { name: 'config.ini', path: '/nodes/node1/config.ini', type: 'file', depth: 2, content: `[p2p]\nlisten_ip=0.0.0.0\nlisten_port=30301\n` },
+          ]
+        },
+      ]
+    },
+    {
+      name: 'contracts', path: '/contracts', type: 'folder', expanded: true, depth: 0,
+      children: [
+        { name: 'GreenEnergy.sol', path: '/contracts/GreenEnergy.sol', type: 'file', depth: 1, content: `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\n\nimport "./ERC20.sol";\n\ncontract GreenEnergy is ERC20 {\n    mapping(string => bool) public mintRole;\n    address public owner;\n\n    constructor(uint256 initialSupply) ERC20("GreenEnergy", "GEE", 0) {\n        owner = msg.sender;\n        _mint(msg.sender, initialSupply);\n        mintRole["metro"] = true;\n        mintRole["bus"] = true;\n        mintRole["bike"] = true;\n        mintRole["takeout"] = true;\n        mintRole["recycle"] = true;\n    }\n\n    function mintRole(string memory role, address to, uint256 amount) public {\n        require(mintRole[role], "Not authorized");\n        _mint(to, amount);\n    }\n}\n` },
+        { name: 'ERC20.sol', path: '/contracts/ERC20.sol', type: 'file', depth: 1, content: `// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\n\ncontract ERC20 {\n    string public name;\n    string public symbol;\n    uint8 public decimals;\n    uint256 public totalSupply;\n    mapping(address => uint256) public balanceOf;\n\n    constructor(string memory _name, string memory _symbol, uint8 _decimals) {\n        name = _name;\n        symbol = _symbol;\n        decimals = _decimals;\n    }\n\n    function _mint(address to, uint256 amount) internal {\n        totalSupply += amount;\n        balanceOf[to] += amount;\n    }\n}\n` },
+      ]
+    },
+    {
+      name: 'scripts', path: '/scripts', type: 'folder', expanded: false, depth: 0,
+      children: [
+        { name: 'build_chain.sh', path: '/scripts/build_chain.sh', type: 'file', depth: 1, content: `#!/bin/bash\n# 构建联盟链节点\nNODES="node0 node1 node2 node3"\nfor node in $NODES; do\n  echo "Building $node..."\n  cp -r template/ $node/\n  echo "Done: $node"\ndone\n` },
+        { name: 'start_all.sh', path: '/scripts/start_all.sh', type: 'file', depth: 1, content: `#!/bin/bash\n# 启动所有节点\nfor node in node0 node1 node2 node3; do\n  cd $node && bash start.sh &\ndone\necho "All nodes started"\n` },
+      ]
+    },
+    { name: 'README.md', path: '/README.md', type: 'file', depth: 0, content: `# 绿色低碳联盟链实训\n\n本实训环境模拟了一个 4 节点 PBFT 共识的联盟链，映射 6 个绿色低碳组织。\n\n## 目录结构\n- nodes/ - 节点配置\n- contracts/ - 智能合约\n- scripts/ - 部署脚本\n` },
+  ]
+}
+
+function loadFS(): FileNode[] {
+  const raw = safeGet<FileNode[] | null>(FS_KEY, null)
+  return Array.isArray(raw) ? raw : getDefaultFS()
+}
+
+const fileSystem = ref<FileNode[]>(loadFS())
+const persistFS = () => safeSet(FS_KEY, fileSystem.value)
+
+/* 扁平化文件树（用于渲染） */
+const fileTree = computed<FileNode[]>(() => {
+  const result: FileNode[] = []
+  function walk(nodes: FileNode[]) {
+    for (const node of nodes) {
+      result.push(node)
+      if (node.type === 'folder' && node.expanded && node.children) {
+        walk(node.children)
+      }
+    }
+  }
+  walk(fileSystem.value)
+  return result
+})
+
+function toggleFolder(item: FileNode) {
+  item.expanded = !item.expanded
+}
+
+function findNode(path: string, nodes: FileNode[] = fileSystem.value): FileNode | null {
+  for (const node of nodes) {
+    if (node.path === path) return node
+    if (node.children) {
+      const found = findNode(path, node.children)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+function openFile(item: FileNode) {
+  currentFile.value = item
+  fileModified.value = false
+  activeTab.value = 'editor'
+  nextTick(() => initEditor())
+}
+
+function closeFile() {
+  if (fileModified.value) {
+    ElMessageBox.confirm('文件尚未保存，确定关闭吗？', '提示', { type: 'warning' }).then(() => {
+      currentFile.value = null
+      destroyEditor()
+    }).catch(() => {})
+  } else {
+    currentFile.value = null
+    destroyEditor()
+  }
+}
+
+function createNewFile() {
+  ElMessageBox.prompt('请输入文件名（含路径，如 /contracts/MyContract.sol）', '新建文件', {
+    confirmButtonText: '创建',
+    cancelButtonText: '取消',
+    inputValue: '/contracts/',
+  }).then(({ value }) => {
+    if (!value) return
+    const parts = value.split('/')
+    const fileName = parts.pop()!
+    const parentPath = parts.join('/') || '/'
+    const parent = findNode(parentPath)
+    if (!parent || parent.type !== 'folder') {
+      ElMessage.error('父目录不存在')
+      return
+    }
+    if (!parent.children) parent.children = []
+    parent.children.push({
+      name: fileName,
+      path: value,
+      type: 'file',
+      content: '',
+      depth: parent.depth + 1,
+    })
+    parent.expanded = true
+    persistFS()
+    ElMessage.success(`文件 ${value} 已创建`)
+  }).catch(() => {})
+}
+
+function createNewFolder() {
+  ElMessageBox.prompt('请输入文件夹路径（如 /contracts/mylib）', '新建文件夹', {
+    confirmButtonText: '创建',
+    cancelButtonText: '取消',
+    inputValue: '/contracts/',
+  }).then(({ value }) => {
+    if (!value) return
+    const parts = value.split('/')
+    const folderName = parts.pop()!
+    const parentPath = parts.join('/') || '/'
+    const parent = findNode(parentPath)
+    if (!parent || parent.type !== 'folder') {
+      ElMessage.error('父目录不存在')
+      return
+    }
+    if (!parent.children) parent.children = []
+    parent.children.push({
+      name: folderName,
+      path: value,
+      type: 'folder',
+      expanded: false,
+      children: [],
+      depth: parent.depth + 1,
+    })
+    parent.expanded = true
+    persistFS()
+    ElMessage.success(`文件夹 ${value} 已创建`)
+  }).catch(() => {})
+}
+
+function deleteFile(item: FileNode) {
+  ElMessageBox.confirm(`确定删除 ${item.name} 吗？`, '删除文件', { type: 'warning' }).then(() => {
+    // 从父节点移除
+    const parts = item.path.split('/')
+    parts.pop()
+    const parentPath = parts.join('/') || '/'
+    const parent = findNode(parentPath)
+    if (parent && parent.children) {
+      parent.children = parent.children.filter(c => c.path !== item.path)
+    } else {
+      // 顶层
+      fileSystem.value = fileSystem.value.filter(c => c.path !== item.path)
+    }
+    if (currentFile.value?.path === item.path) {
+      currentFile.value = null
+      destroyEditor()
+    }
+    persistFS()
+    ElMessage.success(`${item.name} 已删除`)
+  }).catch(() => {})
+}
+
+function refreshFileTree() {
+  // 触发重新渲染
+  fileSystem.value = [...fileSystem.value]
+  ElMessage.success('文件树已刷新')
+}
+
+/* ---------- Monaco 编辑器 ---------- */
+const editorRef = ref<HTMLElement>()
+const currentFile = ref<FileNode | null>(null)
+const fileModified = ref(false)
+let editorInstance: monaco.editor.IStandaloneCodeEditor | null = null
+
+function getLanguageFromPath(path: string): string {
+  if (path.endsWith('.sol')) return 'solidity'
+  if (path.endsWith('.ini')) return 'ini'
+  if (path.endsWith('.sh') || path.endsWith('.bash')) return 'shell'
+  if (path.endsWith('.json')) return 'json'
+  if (path.endsWith('.md')) return 'markdown'
+  if (path.endsWith('.js') || path.endsWith('.ts')) return 'typescript'
+  if (path.endsWith('.py')) return 'python'
+  return 'plaintext'
+}
+
+function initEditor() {
+  if (!editorRef.value || !currentFile.value) return
+  destroyEditor()
+  
+  const lang = getLanguageFromPath(currentFile.value.path)
+  editorInstance = monaco.editor.create(editorRef.value, {
+    value: currentFile.value.content || '',
+    language: lang,
+    theme: 'vs-dark',
+    fontSize: 13,
+    fontFamily: "'JetBrains Mono', Consolas, monospace",
+    minimap: { enabled: false },
+    scrollBeyondLastLine: false,
+    automaticLayout: true,
+    padding: { top: 12 },
+    lineNumbers: 'on',
+    renderLineHighlight: 'all',
+    wordWrap: 'on',
+  })
+
+  editorInstance.onDidChangeModelContent(() => {
+    fileModified.value = true
+  })
+}
+
+function destroyEditor() {
+  if (editorInstance) {
+    editorInstance.dispose()
+    editorInstance = null
+  }
+}
+
+function saveFile() {
+  if (!currentFile.value || !editorInstance) return
+  currentFile.value.content = editorInstance.getValue()
+  fileModified.value = false
+  persistFS()
+  ElMessage.success(`${currentFile.value.name} 已保存`)
+}
+
+/* ---------- 命令自动补全 ---------- */
+const showAutocomplete = ref(false)
+const autocompleteSuggestions = ref<string[]>([])
+const selectedSuggestionIdx = ref(0)
+
+const ALL_COMMANDS = [
+  'cd', 'ls', 'cat', 'mkdir', 'touch', 'rm', 'cp', 'mv',
+  'tail', 'head', 'grep', 'echo', 'chmod', 'ps', 'kill',
+  'bash', 'source', 'export', 'ifconfig', 'ping',
+  './build_chain.sh', './start_all.sh', './stop_all.sh',
+  'fisco-bcos', 'console',
+]
+
+watch(cmdInput, (val) => {
+  if (!val || val.length < 2) {
+    showAutocomplete.value = false
+    return
+  }
+  const matches = ALL_COMMANDS.filter(c => c.startsWith(val) && c !== val)
+  if (matches.length > 0) {
+    autocompleteSuggestions.value = matches.slice(0, 6)
+    selectedSuggestionIdx.value = 0
+    showAutocomplete.value = true
+  } else {
+    showAutocomplete.value = false
+  }
+})
+
+function selectAutocomplete(suggestion: string) {
+  cmdInput.value = suggestion
+  showAutocomplete.value = false
+  cmdInputRef.value?.focus()
+}
+
+/* ---------- 双击命令填充 ---------- */
+function fillCommand(cmd: string) {
+  cmdInput.value = cmd
+  activeTab.value = 'terminal'
+  nextTick(() => cmdInputRef.value?.focus())
+  ElMessage.success('命令已填充到输入框')
+}
+
+watch(activeTab, (tab) => {
+  if (tab === 'terminal') {
+    nextTick(() => {
+      try { fit?.fit() } catch {}
+      cmdInputRef.value?.focus()
+    })
+  }
+  if (tab === 'editor' && currentFile.value) {
+    nextTick(() => initEditor())
+  }
+})
+
+/* ---------- 监控面板数据 ---------- */
+const txCount = ref(0)
+const nodes = ref([
+  { id: 'node0', role: '管理员+地铁', status: 'running' },
+  { id: 'node1', role: '公交+单车', status: 'running' },
+  { id: 'node2', role: '外卖+回收', status: 'running' },
+  { id: 'node3', role: '热备/监管', status: 'running' },
+])
+const nodeStatusClass = computed(() => {
+  const allRunning = nodes.value.every(n => n.status === 'running')
+  return allRunning ? 'status-ok' : 'status-warn'
+})
+const nodeStatusText = computed(() => {
+  const running = nodes.value.filter(n => n.status === 'running').length
+  return running === 4 ? '全部在线' : `${running}/4 在线`
+})
+
+// 定时更新交易数（模拟）
+let txTimer: any = null
+function startTxTimer() {
+  if (txTimer) clearInterval(txTimer)
+  txTimer = setInterval(() => {
+    txCount.value += Math.floor(Math.random() * 3)
+  }, 5000)
+}
 
 /* ---------- 持久化键 ---------- */
 const DONE_KEY = 'cloud_done_v1'
@@ -292,12 +834,28 @@ function stepDesc(s: any, _i: number) {
 
 let term: Terminal
 let fit: FitAddon
-let ws: WebSocket
-const curCmd = ref('')
 
 const cur = computed(() => steps.value[active.value])
 const chainHeight = computed(() => app.chainHeight)
 const progressPct = computed(() => steps.value.length ? Math.round(doneSteps.value.length / steps.value.length * 100) : 0)
+
+/* ---------- 步骤内命令顺序状态（用于左侧命令列表展示） ---------- */
+function cmdState(i: number): string {
+  const idx = cur.value?.cmd_idx ?? -1
+  if (i <= idx) return 'done'          // 已完成
+  if (i === idx + 1) return 'active'   // 当前待执行
+  return 'wait'                        // 未执行
+}
+function cmdStateIcon(i: number): string {
+  const s = cmdState(i)
+  if (s === 'done') return '✓'
+  if (s === 'active') return '▶'
+  return '○'
+}
+const cmdDoneCount = computed(() => {
+  const idx = cur.value?.cmd_idx ?? -1
+  return Math.min(cur.value?.commands?.length ?? 0, idx + 1)
+})
 
 /* 每步知识点（10 步版：Step 5-8 专门覆盖 6 大联盟节点） */
 const KNOWLEDGE: Record<number, string[]> = {
@@ -414,66 +972,173 @@ async function resetAll() {
   ElMessage.success('进度已重置，从第 1 步重新开始')
 }
 
-/* ---------- 核心：执行当前步骤 ---------- */
-async function exec() {
+/* ---------- 核心：学生手动输入命令执行 ---------- */
+async function execCommand() {
   if (!cur.value) return
+  const cmd = cmdInput.value.trim()
+  if (!cmd) return
+
+  // 记录命令历史
+  cmdHistory.value.push(cmd)
+  historyIdx.value = cmdHistory.value.length
+  cmdInput.value = ''
+
+  // 在终端显示输入的命令（带时间戳）
+  const timestamp = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+  term.writeln(`\x1b[90m[${timestamp}]\x1b[0m \x1b[32m$ ${cmd}\x1b[0m`)
+
   loading.value = true
   startTimer()
   try {
     const wallet = app.currentWallet || '0xlearner'
-    const r: any = await chainApi.execStep(cur.value.step, wallet)
-    term.writeln(`\x1b[36m┌─ 步骤 ${cur.value.step}: ${cur.value.title}\x1b[0m`)
-    cur.value.commands.forEach((c: string) => term.writeln(`\x1b[32m$ ${c}\x1b[0m`))
-    term.writeln('')
-    // 输出真实结果，高亮关键信息
+    const r: any = await chainApi.execCommand(cur.value.step, cmd, wallet)
+
+    // 输出执行结果
     const out = r.output || ''
-    out.split('\n').forEach((line: string) => {
-      if (line.includes('contract address') || line.includes('transaction hash') || line.includes('block number')) {
-        term.writeln(`\x1b[33m${line}\x1b[0m`)
-      } else if (line.includes('[完成]') || line.includes('返回:')) {
-        term.writeln(`\x1b[32m${line}\x1b[0m`)
-      } else {
-        term.writeln(line)
-      }
-    })
-    const elapsed = stopTimer(cur.value.step)
-    term.writeln(`\x1b[36m└─────────── 耗时 ${fmtDuration(elapsed)} ──────────────\x1b[0m`)
-    term.writeln('')
-    // 以服务端 ok 为准；只要服务端说 done 才算完成（避免前端误判"已完成"，但后端进度没同步）
-    const stepOk = !!r.ok
-    if (!stepOk) {
-      ElMessage.warning(`步骤 ${cur.value.step} 执行未成功，已记录但未标记完成。请按终端输出提示检查后再执行。`)
-    }
-    const wasNew = stepOk && !doneSteps.value.includes(cur.value.step)
-    if (wasNew) {
-      // 用新数组引用触发 el-steps / 进度环 / 计数器立即重渲染（避免 .push 不触发 diff 的滞后）
-      doneSteps.value = [...doneSteps.value, cur.value.step]
-      persistDone()
-      try { app.confetti({ particleCount: 60, spread: 60, origin: { y: 0.55 }, ticks: 140 }) } catch {}
-    }
-    // 同步服务端进度：确保本地 doneSteps 与 chain_tutorial_progress 表取并集，
-    // 换浏览器/换设备也能续学，且计数器立即反映最新服务端状态
-    syncProgressFromServer()
-    if (doneSteps.value.length === steps.value.length) {
-      ElMessage({
-        type: 'success',
-        duration: 5500,
-        message: '🎉 恭喜完成全部 10 步搭链教程！6 大联盟节点（管理员/地铁/公交/单车/外卖/回收）配置完成，前往绿色低碳联盟链开始完整运营体验吧',
+    if (r.ok) {
+      // 成功：增强语法高亮
+      out.split('\n').forEach((line: string) => {
+        // 合约地址、交易哈希、区块号等关键信息（黄色高亮）
+        if (line.match(/contract address|transaction hash|block number|tx hash|block height/i)) {
+          term.writeln(`\x1b[33m${line}\x1b[0m`)
+        }
+        // 成功标记（绿色）
+        else if (line.includes('✅') || line.includes('[完成]') || line.includes('SUCCESS') || line.includes('返回:')) {
+          term.writeln(`\x1b[32m${line}\x1b[0m`)
+        }
+        // 十六进制地址/哈希（青色）
+        else if (line.match(/0x[a-fA-F0-9]{40,}/)) {
+          term.writeln(`\x1b[36m${line}\x1b[0m`)
+        }
+        // 数值/统计信息（蓝色）
+        else if (line.match(/balance|amount|gas|count|total|数量|余额|总计/i)) {
+          term.writeln(`\x1b[34m${line}\x1b[0m`)
+        }
+        // 表格/列表项（白色）
+        else if (line.startsWith('  ') || line.startsWith('│') || line.startsWith('├') || line.startsWith('└')) {
+          term.writeln(line)
+        }
+        // 普通输出
+        else {
+          term.writeln(line)
+        }
       })
-      try { app.confetti({ particleCount: 160, spread: 90, startVelocity: 50, origin: { y: 0.5 }, ticks: 220 }) } catch {}
-    } else if (wasNew) {
-      ElMessage.success(`步骤 ${cur.value.step} 完成 · 耗时 ${fmtDuration(elapsed)} · 真实链已写入 (${progressPct.value}%)`)
+      // 成功后同步命令进度（左侧命令列表状态实时更新）
+      if (typeof r.cmd_index === 'number' && r.cmd_index >= 0) {
+        cur.value.cmd_idx = r.cmd_index
+        cur.value.cmd_total = r.cmd_total
+      }
+    } else if (r.error_type === 'order') {
+      // 顺序错误：黄色警告提示
+      term.writeln('')
+      term.writeln('\x1b[33m⚠️  命令执行顺序错误\x1b[0m')
+      out.split('\n').forEach((line: string) => {
+        if (line.startsWith('$ ')) {
+          term.writeln(`\x1b[36m${line}\x1b[0m`)
+        } else if (line.trim()) {
+          term.writeln(`\x1b[33m${line}\x1b[0m`)
+        }
+      })
     } else {
-      ElMessage.success(`重新执行完成 · 累计耗时 ${stepDurations.value[cur.value.step] || fmtDuration(elapsed)}`)
+      // 失败：红色显示错误提示
+      term.writeln('')
+      term.writeln('\x1b[31m❌ 命令执行失败\x1b[0m')
+      out.split('\n').forEach((line: string) => {
+        if (line.includes('❌') || line.includes('语法错误') || line.includes('失败') || line.includes('Error')) {
+          term.writeln(`\x1b[31m${line}\x1b[0m`)
+        } else if (line.startsWith('  ▪') || line.startsWith('  •')) {
+          term.writeln(`\x1b[36m${line}\x1b[0m`)
+        } else if (line.trim()) {
+          term.writeln(`\x1b[31m${line}\x1b[0m`)
+        }
+      })
     }
-    app.refreshStatus()
-    // 自动跳到下一步（最后一步不跳）
-    if (wasNew && active.value < steps.value.length - 1) {
-      nextTick(() => { active.value = Math.min(steps.value.length - 1, active.value + 1) })
+    term.writeln('')
+
+    const elapsed = stopTimer(cur.value.step)
+
+    // 如果命令执行成功且步骤完成
+    if (r.step_completed) {
+      const wasNew = !doneSteps.value.includes(cur.value.step)
+      if (wasNew) {
+        doneSteps.value = [...doneSteps.value, cur.value.step]
+        persistDone()
+        try { app.confetti({ particleCount: 60, spread: 60, origin: { y: 0.55 }, ticks: 140 }) } catch {}
+        term.writeln(`\x1b[36m└─ ✅ 步骤 ${cur.value.step} 完成 · 耗时 ${fmtDuration(elapsed)} ──────────\x1b[0m`)
+        term.writeln('')
+      }
+      syncProgressFromServer()
+      if (doneSteps.value.length === steps.value.length) {
+        ElMessage({
+          type: 'success',
+          duration: 5500,
+          message: '🎉 恭喜完成全部 10 步搭链教程！6 大联盟节点配置完成，前往绿色低碳联盟链开始完整运营体验吧',
+        })
+        try { app.confetti({ particleCount: 160, spread: 90, startVelocity: 50, origin: { y: 0.5 }, ticks: 220 }) } catch {}
+      } else if (wasNew) {
+        ElMessage.success(`步骤 ${cur.value.step} 完成 · 耗时 ${fmtDuration(elapsed)} (${progressPct.value}%)`)
+      }
+      app.refreshStatus()
+      if (wasNew && active.value < steps.value.length - 1) {
+        nextTick(() => { active.value = Math.min(steps.value.length - 1, active.value + 1) })
+      }
+    } else if (!r.ok) {
+      term.writeln(`\x1b[31m└─ ❌ 执行失败，请按上方提示修正后重试 ──────────\x1b[0m`)
+      term.writeln('')
     }
+  } catch (e: any) {
+    term.writeln(`\x1b[31m执行异常: ${e.message || e}\x1b[0m`)
+    term.writeln('')
   } finally {
     if (curStartTs.value) stopTimer(cur.value?.step || 0)
     loading.value = false
+    // 聚焦回输入框
+    nextTick(() => cmdInputRef.value?.focus())
+  }
+}
+
+/* ---------- 命令历史导航（上下键） ---------- */
+function historyUp() {
+  if (cmdHistory.value.length === 0) return
+  if (historyIdx.value > 0) {
+    historyIdx.value--
+    cmdInput.value = cmdHistory.value[historyIdx.value]
+  }
+}
+function historyDown() {
+  if (cmdHistory.value.length === 0) return
+  if (historyIdx.value < cmdHistory.value.length - 1) {
+    historyIdx.value++
+    cmdInput.value = cmdHistory.value[historyIdx.value]
+  } else {
+    historyIdx.value = cmdHistory.value.length
+    cmdInput.value = ''
+  }
+}
+
+/* ---------- 禁止粘贴相关 ---------- */
+function onPasteBlock(e: ClipboardEvent) {
+  e.preventDefault()
+  ElMessage.warning('云桌面终端禁止粘贴，请手动输入命令')
+}
+function blockPasteHotkeys(e: KeyboardEvent) {
+  // Ctrl+V / Cmd+V
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+    e.preventDefault()
+    ElMessage.warning('云桌面终端禁止粘贴，请手动输入命令')
+    return
+  }
+  // Ctrl+Shift+V (无格式粘贴)
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'v' || e.key === 'V')) {
+    e.preventDefault()
+    ElMessage.warning('云桌面终端禁止粘贴，请手动输入命令')
+    return
+  }
+  // Shift+Insert
+  if (e.shiftKey && e.key === 'Insert') {
+    e.preventDefault()
+    ElMessage.warning('云桌面终端禁止粘贴，请手动输入命令')
+    return
   }
 }
 
@@ -488,52 +1153,29 @@ function initTerm() {
       green: '#00e6c3',
       yellow: '#ffcf4d',
       cyan: '#4d8dff',
+      red: '#ff6b6b',
     },
     fontFamily: "'JetBrains Mono', Consolas, monospace",
     fontSize: 13,
-    cursorBlink: true,
+    cursorBlink: false,
+    disableStdin: true,
   })
   fit = new FitAddon()
   term.loadAddon(fit)
   term.open(termRef.value!)
   fit.fit()
   term.writeln('\x1b[36m╔══════════════════════════════════════════════╗\x1b[0m')
-  term.writeln('\x1b[36m║   FISCO 联盟链云桌面 · 真实 EVM 实训终端     ║\x1b[0m')
+  term.writeln('\x1b[36m║   FISCO 联盟链云桌面 · 手动输入实训终端      ║\x1b[0m')
   term.writeln('\x1b[36m╚══════════════════════════════════════════════╝\x1b[0m')
   term.writeln('')
-  term.writeln('提示：点击左侧「在真实链执行」按钮，每一步都会在真实链上执行并输出真实结果。')
-  term.writeln('       （合约地址、交易哈希、Gas 消耗均为真实 EVM 返回）')
+  term.writeln('提示：请在下方输入框手动输入命令，按回车执行。')
+  term.writeln('       语法正确 → 返回真实链执行结果（合约地址、交易哈希、Gas 等）')
+  term.writeln('       语法错误 → 给出具体错误提示和正确格式')
   if (Object.keys(stepDurationsRaw.value).length) {
     term.writeln(`\x1b[33m已记录 ${Object.keys(stepDurationsRaw.value).length} 步历史耗时，累计 ${totalDuration.value}\x1b[0m`)
   }
   term.writeln('')
-  term.write('\x1b[32m$ \x1b[0m')
-
-  // WebSocket
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-  try {
-    ws = new WebSocket(`${proto}://${location.host}/api/cloud/ws/terminal`)
-    ws.onmessage = (e) => { term.write(e.data) }
-  } catch {
-    /* WebSocket 连接不阻塞核心功能（后端可能未启用） */
-  }
-
-  term.onData((data) => {
-    if (data === '\r') {
-      term.write('\r\n')
-      try { ws?.send(curCmd.value) } catch {}
-      curCmd.value = ''
-      term.write('\x1b[32m$ \x1b[0m')
-    } else if (data === '\u007f') {
-      if (curCmd.value.length > 0) {
-        curCmd.value = curCmd.value.slice(0, -1)
-        term.write('\b \b')
-      }
-    } else {
-      curCmd.value += data
-      term.write(data)
-    }
-  })
+  nextTick(() => cmdInputRef.value?.focus())
 }
 
 /* ---------- 生命周期 ---------- */
@@ -549,6 +1191,8 @@ onMounted(async () => {
   await nextTick()
   initTerm()
   window.addEventListener('resize', onResize)
+  // 启动交易数定时器
+  startTxTimer()
 })
 
 onActivated(() => {
@@ -565,9 +1209,10 @@ watch(() => app.chainHeight, () => { /* noop */ })
 function onResize() { try { fit?.fit() } catch {} }
 
 onBeforeUnmount(() => {
-  ws?.close()
   term?.dispose()
+  destroyEditor()
   window.removeEventListener('resize', onResize)
+  if (txTimer) clearInterval(txTimer)
 })
 </script>
 
@@ -575,6 +1220,188 @@ onBeforeUnmount(() => {
 .cloud { display: grid; grid-template-columns: 450px 1fr; gap: 14px; height: calc(100vh - 110px); }
 .left { display: flex; flex-direction: column; gap: 14px; overflow-y: auto; min-width: 0; padding-right: 4px; }
 .steps-card { flex-shrink: 0; min-width: 0; }
+
+/* ---------- 右侧面板布局 ---------- */
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ---------- 监控面板 ---------- */
+.monitor-card {
+  flex-shrink: 0;
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(0, 230, 195, 0.05), rgba(77, 141, 255, 0.03));
+  border: 1px solid rgba(0, 230, 195, 0.2);
+}
+
+.monitor-card .dq-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--dq-text);
+}
+
+.monitor-status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: rgba(0, 230, 195, 0.1);
+  color: var(--dq-primary);
+}
+
+.monitor-status.status-ok .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00e6c3;
+  box-shadow: 0 0 8px rgba(0, 230, 195, 0.6);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.monitor-status.status-warn {
+  background: rgba(255, 207, 77, 0.1);
+  color: var(--dq-warn);
+}
+
+.monitor-status.status-warn .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ffcf4d;
+  box-shadow: 0 0 8px rgba(255, 207, 77, 0.6);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.monitor-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.monitor-item {
+  text-align: center;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--dq-border);
+  border-radius: 8px;
+  transition: all 0.3s;
+}
+
+.monitor-item:hover {
+  background: rgba(0, 230, 195, 0.05);
+  border-color: rgba(0, 230, 195, 0.3);
+  transform: translateY(-2px);
+}
+
+.mi-label {
+  font-size: 11px;
+  color: var(--dq-text-dim);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.mi-value {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: var(--dq-mono);
+  background: var(--dq-grad-primary);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.node-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.node-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--dq-border);
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.node-item:hover {
+  background: rgba(0, 230, 195, 0.03);
+  border-color: rgba(0, 230, 195, 0.2);
+}
+
+.node-id {
+  font-family: var(--dq-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dq-primary);
+  min-width: 60px;
+}
+
+.node-role {
+  flex: 1;
+  font-size: 12px;
+  color: var(--dq-text-dim);
+}
+
+.node-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 10px;
+}
+
+.node-status.running {
+  background: rgba(0, 230, 195, 0.1);
+  color: var(--dq-primary);
+}
+
+.node-status.stopped {
+  background: rgba(255, 107, 107, 0.1);
+  color: var(--dq-danger);
+}
+
+.node-status .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.node-status.running .dot {
+  box-shadow: 0 0 6px rgba(0, 230, 195, 0.6);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* ---------- 终端卡片 ---------- */
+.terminal-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 
 /* ---------- 进度头：环 + 信息 ---------- */
 .progress-head {
@@ -636,6 +1463,27 @@ onBeforeUnmount(() => {
 .section-label { font-size: 12px; color: var(--dq-text-dim); margin: 14px 0 8px; text-transform: uppercase; letter-spacing: 1px; }
 .cmds { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; min-width: 0; }
 .cmds :deep(.dq-cmd-line) { max-width: 100%; code { word-break: break-all; white-space: normal; } }
+
+/* ---------- 命令执行顺序状态 ---------- */
+.cmds :deep(.dq-cmd-line) {
+  &.done {
+    opacity: 0.55;
+    border-left-color: rgba(0, 230, 195, 0.6);
+    .prompt { color: var(--dq-primary); }
+    code { color: var(--dq-text-dim); }
+  }
+  &.active {
+    border-left-color: var(--dq-primary);
+    background: rgba(0, 230, 195, 0.07);
+    box-shadow: 0 0 0 1px rgba(0, 230, 195, 0.15);
+    .prompt { color: var(--dq-primary); font-weight: 700; }
+  }
+  &.wait {
+    opacity: 0.7;
+    border-left-color: var(--dq-border);
+    .prompt { color: var(--dq-text-dimmer); }
+  }
+}
 .ops { margin-top: 16px; display: flex; gap: 8px; align-items: center; }
 
 /* ---------- 知识点卡片 ---------- */
@@ -697,8 +1545,34 @@ onBeforeUnmount(() => {
     opacity: 0.7;
   }
 }
-.term { height: 100%; padding-top: 24px; }
+.term { height: calc(100% - 42px); padding-top: 24px; }
 :deep(.xterm) { padding: 4px 8px; }
+
+/* ---------- 命令输入框 ---------- */
+.cmd-input-bar {
+  height: 42px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 12px;
+  background: rgba(0, 230, 195, 0.04);
+  border-top: 1px solid var(--dq-border);
+  .cmd-prompt {
+    color: var(--dq-primary);
+    font-family: var(--dq-mono);
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .cmd-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--dq-text);
+    font-family: var(--dq-mono);
+    font-size: 13px;
+    &::placeholder { color: var(--dq-text-dimmer); }
+    &:focus { color: var(--dq-primary); }
+  }
+}
 .term-foot {
   padding-top: 10px;
   display: flex; justify-content: space-between; align-items: center;
@@ -718,5 +1592,262 @@ onBeforeUnmount(() => {
 @media (max-width: 1180px) {
   .cloud { grid-template-columns: 1fr; height: auto; }
   .terminal-card { min-height: 480px; }
+}
+
+/* ---------- 标签页样式 ---------- */
+.tab-bar {
+  display: flex;
+  gap: 2px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--dq-border);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--dq-text-dim);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  position: relative;
+
+  &:hover {
+    color: var(--dq-text);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  &.active {
+    color: var(--dq-primary);
+    border-bottom-color: var(--dq-primary);
+    background: rgba(0, 230, 195, 0.05);
+  }
+
+  .modified-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--dq-warn);
+    margin-left: 4px;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+}
+
+.tab-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  animation: fadeIn 0.2s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---------- 文件浏览器样式 ---------- */
+.file-browser {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.file-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--dq-border);
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.file-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.tree-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover {
+    background: rgba(0, 230, 195, 0.05);
+  }
+}
+
+.tree-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--dq-text-dim);
+  flex-shrink: 0;
+}
+
+.tree-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--dq-primary);
+  flex-shrink: 0;
+}
+
+.tree-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--dq-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &.is-file {
+    color: var(--dq-text-dim);
+    &:hover {
+      color: var(--dq-primary);
+    }
+  }
+}
+
+.tree-actions {
+  opacity: 0;
+  transition: opacity 0.2s;
+
+  .tree-item:hover & {
+    opacity: 1;
+  }
+
+  .el-button {
+    padding: 2px 4px;
+    color: var(--dq-text-dimmer);
+
+    &:hover {
+      color: var(--dq-danger);
+    }
+  }
+}
+
+/* ---------- 编辑器样式 ---------- */
+.editor-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--dq-border);
+  background: rgba(0, 0, 0, 0.15);
+
+  .file-path {
+    font-family: var(--dq-mono);
+    font-size: 12px;
+    color: var(--dq-text-dim);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .file-status {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 10px;
+    background: rgba(0, 230, 195, 0.1);
+    color: var(--dq-primary);
+
+    &.modified {
+      background: rgba(255, 207, 77, 0.1);
+      color: var(--dq-warn);
+    }
+  }
+}
+
+.editor-wrap {
+  flex: 1;
+  overflow: hidden;
+}
+
+.editor-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--dq-text-dimmer);
+  gap: 12px;
+
+  .el-icon {
+    font-size: 48px;
+    opacity: 0.3;
+  }
+
+  p {
+    font-size: 13px;
+    margin: 0;
+  }
+}
+
+/* ---------- 自动补全下拉 ---------- */
+.autocomplete-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: var(--dq-bg);
+  border: 1px solid var(--dq-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+  margin-bottom: 4px;
+}
+
+.autocomplete-item {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-family: var(--dq-mono);
+  color: var(--dq-text);
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover,
+  &.selected {
+    background: rgba(0, 230, 195, 0.1);
+    color: var(--dq-primary);
+  }
+}
+
+/* ---------- 命令列表双击提示 ---------- */
+.cmds :deep(.dq-cmd-line) {
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: rgba(0, 230, 195, 0.03);
+    transform: translateX(2px);
+  }
 }
 </style>

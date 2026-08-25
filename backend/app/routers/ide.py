@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from typing import List, Optional
 
@@ -47,25 +48,45 @@ class FileItem(BaseModel):
 @router.get("/projects")
 def list_projects():
     with get_conn() as conn:
-        rows = conn.execute("SELECT * FROM projects ORDER BY updated_at DESC").fetchall()
+        # 内置「系统内置合约」工程始终排最前，其余按最近编辑时间倒序
+        rows = conn.execute(
+            "SELECT * FROM projects ORDER BY is_builtin DESC, updated_at DESC"
+        ).fetchall()
     return [dict(r) for r in rows]
 
 
 @router.post("/projects")
 def create_project(p: Project):
+    name = (p.name or "").strip()
+    if not name:
+        raise HTTPException(400, "工程名称不能为空")
+    if len(name) > 30:
+        raise HTTPException(400, "工程名称过长：请控制在 30 个字符以内")
+    # 命名规范：仅允许中文 / 字母 / 数字 / 下划线 / 中划线 / 空格
+    if re.search(r"[^\w\u4e00-\u9fa5\- ]", name):
+        raise HTTPException(400, "工程名称包含非法字符：仅支持中文、字母、数字、下划线、中划线")
+    with get_conn() as conn:
+        clash = conn.execute(
+            "SELECT 1 FROM projects WHERE name=? AND id IS NOT ?", (name, p.id or "")
+        ).fetchone()
+        if clash:
+            raise HTTPException(400, f"已存在同名工程「{name}」，请更换名称")
     pid = p.id or uuid.uuid4().hex[:12]
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO projects(id,name,created_at,updated_at) VALUES(?,?,?,?) "
+            "INSERT INTO projects(id,name,created_at,updated_at,is_builtin) VALUES(?,?,?,?,0) "
             "ON CONFLICT(id) DO UPDATE SET name=excluded.name, updated_at=excluded.updated_at",
-            (pid, p.name, now(), now()),
+            (pid, name, now(), now()),
         )
-    return {"id": pid, "name": p.name}
+    return {"id": pid, "name": name}
 
 
 @router.delete("/projects/{pid}")
 def delete_project(pid: str):
     with get_conn() as conn:
+        row = conn.execute("SELECT is_builtin FROM projects WHERE id=?", (pid,)).fetchone()
+        if row and row["is_builtin"]:
+            raise HTTPException(403, "内置工程「系统内置合约」不可删除，仅供学习参考")
         conn.execute("DELETE FROM project_files WHERE project_id=?", (pid,))
         conn.execute("DELETE FROM projects WHERE id=?", (pid,))
     return {"ok": True}

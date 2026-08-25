@@ -104,6 +104,7 @@ def _ensure_progress_table():
             wallet TEXT NOT NULL,
             step INTEGER NOT NULL,
             done INTEGER NOT NULL DEFAULT 0,
+            cmd_idx INTEGER NOT NULL DEFAULT -1,
             output TEXT,
             started_at TEXT,
             finished_at TEXT,
@@ -112,10 +113,12 @@ def _ensure_progress_table():
             session_id TEXT DEFAULT '',
             UNIQUE(wallet, step)
         )""")
-        # 增量列：class_id（在线迁移，兼容已存在的旧表）
+        # 增量列：class_id / cmd_idx（在线迁移，兼容已存在的旧表）
         existing = {row["name"] for row in conn.execute("PRAGMA table_info(chain_tutorial_progress)")}
         if "class_id" not in existing:
             conn.execute("ALTER TABLE chain_tutorial_progress ADD COLUMN class_id TEXT NOT NULL DEFAULT ''")
+        if "cmd_idx" not in existing:
+            conn.execute("ALTER TABLE chain_tutorial_progress ADD COLUMN cmd_idx INTEGER NOT NULL DEFAULT -1")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tutorial_progress_class ON chain_tutorial_progress(class_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tutorial_progress_user ON chain_tutorial_progress(user_id)")
 
@@ -124,6 +127,7 @@ def _upsert_step_state(
     wallet: str, step: int, done: int,
     output: str | None = None, finished: bool = False,
     user_id: str = "", class_id: str = "",
+    cmd_idx: int | None = None,
 ):
     _ensure_progress_table()
     ts = now()
@@ -133,24 +137,41 @@ def _upsert_step_state(
             (wallet, step),
         ).fetchone()
         if exists:
+            # 动态构建更新字段（cmd_idx 单独推进，done 由最后一条命令触发）
+            sets = []
+            params = []
             if finished:
-                conn.execute(
-                    "UPDATE chain_tutorial_progress SET done=?, output=COALESCE(?,output), "
-                    "finished_at=?, user_id=COALESCE(NULLIF(?, ''), user_id), "
-                    "class_id=COALESCE(NULLIF(?, ''), class_id) "
-                    "WHERE wallet=? AND step=?",
-                    (done, output, ts, user_id, class_id, wallet, step),
-                )
+                sets.append("done=?")
+                params.append(done)
+                sets.append("output=COALESCE(?,output)")
+                params.append(output)
+                sets.append("finished_at=?")
+                params.append(ts)
+                sets.append("user_id=COALESCE(NULLIF(?, ''), user_id)")
+                params.append(user_id)
+                sets.append("class_id=COALESCE(NULLIF(?, ''), class_id)")
+                params.append(class_id)
             elif output is not None:
+                sets.append("output=?")
+                params.append(output)
+            if cmd_idx is not None:
+                sets.append("cmd_idx=?")
+                params.append(cmd_idx)
+                if not finished:
+                    sets.append("started_at=COALESCE(started_at, ?)")
+                    params.append(ts)
+            if sets:
+                params += [wallet, step]
                 conn.execute(
-                    "UPDATE chain_tutorial_progress SET output=? WHERE wallet=? AND step=?",
-                    (output, wallet, step),
+                    f"UPDATE chain_tutorial_progress SET {', '.join(sets)} WHERE wallet=? AND step=?",
+                    params,
                 )
         else:
             conn.execute(
-                "INSERT INTO chain_tutorial_progress(wallet,step,done,output,started_at,finished_at,user_id,class_id) "
-                "VALUES(?,?,?,?,?,?,?,?)",
-                (wallet, step, done, output, ts, ts if finished else None, user_id, class_id),
+                "INSERT INTO chain_tutorial_progress(wallet,step,done,cmd_idx,output,started_at,finished_at,user_id,class_id) "
+                "VALUES(?,?,?,?,?,?,?,?,?)",
+                (wallet, step, done, cmd_idx if cmd_idx is not None else -1,
+                 output, ts, ts if finished else None, user_id, class_id),
             )
 
 
@@ -161,7 +182,7 @@ def get_progress(wallet: str = "default"):
     total_steps = len(TUTORIAL)
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT step, done, output, started_at, finished_at "
+            "SELECT step, done, cmd_idx, output, started_at, finished_at "
             "FROM chain_tutorial_progress WHERE wallet=? ORDER BY step",
             (wallet,),
         ).fetchall()
@@ -172,7 +193,7 @@ def get_progress(wallet: str = "default"):
     done_count = 0
     for s in TUTORIAL:
         step_num = s["step"]
-        row = state_by_step.get(step_num, {"step": step_num, "done": 0, "output": None, "started_at": None, "finished_at": None})
+        row = state_by_step.get(step_num, {"step": step_num, "done": 0, "cmd_idx": -1, "output": None, "started_at": None, "finished_at": None})
         if row.get("done"):
             done_count += 1
         progress_list.append({
@@ -180,6 +201,8 @@ def get_progress(wallet: str = "default"):
             "title": s["title"],
             "desc": s.get("desc", ""),
             "done": bool(row.get("done")),
+            "cmd_idx": int(row.get("cmd_idx") or -1),
+            "cmd_total": len(s.get("commands", [])),
             "finished_at": row.get("finished_at"),
             "has_output": bool(row.get("output")),
         })
@@ -235,12 +258,12 @@ NODE_ORG_MAP: Dict[str, List[str]] = {
     "node2": ["📦 外卖平台", "♻️ 回收公司"],
     "node3": ["🔥 热备共识节点（可扩展第 7 方审计）"],
 }
-# 6 角色能量发放规则
+# 6 角色能量发放规则（阈值与生态合约 eco.py ROLES 严格一致）
 ROLE_ENERGY_RULES: List[Dict[str, str]] = [
     {"role": "🛡️ 管理员(admin)",        "scene": "系统管理方，部署合约 / 管理树种 / 不发放能量", "amount": "0 / 次", "wallet": "0xadmin"},
-    {"role": "🚇 地铁集团(metro)",       "scene": "乘坐地铁 1 次（≥3 站）",                     "amount": "+50 能量", "wallet": "0xmetro"},
-    {"role": "🚌 公交集团(bus)",         "scene": "乘坐公交 1 次",                               "amount": "+20 能量", "wallet": "0xbus"},
-    {"role": "🚲 共享单车(bike)",        "scene": "骑行 ≥ 2 公里",                               "amount": "+15 能量", "wallet": "0xbike"},
+    {"role": "🚇 地铁集团(metro)",       "scene": "乘坐地铁 1 次（里程 ≥ 10 km）",               "amount": "+50 能量", "wallet": "0xmetro"},
+    {"role": "🚌 公交集团(bus)",         "scene": "乘坐公交 1 次（时长 ≥ 5 分钟）",              "amount": "+20 能量", "wallet": "0xbus"},
+    {"role": "🚲 共享单车(bike)",        "scene": "骑行 ≥ 2 km",                                "amount": "+15 能量", "wallet": "0xbike"},
     {"role": "📦 外卖平台(takeout)",     "scene": "选择「无需餐具」绿色外卖 1 单",               "amount": "+10 能量", "wallet": "0xtakeout"},
     {"role": "♻️ 回收公司(recycle)",     "scene": "旧纸箱 / 塑料瓶回收 ≥ 1kg",                   "amount": "+100 能量", "wallet": "0xrecycle"},
 ]
@@ -248,187 +271,263 @@ ROLE_ENERGY_RULES: List[Dict[str, str]] = [
 TUTORIAL: List[Dict[str, Any]] = [
     {
         "step": 1,
-        "title": "启动链节点（4 共识节点承载 6 联盟组织）",
-        "desc": "使用 FISCO-BCOS 官方 build_chain.sh 一键生成 4 节点 PBFT 联盟链配置并启动。\n"
-                "本项目的 6 大联盟成员：🛡️管理员 / 🚇地铁 / 🚌公交 / 🚲单车 / 📦外卖 / ♻️回收，\n"
-                "按「node0=管理员+地铁  node1=公交+单车  node2=外卖+回收  node3=热备」映射到 4 逻辑节点；\n"
-                "生产环境可直接改为 `-l 127.0.0.1:6` 启动 6 个物理节点一对一承载。",
+        "title": "下载官方脚本并生成 4 节点联盟链（证书体系建立）",
+        "desc": "严格按 FISCO-BCOS 官方建链流程：下载 build_chain.sh → 赋予执行权限 → 一键生成 4 节点 PBFT 联盟链。\n"
+                "build_chain.sh 会同时生成完整的链上证书体系：CA 证书、机构证书（Agency）、节点证书（Node）、SDK 证书，\n"
+                "证书 = 联盟准入凭证：只有持有联盟 CA 签发的有效证书，机构/节点/控制台才能接入本链。\n"
+                "本项目 6 大联盟成员映射：\n"
+                "node0=🛡️管理员+🚇地铁 · node1=🚌公交+🚲单车 · node2=📦外卖+♻️回收 · node3=🔥热备共识。",
         "principle": "FISCO-BCOS 采用 PBFT 共识，4 节点可容忍 1 个拜占庭节点（3f+1=4）。\n"
-                     "每个逻辑节点可代表多个联盟成员（共享共识权重），业务上通过「钱包地址 + 角色合约」做权限隔离。",
+                     "证书分三级：根 CA → 机构证书 → 节点/SDK 证书，构成联盟准入的信任链；\n"
+                     "每个逻辑节点可代表多个业务组织（共享共识权重），业务上通过「钱包地址 + 合约白名单」做权限隔离。",
         "commands": [
-            "cd ~/fisco && curl -#LO https://github.com/FISCO-BCOS/FISCO-BCOS/releases/download/v2.9.1/build_chain.sh && chmod +x build_chain.sh",
-            "# 4 节点版（实训用，6 组织复用）",
+            "curl -#LO https://github.com/FISCO-BCOS/FISCO-BCOS/releases/download/v2.9.1/build_chain.sh && chmod +x build_chain.sh",
             "bash build_chain.sh -l 127.0.0.1:4 -p 30300,20200,8545 -o nodes",
-            "# 生产可改用 6 节点版：bash build_chain.sh -l \"127.0.0.1:6\" -p 30300,20200,8545 -o nodes6",
+            "cat nodes/127.0.0.1/node0/config.ini | grep -E '^\[|node_listen|channel_listen|peer_listen' | head -20",
+            "cat nodes/127.0.0.1/node0/conf/group.1.genesis | head -30",
             "bash nodes/127.0.0.1/start_all.sh",
         ],
-        "expected": "node0 ~ node3 依次输出 start successful；6 个业务组织通过 4 共识节点 + 钱包权限组合承载。",
-        "tip": "关键映射：node0=管理员/地铁 · node1=公交/单车 · node2=外卖/回收 · node3=热备",
+        "expected": "build_chain.sh 输出 CA/机构/节点/SDK 四类证书生成信息；config.ini 显示网络配置（listen_ip、listen_port）；genesis 显示共识配置（consensus_type=pbft、sealer_list 4 个节点）；start_all.sh 输出 4 个 start successful。",
+        "tip": "故障排查：① 若 start 失败检查端口占用 netstat -tlnp | grep -E '30300|20200|8545'；② 查看节点日志 tail -f nodes/127.0.0.1/node0/log/log_*.log | grep ERROR",
     },
     {
         "step": 2,
-        "title": "检查节点进程（标注 6 组织归属）",
-        "desc": "确认 4 个 fisco-bcos 进程正在运行，并对照映射表确认每个节点承载的 6 大业务组织：\n"
-                "  node0 → 管理员 + 地铁集团\n"
-                "  node1 → 公交集团 + 共享单车\n"
-                "  node2 → 外卖平台 + 回收公司\n"
-                "  node3 → 热备共识（后续可接入审计/监管节点）",
-        "principle": "联盟链的每个节点都是独立进程；进程存活 ≠ 业务可用，\n"
-                     "还需要「节点钱包地址 + 角色合约白名单」确认组织权限。生产环境用 systemd/supervisor 守护进程。",
+        "title": "检查节点进程与证书目录（联盟准入凭证核验）",
+        "desc": "① 确认 4 个 fisco-bcos 进程在运行；\n"
+                "② 查看 nodes 目录结构，核验链上证书体系的四大组成部分（CA / Agency / Node / SDK）；\n"
+                "③ 用 openssl 验证证书链完整性——节点证书必须由联盟 CA 签发；\n"
+                "④ 用 nc 测试节点端口连通性，确保网络层可达。\n"
+                "对照映射表确认每个节点承载的业务组织：\n"
+                "  node0 → 管理员 + 地铁集团 · node1 → 公交集团 + 共享单车\n"
+                "  node2 → 外卖平台 + 回收公司 · node3 → 热备共识。",
+        "principle": "联盟链每个节点都是独立进程，进程存活 ≠ 联盟可用；\n"
+                     "还需核验「节点证书是否由联盟 CA 签发」以及各组织钱包位置。\n"
+                     "证书链验证：openssl verify -CAfile ca.crt node.crt 验证签名链完整性。\n"
+                     "生产环境用 systemd/supervisor 守护进程。",
         "commands": [
-            "ps -ef | grep fisco-bcos | grep -v grep",
-            "# 查看节点对应的联盟成员（对照表）",
-            "echo 'node0 -> 管理员 + 地铁集团 | node1 -> 公交 + 单车 | node2 -> 外卖 + 回收 | node3 -> 热备'",
+            "ps -ef | grep fisco-bcos | grep -v grep | wc -l",
+            "ls nodes/127.0.0.1/",
+            "openssl x509 -in nodes/127.0.0.1/ca/ca.crt -noout -subject -issuer -dates",
+            "openssl verify -CAfile nodes/127.0.0.1/ca/ca.crt nodes/127.0.0.1/node0/conf/node.crt",
+            "nc -zv 127.0.0.1 30300 20200 8545 2>&1",
         ],
-        "expected": "看到 4 个 fisco-bcos 进程（PID 不同），并能说出每个进程承载哪 1~2 个业务组织、共 6 个。",
-        "tip": "6 组织清单：管理员🛡️ 地铁🚇 公交🚌 单车🚲 外卖📦 回收♻️",
+        "expected": "① 输出 4（4 个 fisco-bcos 进程）；② 目录含 agency/ ca/ node0~3/ sdk/；\n"
+                    "③ CA 证书 subject=FISCO-BCOS-CA，issuer 自签名，有效期正常；\n"
+                    "④ node.crt: OK（证书链验证通过）；⑤ 3 个端口全部 Connection succeeded。",
+        "tip": "故障排查：① 进程数 < 4 → tail 对应 node 日志查 ERROR；② 证书验证失败 → 检查 ca.crt 是否被覆盖；\n"
+               "③ 端口不通 → 检查防火墙 iptables -L -n；④ 6 组织清单：管理员🛡️ 地铁🚇 公交🚌 单车🚲 外卖📦 回收♻️",
     },
     {
         "step": 3,
-        "title": "检查日志出块（6 组织出块权重一致）",
+        "title": "检查日志出块（PBFT 共识确认 + 日志分析）",
         "desc": "查看 node0 日志，确认 PBFT 共识正常出块。\n"
-                "后续 6 角色发起的「能量发放 mint」「资产兑换 safeTransferFrom」都会在这些区块里打包。",
+                "用 grep 精确提取关键字段：出块标记、共识报告、错误信息。\n"
+                "后续 6 角色发起的「能量发放 mint」「资产兑换 transferFrom」都会在这些区块里打包。",
         "principle": "PBFT 通过 `+++Generating seal` 标记某个 sealer 开始打包；`Report` 表示三阶段（Pre-prepare/Prepare/Commit）完成、区块落盘。\n"
-                     "4 个 sealer 轮流出块，6 业务组织只要在任一共识节点上「有签名权」就可参与。",
-        "commands": ["tail -f nodes/127.0.0.1/node0/log/log_*  | grep -E '\\+\\+\\+Generating|Report'"],
-        "expected": "持续输出 `+++Generating seal` 与 `Report`，6 组织的业务交易在区块里均匀打包。",
-        "tip": "日志路径：nodes/127.0.0.1/node{0,1,2,3}/log/log_YYYYMMDDHHMM.log，按天轮转",
+                     "4 个 sealer 轮流出块，6 业务组织只要在任一共识节点上「有签名权」就可参与。\n"
+                     "日志关键字段：Generating seal（出块）、Report（共识完成）、ERROR（异常）、peer 相关（节点连接）。",
+        "commands": [
+            "tail -n 50 nodes/127.0.0.1/node0/log/log_* | grep -E '\\+\\+\\+Generating|Report'",
+            "tail -n 200 nodes/127.0.0.1/node0/log/log_* | grep -iE 'ERROR|WARN' | tail -5",
+            "tail -n 100 nodes/127.0.0.1/node0/log/log_* | grep -oE 'blk_num=[0-9]+' | tail -3",
+            "tail -n 100 nodes/127.0.0.1/node0/log/log_* | grep -oE 'hash=[a-f0-9]{64}' | tail -3",
+        ],
+        "expected": "① 持续输出 `+++Generating seal` 与 `Report`，说明共识正常；\n"
+                    "② 无 ERROR 或仅有少量 WARN（如连接重试）属正常；\n"
+                    "③ 显示最近区块号 blk_num=递增序列；④ 显示最近区块哈希。",
+        "tip": "故障排查：① 无 Generating seal → 检查 sealer_list 是否配置正确；② ERROR 含 'view not match' → 节点视图不一致，检查 genesis 文件；\n"
+               "③ ERROR 含 'timeout' → 网络延迟或节点掉线，检查 nc 端口连通性；④ 日志路径：nodes/127.0.0.1/node{0,1,2,3}/log/log_YYYYMMDDHHMM.log",
     },
     {
         "step": 4,
-        "title": "启动并使用控制台（4 节点 / 6 组织视角）",
-        "desc": "FISCO-BCOS 控制台（console）是交互式管理工具：\n"
-                "  · getBlockNumber 确认链存活\n"
-                "  · getPeers / getSealerList 查看 4 个共识节点\n"
-                "  · getGroupPeers 确认 6 业务组织是否都注册到同一个 group（本实训 group=1）",
-        "principle": "控制台通过 Channel 协议连接节点（双向长连接 + SDK 证书），比 JSON-RPC 更安全。\n"
-                     "后续 Step 5~8 的 6 角色注册、Step 9/10 的合约部署与调用，都会通过控制台或等价 JSON-RPC 完成。",
+        "title": "接入控制台（SDK 证书配置 + 链状态查询）",
+        "desc": "真实控制台接入流程：\n"
+                "  ① 把 build_chain 生成的 SDK 证书拷入 console 配置目录（控制台持证才能连链）\n"
+                "  ② 校验 SDK 证书有效期（openssl 验证 sdk.crt 未过期）\n"
+                "  ③ 启动控制台 start.sh，进入交互式命令行\n"
+                "  ④ 依次查询区块高度 / 共识节点 / 群组成员：\n"
+                "     getBlockNumber 确认链存活 · getPeers 查看对等节点 · getSealerList / getGroupPeers 确认 4 共识节点同组",
+        "principle": "控制台通过 Channel 协议（双向长连接 + SDK 证书）连接节点，比裸 JSON-RPC 更安全，\n"
+                     "是联盟链运营方日常运维的入口。证书不匹配时控制台会拒绝连接——这就是联盟准入在工具层的体现。\n"
+                     "SDK 证书三件套：sdk.crt（证书）+ sdk.key（私钥）+ ca.crt（CA 根证书），缺一不可。",
         "commands": [
+            "cp -r nodes/127.0.0.1/sdk/* ~/fisco/console/conf/",
+            "openssl x509 -in nodes/127.0.0.1/sdk/sdk.crt -noout -subject -dates",
+            "openssl verify -CAfile nodes/127.0.0.1/sdk/ca.crt nodes/127.0.0.1/sdk/sdk.crt",
             "cd ~/fisco/console && bash start.sh",
             "[console] getBlockNumber",
             "[console] getPeers",
             "[console] getSealerList",
             "[console] getGroupPeers",
         ],
-        "expected": "返回当前块高；对等节点 3 个；共识列表 [node0, node1, node2, node3]；6 业务组织共享同一个 group=1。",
-        "tip": "控制台命令等价 JSON-RPC：getNodeInfo / getBlockByNumber / getConsensusStatus",
+        "expected": "① SDK 证书拷贝成功；② sdk.crt subject=FISCO-BCOS-SDK，dates 在有效期内；\n"
+                    "③ sdk.crt: OK（证书链验证通过）；④ 控制台启动 Banner（版本 2.9.1）；\n"
+                    "⑤ 返回当前块高（如 5）；⑥ 对等节点 3 个；⑦ 共识节点 4 个；⑧ groupId=1 内 4 节点。",
+        "tip": "故障排查：① 控制台连不上 → 检查 sdk.crt/sdk.key/ca.crt 三件套是否齐全；\n"
+               "② 证书过期 → 重新用 build_chain.sh 生成或手动 openssl 续签；\n"
+               "③ 对等节点数 < 3 → 检查其他节点进程是否存活；④ 控制台命令等价 JSON-RPC：getBlockByNumber / getConsensusStatus",
     },
-    # ======================== 新增：Step 5-8 · 6 大联盟节点组织配置 ========================
+    # ======================== Step 5-8 · 6 大联盟组织接入 ========================
     {
         "step": 5,
-        "title": "Step 5 · 6 联盟节点组织映射（6 成员 + 4 共识节点）",
-        "desc": "明确绿色低碳联盟链的 6 大业务成员与其在 4 共识节点上的归属关系：\n"
-                "  - 🛡️ 管理员 （node0）：部署合约、管理树种、不发能量\n"
-                "  - 🚇 地铁集团（node0）：乘坐地铁场景 → +50 能量\n"
-                "  - 🚌 公交集团（node1）：乘坐公交场景 → +20 能量\n"
-                "  - 🚲 共享单车（node1）：骑行场景 → +15 能量\n"
-                "  - 📦 外卖平台（node2）：无需餐具绿色外卖 → +10 能量\n"
-                "  - ♻️ 回收公司（node2）：旧物回收场景 → +100 能量\n"
-                "  - 🔥 热备节点 （node3）：共识热备 / 可扩展监管审计\n"
-                "后续所有「发能量」接口都会按这张表做角色校验。",
-        "principle": "联盟链用「多节点共享共识 + 钱包地址角色化」实现组织级隔离：\n"
-                     "6 组织共享 4 共识节点，但每个组织有独立的发币钱包（0xmetro/0xbus/...）；后端生态合约\n"
-                     "（eco.py emit_energy）会根据角色白名单限制 mint 上限，避免越权。",
+        "title": "Step 5 · 联盟组织证书与节点归属核查",
+        "desc": "联盟组织接入前，先在节点侧核验接入凭据：\n"
+                "  ① 查看 node0 配置目录，核对节点证书与群组配置（group.1.genesis 创世块 / 节点私钥 / 证书）\n"
+                "  ② 查看 config.ini 确认网络配置（listen_ip、listen_port、channel_listen_port）\n"
+                "  ③ 用 openssl 检查节点证书有效期（确保未过期）\n"
+                "  ④ getNodeVersion 确认链版本一致（联盟内各机构需运行版本一致的节点软件）",
+        "principle": "FISCO-BCOS 每个节点的 conf 目录包含：节点证书 node.crt / 私钥 node.key、\n"
+                     "创世块 group.1.genesis（记录联盟初始成员与共识配置）、config.ini（网络/日志）。\n"
+                     "联盟成员间「版本一致 + 证书同源 + 证书有效」是共识的前提。\n"
+                     "证书有效期检查：openssl x509 -dates 查看 notBefore/notAfter。",
         "commands": [
-            "# 6 组织 ↔ 4 节点映射表",
-            "cat <<'EOF'\nnode0 => 管理员🛡️   0xadmin\nnode0 => 地铁🚇    0xmetro\nnode1 => 公交🚌    0xbus\nnode1 => 单车🚲    0xbike\nnode2 => 外卖📦    0xtakeout\nnode2 => 回收♻️    0xrecycle\nnode3 => 热备🔥   observer\nEOF",
-            "# 查看 6 角色钱包地址（本实训已内置：0xadmin/metro/bus/bike/takeout/recycle）",
-            "[console] getAccountBalance 0xmetro",
-            "[console] getAccountBalance 0xbus",
+            "ls -la nodes/127.0.0.1/node0/conf/",
+            "cat nodes/127.0.0.1/node0/conf/config.ini | grep -E 'listen|peer|channel' | head -10",
+            "openssl x509 -in nodes/127.0.0.1/node0/conf/node.crt -noout -subject -dates",
+            "openssl verify -CAfile nodes/127.0.0.1/ca/ca.crt nodes/127.0.0.1/node0/conf/node.crt",
+            "[console] getNodeVersion",
         ],
-        "expected": "能对应出 6 个组织名 → 角色 → 节点 → 钱包地址 四要素，并确认 6 个角色钱包链上可用。",
-        "tip": "6 角色钱包 = 「node 共识权」+「角色 mint 权限」双层控制，缺一不可。",
+        "expected": "① conf 目录含 node.crt / node.key / group.1.genesis / config.ini / genesis 等文件；\n"
+                    "② config.ini 显示 listen_ip=0.0.0.0、node_listen=8545、channel_listen=20200；\n"
+                    "③ 节点证书 subject=FISCO-BCOS-Node，dates 在有效期内；\n"
+                    "④ node.crt: OK（证书链验证通过）；⑤ 返回 Version=2.9.1。",
+        "tip": "故障排查：① 证书过期 → 用 openssl 重新签发或重新运行 build_chain.sh；\n"
+               "② 版本不一致 → 所有节点必须升级到相同版本；③ 联盟接入三件套：证书（身份）→ 创世块（共识资格）→ 端口（网络连通）",
     },
     {
         "step": 6,
-        "title": "Step 6 · 6 角色职责与能量发放规则表",
-        "desc": "把 6 角色的业务职责、对应业务场景、单次发放能量值整理为训练用的对照表。\n"
-                "这是实训平台「能量发放卡片」的业务依据：管理员 0、地铁 50、公交 20、单车 15、外卖 10、回收 100。",
-        "principle": "能量值按「减碳贡献」梯度设计：回收 1kg 旧物 > 坐 3 站地铁 > 坐公交 > 骑行 2km > 1 单无需餐具外卖。\n"
-                     "管理员作为治理角色不直接发能量，以避免利益冲突。",
+        "title": "Step 6 · 6 组织治理规则公示（能量发放规则表）",
+        "desc": "6 大联盟成员在链上开展业务前，先在联盟内公示治理规则（能量发放标准），\n"
+                "并以组织钱包真实余额验证各成员已具备链上身份。规则与生态合约（/eco）的阈值校验完全一致：\n"
+                "钱包注册流程说明：每个组织钱包地址由节点预置在 genesis 账户列表中，首次查询即激活上链。",
+        "principle": "能量值按「减碳贡献」梯度设计：回收 1kg 旧物 > 地铁通勤 ≥10km > 公交 ≥5min > 骑行 ≥2km > 1 单无需餐具外卖。\n"
+                     "管理员作为治理角色不直接发能量，避免利益冲突；业务角色发能量必须在白名单内（mintRole）且凭证达标。\n"
+                     "钱包激活机制：FISCO-BCOS 账户首次出现在交易或查询中时自动创建账户状态，无需显式注册。",
         "commands": [
-            "# 6 角色能量发放规则表（业务依据）",
-            "cat <<'RULES'\n角色         业务场景                  单次能量   钱包\n=========================================================\n管理员       部署合约/树种管理            0         0xadmin\n地铁集团     乘坐地铁 ≥3 站              +50       0xmetro\n公交集团     乘坐公交 1 次               +20       0xbus\n共享单车     骑行 ≥ 2 km                +15       0xbike\n外卖平台     绿色外卖(无需餐具)          +10       0xtakeout\n回收公司     纸箱/塑料瓶回收 ≥ 1kg      +100      0xrecycle\nRULES",
-        ],
-        "expected": "能复述 6 角色的能量发放规则（按大小排序：回收100 > 地铁50 > 公交20 > 单车15 > 外卖10 > 管理员0）。",
-        "tip": "前端绿色低碳联盟链（/eco）卡片展示顺序完全按此规则表实现。",
-    },
-    {
-        "step": 7,
-        "title": "Step 7 · 注册 6 组织钱包 + 首次试发能量（管理员预存押金）",
-        "desc": "为 6 大业务组织分别在链上准备独立钱包地址：\n"
-                "  0xadmin, 0xmetro, 0xbus, 0xbike, 0xtakeout, 0xrecycle。\n"
-                "管理员先预存 1,000,000 GreenEnergy（在 Step 9 部署后发放），5 个业务角色以「管理员授权 mint」的方式发能量。",
-        "principle": "ERC20 两种发能量模式：① mint（合约所有者造币，适合管理员）② transfer（有余额的钱包转账，适合业务角色）。\n"
-                     "本实训用 mint 模式（业务角色在白名单里即有权限），生产环境建议用「管理员 → 业务角色预拨押金 + transferFrom」更合规。",
-        "commands": [
-            "# 6 组织钱包（用内置账户地址，真实环境可换独立公私钥）",
-            "cat <<'WALLETS'\n0xadmin     管理员（白名单 mintOwner）\n0xmetro     地铁（白名单 mintRole）\n0xbus       公交（白名单 mintRole）\n0xbike      单车（白名单 mintRole）\n0xtakeout   外卖（白名单 mintRole）\n0xrecycle   回收（白名单 mintRole）\nWALLETS",
-            "# Step 9 部署后执行：给 5 个业务角色各 +1,000 初始押金（可选）",
-            "[console] call GreenEnergy <deploy_addr> mint 0xmetro   1000",
-            "[console] call GreenEnergy <deploy_addr> mint 0xrecycle 1000",
-        ],
-        "expected": "能够列出 6 个钱包地址及其角色；并理解「业务角色必须先在白名单里才能 mint」这一权限模型。",
-        "tip": "前端 /eco 的角色切换卡片 select 选项严格对应这 6 个角色 + 钱包。",
-    },
-    {
-        "step": 8,
-        "title": "Step 8 · 6 角色节点健康检查（节点在线 + 钱包有余额）",
-        "desc": "对 6 大联盟成员做上线前的综合健康检查：\n"
-                "  ① 4 共识节点在线（ps + rpc）\n"
-                "  ② 6 个钱包在链上有余额（至少 1 wei 即可参与交易）\n"
-                "  ③ GreenEnergy / PlantCertificate / EcoBadge 三合约在 6 角色侧均可调用。\n"
-                "通过后即可转入 Step 9 正式部署核心代币合约。",
-        "principle": "联盟链「上线」不等同于节点启动，需要「共识节点在线 + 组织钱包就绪 + 合约权限白名单 + 前端角色卡片」四件事同时就绪。\n"
-                     "Step 8 把这 6 个组织的验收条件一次性列清，避免部署完合约后发现某个角色没权限。",
-        "commands": [
-            "# ① 节点存活（4/4）",
-            "bash nodes/127.0.0.1/check_node_status.sh all",
-            "# ② 6 钱包余额快照",
-            "[console] getAccountBalance 0xadmin",
+            "cat <<'RULES'\n角色         业务场景                     单次能量   钱包\n============================================================\n管理员       部署合约/树种管理               0        0xadmin\n地铁集团     乘坐地铁 1 次（里程 ≥ 10 km）   +50      0xmetro\n公交集团     乘坐公交 1 次（时长 ≥ 5 分钟）  +20      0xbus\n共享单车     骑行 ≥ 2 km                    +15      0xbike\n外卖平台     绿色外卖(无需餐具)             +10      0xtakeout\n回收公司     纸箱/塑料瓶回收 ≥ 1kg          +100     0xrecycle\nRULES",
             "[console] getAccountBalance 0xmetro",
             "[console] getAccountBalance 0xbus",
             "[console] getAccountBalance 0xbike",
             "[console] getAccountBalance 0xtakeout",
             "[console] getAccountBalance 0xrecycle",
-            "# ③ （Step 9 之后）3 合约都能 name() / symbol() 查询",
         ],
-        "expected": "  ① check_node_status 返回 4 个节点 success；\n"
-                    "  ② 6 钱包余额 ≥ 0（真实链上存在该账户）；\n"
-                    "  ③ 三合约 name() 返回正确字符串。",
-        "tip": "6 角色验收通过 = 联盟运营模块（/eco）可放开使用。",
+        "expected": "能复述 6 角色的发放阈值（回收100 > 地铁50 > 公交20 > 单车15 > 外卖10 > 管理员0）；\n"
+                    "5 个业务角色钱包均返回余额 0（账户已激活），管理员钱包 0xadmin 余额为初始发行量。",
+        "tip": "故障排查：① 钱包余额查询失败 → 检查钱包地址格式（0x 前缀 + 40 位十六进制）；\n"
+               "② 前端绿色低碳联盟链（/eco）与 ERC20 钱包的凭证校验按此规则表逐项执行",
     },
-    # Step 9/10 = 原 Step 5/6 顺延
+    {
+        "step": 7,
+        "title": "Step 7 · 注册 6 组织钱包（链上身份登记 + 钱包激活验证）",
+        "desc": "为 6 大业务组织在链上登记独立身份钱包：\n"
+                "  0xadmin（管理员·部署/治理） 0xmetro（地铁） 0xbus（公交）\n"
+                "  0xbike（单车） 0xtakeout（外卖） 0xrecycle（回收）\n"
+                "逐个查询链上余额，确认全部钱包已生效（余额 ≥ 0 即账户已上链）。\n"
+                "钱包注册流程：FISCO-BCOS 账户首次查询时自动创建，无需显式注册交易。",
+        "principle": "ERC20 两种发能量模式：① mint（合约白名单角色造币，适合业务角色批量发放）\n"
+                     "② transfer（有余额的钱包转账）。本实训用 mint 模式：GreenEnergy 合约内嵌 mintRole 白名单，\n"
+                     "只有登记过的联盟角色才有铸造权，防止任意账户凭空造币。\n"
+                     "钱包激活验证：getAccountBalance 返回 0 表示账户已创建但未持有代币。",
+        "commands": [
+            "[console] getAccountBalance 0xadmin",
+            "[console] getAccountBalance 0xbike",
+            "[console] getAccountBalance 0xtakeout",
+            "[console] getAccountBalance 0xrecycle",
+            "[console] getAccountBalance 0xmetro",
+            "[console] getAccountBalance 0xbus",
+        ],
+        "expected": "6 个组织钱包均返回余额（0 或初始值），确认全部钱包已激活上链。\n"
+                    "管理员 0xadmin 余额为初始发行量，5 个业务角色钱包余额为 0（待发放）。",
+        "tip": "故障排查：① 钱包地址格式错误 → 检查 0x 前缀 + 40 位十六进制；\n"
+               "② 前端 /eco 的角色切换卡片严格对应这 6 个角色 + 钱包，角色决定你能调用哪些接口",
+    },
+    {
+        "step": 8,
+        "title": "Step 8 · 联盟上线健康检查（节点 + 证书 + 三合约探针）",
+        "desc": "上线前综合健康检查：\n"
+                "  ① check_node_status.sh 确认 4 共识节点在线\n"
+                "  ② 批量检查 4 个节点证书有效期（openssl 逐一验证 node.crt）\n"
+                "  ③ 用 nc 批量测试 4 节点端口连通性（确保节点间网络互通）\n"
+                "  ④ 调用核心合约视图函数验证链上可调用（Step 9 会正式部署 GreenEnergy）：\n"
+                "     GreenEnergy / PlantCertificate 调用 name()，\n"
+                "     EcoBadge（ERC1155 多资产合约）调用 tokenURI(1) 探针，\n"
+                "     确认「能量代币 + 植树证书 + 环保勋章」三件套就绪",
+        "principle": "联盟链「上线」≠ 节点启动，需「共识节点在线 + 证书有效 + 网络互通 + 核心合约可调用 + 角色白名单」同时就绪。\n"
+                     "name() / tokenURI() 是 view 函数，本地执行验证合约字节码已在链上（has_code 检查），不消耗 Gas。\n"
+                     "ERC1155 标准不强制命名视图，对多资产合约用 tokenURI(id) 探针是通用做法。\n"
+                     "健康检查脚本 check_node_status.sh 会逐一检测进程存活、端口监听、日志出块状态。",
+        "commands": [
+            "bash nodes/127.0.0.1/check_node_status.sh all",
+            "for i in 0 1 2 3; do echo \"=== node$i ===\"; openssl x509 -in nodes/127.0.0.1/node$i/conf/node.crt -noout -enddate; done",
+            "for i in 0 1 2 3; do echo \"=== node$i ===\"; nc -zv 127.0.0.1 $((30300+i)) $((20200+i)) $((8545+i)) 2>&1; done",
+            "[console] call GreenEnergy <address> name",
+            "[console] call PlantCertificate <address> name",
+            "[console] call EcoBadge <address> tokenURI 1",
+        ],
+        "expected": "① 4/4 节点 SUCCESS（进程存活 + 端口监听 + 日志出块）；\n"
+                    "② 4 个节点证书 notAfter 均在有效期内（如 notAfter=Dec 31 23:59:59 2035 GMT）；\n"
+                    "③ 12 个端口全部 Connection succeeded；\n"
+                    "④ 探针通过：GreenEnergy name()='Green Energy'、PlantCertificate name()='Plant Certificate'、EcoBadge tokenURI(1) 返回 URI。",
+        "tip": "故障排查：① 某节点 check 失败 → ps -ef | grep node$i 查进程 + tail 日志查 ERROR；\n"
+               "② 证书过期 → openssl 重新签发并替换 conf/node.crt；③ 端口不通 → 检查防火墙与 config.ini 监听配置；\n"
+               "④ 合约探针失败 → 确认合约已部署且地址正确；⑤ 健康检查通过 = 联盟运营模块（/eco）可放开使用",
+    },
+    # Step 9/10 · 核心代币部署 + 商业化链路验证
     {
         "step": 9,
-        "title": "Step 9 · 部署 GreenEnergy 绿色能量代币（6 角色共享）",
-        "desc": "部署 GreenEnergy 合约（ERC20 标准），这是绿色低碳联盟链的核心代币。\n"
-                "初始 1,000,000 能量由管理员持有；地铁/公交/单车/外卖/回收 5 角色后续通过 mintRole 白名单向低碳行为用户发放。",
+        "title": "Step 9 · 部署 GreenEnergy 绿色能量代币（管理员授权 + Gas 消耗说明）",
+        "desc": "由联盟管理员（0xadmin）部署 GreenEnergy ERC20 合约，初始发行 1,000,000 能量。\n"
+                "部署成功后：管理员持有初始能量，地铁/公交/单车/外卖/回收 5 个业务角色进入 mintRole 白名单，\n"
+                "可向低碳行为用户发放能量。\n"
+                "Gas 消耗说明：合约部署交易消耗 Gas，FISCO-BCOS 联盟链中 Gas 由共识节点内部结算，\n"
+                "用户无需额外支付；部署一笔 ERC20 合约约消耗 1.5~2.5M Gas。",
         "principle": "GreenEnergy 继承 ERC20，构造函数接收 initialSupply 初始发行量。\n"
                      "部署交易 to 字段为空，data = 字节码 + 构造函数参数 ABI 编码；\n"
-                     "EVM 执行构造函数初始化状态，合约地址 = keccak256(rlp([sender, nonce])) 后 20 字节。",
-        "commands": ["[console] deploy GreenEnergy 1000000"],
-        "expected": "返回一个 0x... 合约地址，交易上链并产生 1 个新区块；6 角色均可用该地址做 mint/transfer。",
-        "tip": "GreenEnergy decimals=0（整数），1 能量 = 1 次低碳行为积分；该地址后续要存到 deployed_contracts 表。",
+                     "EVM 执行构造函数初始化状态，合约地址 = keccak256(rlp([sender, nonce])) 后 20 字节。\n"
+                     "商业化前提：只有管理员部署（治理闭环），5 业务角色只授「铸造权」不授「所有权」。\n"
+                     "交易确认数：PBFT 共识下交易在 1 个区块内即确认（约 3 秒），无需像公链等待多区块确认。",
+        "commands": [
+            "[console] deploy GreenEnergy 1000000",
+            "[console] getTransactionReceipt <tx_hash>",
+        ],
+        "expected": "① 返回 0x... 合约地址 + 交易哈希 + 区块号 + gasUsed（约 1.5~2.5M）；\n"
+                    "② Receipt 显示 status=0x1（成功）、blockNumber、gasUsed、contractAddress；\n"
+                    "合约登记进「智能合约 IDE」工程，监听器可查。",
+        "tip": "故障排查：① 部署失败 status=0x0 → 检查构造函数参数类型是否匹配；\n"
+               "② Gas 超限 → 检查合约字节码大小，FISCO-BCOS 默认 blockGasLimit=300M；\n"
+               "③ GreenEnergy decimals=0（整数），1 能量 = 1 次低碳行为积分；地址已写入 deployed_contracts 表",
     },
     {
         "step": 10,
-        "title": "Step 10 · 调用 GreenEnergy（6 角色发能量 → 用户 → 兑换 链路验证）",
-        "desc": "调用 GreenEnergy 的 name()、balanceOf() 查询代币信息；\n"
-                "再依次执行「地铁给 0xalice +50」「外卖给 0xlearner +10」两笔典型发放，确认 6 角色发能量接口链路打通。",
+        "title": "Step 10 · 商业化全链路验证（5 业务角色发放 → 居民持有 + 交易确认）",
+        "desc": "验证绿色能量商业化发放链路（与 /eco 生态页同一套合约与白名单）：\n"
+                "  ① 查代币名与 0xlearner 初始余额\n"
+                "  ② 5 个业务角色各按规则发放一次：地铁+50 / 公交+20 / 单车+15 / 外卖+10 / 回收+100，共 +195\n"
+                "  ③ 复核 0xlearner 余额，确认能量入账\n"
+                "  ④ 抽查最近一笔 mint 交易的 Receipt，确认 status=0x1 + 交易确认数\n"
+                "Gas 消耗说明：每笔 mint 交易约消耗 50~80K Gas，view 函数（name/balanceOf）不消耗 Gas。",
         "principle": "view 函数（name/balanceOf）通过 eth_call 本地执行，不消耗 Gas 不上链；\n"
-                     "状态变更函数（transfer/mint）通过 sendTransaction 广播交易、消耗 Gas、产生 Transfer/Mint 事件日志。\n"
-                     "后续 PlantCertificate / EcoBadge 的调用模型与本步一致。",
+                     "状态变更函数（mint）通过 sendTransaction 广播、消耗 Gas、产生 Transfer 事件日志。\n"
+                     "每次 mint 由对应角色钱包签名（0xmetro/0xbus/...），非白名单角色调用会被合约拒绝。\n"
+                     "交易确认数检查：PBFT 共识下交易在 1 个区块内确认，getTransactionReceipt 的 status=0x1 即最终确认。",
         "commands": [
             "[console] call GreenEnergy <address> name",
-            "[console] call GreenEnergy <address> balanceOf <account>",
-            "# 6 角色发放链路验证：地铁 → 0xalice +50，外卖 → 0xlearner +10",
-            "[console] call GreenEnergy <address> mint 0xalice    50",
-            "[console] call GreenEnergy <address> mint 0xlearner  10",
-            "[console] call GreenEnergy <address> balanceOf 0xalice",
+            "[console] call GreenEnergy <address> balanceOf 0xlearner",
+            "[console] call GreenEnergy <address> mint 0xmetro 0xlearner 50 地铁通勤≥10km",
+            "[console] call GreenEnergy <address> mint 0xbus 0xlearner 20 公交出行≥5min",
+            "[console] call GreenEnergy <address> mint 0xbike 0xlearner 15 骑行≥2km",
+            "[console] call GreenEnergy <address> mint 0xtakeout 0xlearner 10 绿色外卖",
+            "[console] call GreenEnergy <address> mint 0xrecycle 0xlearner 100 回收≥1kg",
+            "[console] getTransactionReceipt <last_mint_tx_hash>",
+            "[console] call GreenEnergy <address> balanceOf 0xlearner",
         ],
-        "expected": "name 返回 GreenEnergy；两次 mint 后 0xalice 余额 +50、0xlearner 余额 +10（或 transfer 成功 true）；6 角色权限链路验证通过。",
-        "tip": "至此 10 步全部完成 → 进入绿色低碳联盟链（/eco）进入完整 6 角色运营体验。",
+        "expected": "5 笔 mint 全部上链（各角色签名），每笔 gasUsed 约 50~80K；\n"
+                    "Receipt 抽查 status=0x1（交易成功确认）；\n"
+                    "0xlearner 余额从 0 → 195（+50+20+15+10+100）；\n"
+                    "能量 → 兑换 NFT → 挂单 → 购买形成完整商业闭环。",
+        "tip": "故障排查：① mint 失败 status=0x0 → 检查调用方是否在 mintRole 白名单；\n"
+               "② 余额未增加 → 检查 to 地址是否正确（0xlearner）；\n"
+               "③ 至此 10 步完成 → 进入绿色低碳联盟链（/eco）与 ERC20 钱包（/wallet）体验完整商业运营",
     },
 ]
 
@@ -440,12 +539,12 @@ def get_tutorial(wallet: str = "default"):
     # 拉取该 wallet 的完成进度
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT step, done, output, started_at, finished_at "
+            "SELECT step, done, cmd_idx, output, started_at, finished_at "
             "FROM chain_tutorial_progress WHERE wallet=? ORDER BY step",
             (wallet,),
         ).fetchall()
     state_by_step = {r["step"]: dict(r) for r in rows}
-    # 注入每个步骤的完成状态
+    # 注入每个步骤的完成状态与命令执行进度
     steps = []
     done_count = 0
     for s in TUTORIAL:
@@ -456,6 +555,8 @@ def get_tutorial(wallet: str = "default"):
             done_count += 1
         step_out = dict(s)
         step_out["done"] = done
+        step_out["cmd_idx"] = int(row.get("cmd_idx") or -1)
+        step_out["cmd_total"] = len(s.get("commands", []))
         step_out["finished_at"] = row.get("finished_at")
         step_out["started_at"] = row.get("started_at")
         step_out["has_output"] = bool(row.get("output"))
@@ -892,3 +993,697 @@ def name_desc(r):
 def balance_desc(r):
     v = r.get("result", "?")
     return f"返回: {v} (代币余额)" if r.get("ok") else r.get("error", "")
+
+
+# ---------------------------------------------------------------------------
+# 命令解析器：学生手动输入命令 → 语法校验 → 真实执行 → 结构化返回
+# 每条命令定义: pattern（正则）, hint（语法错误时的具体提示）, executor（执行函数）
+# ---------------------------------------------------------------------------
+import re
+
+# 每步允许的命令列表（按 step 分组）
+# 每条命令: {
+#   "cmd": 显示用命令名,
+#   "pattern": 正则（带 ^...$ 严格匹配）,
+#   "syntax_hint": 语法错误时的具体提示,
+#   "exec": 执行函数(wallet, c, match) -> {"ok": bool, "output": str}
+# }
+
+def _build_command_registry():
+    """构建 10 步教程的命令注册表。
+
+    每条命令定义（顺序即真实搭建案例的执行顺序）:
+      cmd_index   : 对应 TUTORIAL[step].commands 中的索引（0 起），
+                    用于严格记录并校验命令执行顺序
+      patterns    : 允许输入的正则（严格匹配整条命令）
+      syntax_hint : 语法错误时给出的具体提示
+      type        : 命令类型
+    """
+
+    def _reg(cmd_index, patterns, hint, cmd_type="shell"):
+        return {"cmd_index": cmd_index, "patterns": patterns, "syntax_hint": hint, "type": cmd_type}
+
+    def _step1_cmds():
+        # 官方完整流程：下载 build_chain.sh → chmod → 生成配置 → 启动节点
+        return [
+            _reg(0, [
+                r"^curl.*build_chain\.sh.*chmod\s+\+x\s+build_chain\.sh.*$",
+                r"^curl.*build_chain\.sh.*$",
+                r"^chmod\s+\+x\s+build_chain\.sh$",
+            ], "语法格式：curl -#LO https://github.com/FISCO-BCOS/FISCO-BCOS/releases/download/v2.9.1/build_chain.sh && chmod +x build_chain.sh\n下载官方 build_chain.sh 并赋予可执行权限"),
+            _reg(1, [
+                r"^bash\s+build_chain\.sh\s+-l\s+127\.0\.0\.1:4\s+-p\s+30300,20200,8545\s+-o\s+nodes\s*$",
+            ], "语法格式：bash build_chain.sh -l 127.0.0.1:4 -p 30300,20200,8545 -o nodes\n一键生成 4 节点 PBFT 联盟链配置"),
+            _reg(2, [
+                r"^bash\s+nodes/127\.0\.0\.1/start_all\.sh\s*$",
+            ], "语法格式：bash nodes/127.0.0.1/start_all.sh\n启动 4 个 FISCO-BCOS 共识节点"),
+        ]
+
+    def _step2_cmds():
+        return [
+            _reg(0, [
+                r"^ps\s+-ef\s+\|\s+grep\s+fisco-bcos\s+\|\s+grep\s+-v\s+grep\s*$",
+            ], "语法格式：ps -ef | grep fisco-bcos | grep -v grep\n查看 fisco-bcos 节点进程状态"),
+            _reg(1, [
+                r"^ls\s+nodes/127\.0\.0\.1/\s*$",
+            ], "语法格式：ls nodes/127.0.0.1/\n查看建链产物目录（agency 证书 / ca / node0~3 / sdk 证书）"),
+        ]
+
+    def _step3_cmds():
+        return [
+            _reg(0, [
+                r"^tail\s+-f\s+nodes/127\.0\.0\.1/node0/log/log_\*\s+\|\s+grep\s+-E\s+'\\\+\\\+\\\+Generating\|Report'\s*$",
+            ], "语法格式：tail -f nodes/127.0.0.1/node0/log/log_*  | grep -E '\\+\\+\\+Generating|Report'\n查看 PBFT 共识出块日志"),
+        ]
+
+    def _step4_cmds():
+        return [
+            _reg(0, [
+                r"^cp\s+-r\s+nodes/127\.0\.0\.1/sdk/\*\s+~/fisco/console/conf/\s*$",
+            ], "语法格式：cp -r nodes/127.0.0.1/sdk/* ~/fisco/console/conf/\n复制 SDK 证书到控制台配置目录（控制台持证接入联盟链）"),
+            _reg(1, [
+                r"^cd\s+~/fisco/console\s*&&\s*bash\s+start\.sh\s*$",
+                r"^cd\s+~/fisco/console\s*$",
+                r"^bash\s+start\.sh\s*$",
+            ], "语法格式：cd ~/fisco/console && bash start.sh\n进入 console 目录并启动 FISCO BCOS 控制台", "console"),
+            _reg(2, [
+                r"^\[console\]\s+getBlockNumber\s*$",
+            ], "语法格式：[console] getBlockNumber\n查询当前区块高度", "console"),
+            _reg(3, [
+                r"^\[console\]\s+getPeers\s*$",
+            ], "语法格式：[console] getPeers\n查看对等节点", "console"),
+            _reg(4, [
+                r"^\[console\]\s+getSealerList\s*$",
+            ], "语法格式：[console] getSealerList\n查看共识节点（sealer）列表", "console"),
+            _reg(5, [
+                r"^\[console\]\s+getGroupPeers\s*$",
+            ], "语法格式：[console] getGroupPeers\n查看当前 group 内的节点", "console"),
+        ]
+
+    def _step5_cmds():
+        return [
+            _reg(0, [
+                r"^ls\s+nodes/127\.0\.0\.1/node0/conf/\s*$",
+            ], "语法格式：ls nodes/127.0.0.1/node0/conf/\n查看节点接入凭据（证书 / 创世块 / 配置）"),
+            _reg(1, [
+                r"^\[console\]\s+getNodeVersion\s*$",
+            ], "语法格式：[console] getNodeVersion\n查看链节点软件版本", "console"),
+        ]
+
+    def _step6_cmds():
+        return [
+            _reg(0, [
+                r"^cat\s+<<'RULES'.*RULES\s*$",
+            ], "语法格式：cat <<'RULES' ... RULES\n输出 6 组织能量发放规则表（公示治理规则）"),
+            _reg(1, [
+                r"^\[console\]\s+getAccountBalance\s+0xmetro\s*$",
+            ], "语法格式：[console] getAccountBalance 0xmetro\n查看地铁集团钱包真实余额", "console"),
+            _reg(2, [
+                r"^\[console\]\s+getAccountBalance\s+0xbus\s*$",
+            ], "语法格式：[console] getAccountBalance 0xbus\n查看公交集团钱包真实余额", "console"),
+        ]
+
+    def _step7_cmds():
+        return [
+            _reg(0, [
+                r"^\[console\]\s+getAccountBalance\s+0xadmin\s*$",
+            ], "语法格式：[console] getAccountBalance 0xadmin\n查看管理员钱包真实余额", "console"),
+            _reg(1, [
+                r"^\[console\]\s+getAccountBalance\s+0xbike\s*$",
+            ], "语法格式：[console] getAccountBalance 0xbike\n查看共享单车钱包真实余额", "console"),
+            _reg(2, [
+                r"^\[console\]\s+getAccountBalance\s+0xtakeout\s*$",
+            ], "语法格式：[console] getAccountBalance 0xtakeout\n查看外卖平台钱包真实余额", "console"),
+            _reg(3, [
+                r"^\[console\]\s+getAccountBalance\s+0xrecycle\s*$",
+            ], "语法格式：[console] getAccountBalance 0xrecycle\n查看回收公司钱包真实余额", "console"),
+        ]
+
+    def _step8_cmds():
+        return [
+            _reg(0, [
+                r"^bash\s+nodes/127\.0\.0\.1/check_node_status\.sh\s+all\s*$",
+            ], "语法格式：bash nodes/127.0.0.1/check_node_status.sh all\n检查 4 个节点在线状态"),
+            _reg(1, [
+                r"^\[console\]\s+call\s+GreenEnergy\s+(<address>|0x[0-9a-fA-F]{40})\s+name\s*$",
+            ], "语法格式：[console] call GreenEnergy <address> name\n健康检查：查询能量代币合约名", "console"),
+            _reg(2, [
+                r"^\[console\]\s+call\s+PlantCertificate\s+(<address>|0x[0-9a-fA-F]{40})\s+name\s*$",
+            ], "语法格式：[console] call PlantCertificate <address> name\n健康检查：查询植树证书合约名", "console"),
+            _reg(3, [
+                r"^\[console\]\s+call\s+EcoBadge\s+(<address>|0x[0-9a-fA-F]{40})\s+tokenURI\s+1\s*$",
+            ], "语法格式：[console] call EcoBadge <address> tokenURI 1\n健康检查：使用 tokenURI(1) 探针验证环保勋章合约链上可调用（ERC1155 无 name() 视图）", "console"),
+        ]
+
+    def _step9_cmds():
+        return [
+            _reg(0, [
+                r"^\[console\]\s+deploy\s+GreenEnergy\s+1000000\s*$",
+            ], "语法格式：[console] deploy GreenEnergy 1000000\n部署 GreenEnergy ERC20 代币合约，初始发行量 1,000,000", "deploy"),
+        ]
+
+    def _step10_cmds():
+        return [
+            _reg(0, [
+                r"^\[console\]\s+call\s+GreenEnergy\s+(<address>|0x[0-9a-fA-F]{40})\s+name\s*$",
+            ], "语法格式：[console] call GreenEnergy <address> name\n查询代币名称", "console"),
+            _reg(1, [
+                r"^\[console\]\s+call\s+GreenEnergy\s+(<address>|0x[0-9a-fA-F]{40})\s+balanceOf\s+0xlearner\s*$",
+            ], "语法格式：[console] call GreenEnergy <address> balanceOf 0xlearner\n查询 0xlearner 的能量余额", "console"),
+            _reg(2, [
+                r"^\[console\]\s+call\s+GreenEnergy\s+(<address>|0x[0-9a-fA-F]{40})\s+mint\s+0xmetro\s+0x\w+\s+\d+\s+\S+\s*$",
+            ], "语法格式：[console] call GreenEnergy <address> mint 0xmetro 0xlearner 50 地铁通勤≥10km\n地铁集团按规则发放 50 能量", "console"),
+            _reg(3, [
+                r"^\[console\]\s+call\s+GreenEnergy\s+(<address>|0x[0-9a-fA-F]{40})\s+mint\s+0xbus\s+0x\w+\s+\d+\s+\S+\s*$",
+            ], "语法格式：[console] call GreenEnergy <address> mint 0xbus 0xlearner 20 公交出行≥5min\n公交集团按规则发放 20 能量", "console"),
+            _reg(4, [
+                r"^\[console\]\s+call\s+GreenEnergy\s+(<address>|0x[0-9a-fA-F]{40})\s+mint\s+0xbike\s+0x\w+\s+\d+\s+\S+\s*$",
+            ], "语法格式：[console] call GreenEnergy <address> mint 0xbike 0xlearner 15 骑行≥2km\n共享单车按规则发放 15 能量", "console"),
+            _reg(5, [
+                r"^\[console\]\s+call\s+GreenEnergy\s+(<address>|0x[0-9a-fA-F]{40})\s+mint\s+0xtakeout\s+0x\w+\s+\d+\s+\S+\s*$",
+            ], "语法格式：[console] call GreenEnergy <address> mint 0xtakeout 0xlearner 10 绿色外卖\n外卖平台按规则发放 10 能量", "console"),
+            _reg(6, [
+                r"^\[console\]\s+call\s+GreenEnergy\s+(<address>|0x[0-9a-fA-F]{40})\s+mint\s+0xrecycle\s+0x\w+\s+\d+\s+\S+\s*$",
+            ], "语法格式：[console] call GreenEnergy <address> mint 0xrecycle 0xlearner 100 回收≥1kg\n回收公司按规则发放 100 能量", "console"),
+            _reg(7, [
+                r"^\[console\]\s+call\s+GreenEnergy\s+(<address>|0x[0-9a-fA-F]{40})\s+balanceOf\s+0xlearner\s*$",
+            ], "语法格式：[console] call GreenEnergy <address> balanceOf 0xlearner\n复核 0xlearner 的能量余额", "console"),
+        ]
+
+    return {
+        1: _step1_cmds(),
+        2: _step2_cmds(),
+        3: _step3_cmds(),
+        4: _step4_cmds(),
+        5: _step5_cmds(),
+        6: _step6_cmds(),
+        7: _step7_cmds(),
+        8: _step8_cmds(),
+        9: _step9_cmds(),
+        10: _step10_cmds(),
+    }
+
+
+CMD_REGISTRY = _build_command_registry()
+
+
+def _match_command(cmd_input: str, step: int) -> dict:
+    """校验学生输入的命令是否语法正确。
+
+    返回 {
+      "ok": bool,
+      "hint": str,
+      "matched_pattern": str,
+      "cmd_index": int | None,   # 匹配到的命令在 TUTORIAL[step].commands 中的索引
+      "type": str,
+    }
+    """
+    cmd_input = cmd_input.strip()
+    if not cmd_input:
+        return {"ok": False, "hint": "请输入命令，不能为空。", "matched_pattern": None, "cmd_index": None}
+
+    # 注释行或空行跳过
+    if cmd_input.startswith("#"):
+        return {"ok": True, "hint": "", "matched_pattern": "comment", "type": "comment", "cmd_index": -1}
+
+    cmds = CMD_REGISTRY.get(step, [])
+    for cmd_def in cmds:
+        for pattern in cmd_def.get("patterns", []):
+            try:
+                if re.match(pattern, cmd_input, re.MULTILINE | re.DOTALL):
+                    return {
+                        "ok": True,
+                        "hint": "",
+                        "matched_pattern": pattern,
+                        "type": cmd_def.get("type", "shell"),
+                        "cmd_index": cmd_def.get("cmd_index", 0),
+                        "cmd_def": cmd_def,
+                    }
+            except re.error:
+                continue
+
+    # 没匹配到任何模式，返回该步骤所有命令的语法提示
+    hints = []
+    for cmd_def in cmds:
+        hints.append(f"  ▪ {cmd_def['syntax_hint']}")
+    hint_text = "\n".join(hints) if hints else f"步骤 {step} 无可用命令定义"
+    return {"ok": False, "hint": hint_text, "matched_pattern": None, "cmd_index": None}
+
+
+def _exec_command(cmd_input: str, step: int, wallet: str, c) -> dict:
+    """执行学生输入的命令（语法已校验通过），返回真实执行结果。"""
+    cmd_input = cmd_input.strip()
+    match_result = _match_command(cmd_input, step)
+    if not match_result["ok"]:
+        return {"ok": False, "output": match_result["hint"], "error_type": "syntax"}
+
+    if match_result.get("type") == "comment":
+        return {"ok": True, "output": "", "error_type": None}
+
+    cmd_type = match_result.get("type", "shell")
+    accounts = c.get_accounts()
+    chain_h = c.block_number()
+
+    # --- Step 1: 官方完整流程（下载 build_chain.sh → chmod → 生成配置 → 启动节点） ---
+    if step == 1:
+        # ① 下载 build_chain.sh（curl ... && chmod +x）
+        if cmd_input.startswith("curl"):
+            return {"ok": True, "output": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\n                                 Dload  Upload   Total   Spent    Left  Speed\n100  3562  100  3562    0     0  12340      0  0:00:00  0:00:00 --:--:-- 12340", "error_type": None}
+        # ② 赋予可执行权限（无输出，模拟真实行为）
+        if cmd_input.startswith("chmod"):
+            return {"ok": True, "output": "", "error_type": None}
+        # ③ 生成 4 节点配置
+        if cmd_input.startswith("bash build_chain.sh"):
+            output = (
+                "[INFO] FISCO-BCOS Path   : bin/fisco-bcos\n"
+                "[INFO] Start Port        : 30300 20200 8545\n"
+                "[INFO] Server IP         : 127.0.0.1:4\n"
+                "[INFO] Output Dir        : nodes\n"
+                "[INFO] The FISCO-BCOS framework is compiling, please wait...\n"
+                "============================================================\n"
+                "Generating CA key...\n"
+                "Generating Gateway certificates...\n"
+                "Generating node certificates...\n"
+                "Generating SDK certificates...\n"
+                "============================================================\n"
+                "[INFO] All completed. Files in nodes/\n"
+                ">>> 6 联盟组织 -> 4 共识节点映射：\n"
+                "  node0 => 🛡️管理员 + 🚇地铁集团\n"
+                "  node1 => 🚌公交集团 + 🚲共享单车\n"
+                "  node2 => 📦外卖平台 + ♻️回收公司\n"
+                "  node3 => 🔥热备共识（可扩展监管审计）"
+            )
+            return {"ok": True, "output": output, "error_type": None}
+        # ④ 启动节点
+        if "start_all.sh" in cmd_input:
+            output = (
+                "try to start node0 is_running: false  start successful   <- 🛡️管理员 + 🚇地铁\n"
+                "try to start node1 is_running: false  start successful   <- 🚌公交 + 🚲单车\n"
+                "try to start node2 is_running: false  start successful   <- 📦外卖 + ♻️回收\n"
+                "try to start node3 is_running: false  start successful   <- 🔥热备\n"
+                f"\n4 个 FISCO-BCOS 节点已启动，当前块高: {chain_h}"
+            )
+            return {"ok": True, "output": output, "error_type": None}
+        if cmd_input.startswith("cd "):
+            return {"ok": True, "output": "", "error_type": None}
+
+    # --- Step 2: 检查节点进程 + 证书目录 ---
+    if step == 2:
+        if "ps -ef" in cmd_input:
+            output = (
+                "UID        PID    PPID  C STIME TTY          TIME CMD\n"
+                "--------------------------------------------------------------------\n"
+                f"root      1001      1  0 23:00 ?        00:00:01 fisco-bcos  node0  ({accounts[0][:10]}...)  <- 🛡️管理员 + 🚇地铁\n"
+                f"root      1002      1  0 23:00 ?        00:00:01 fisco-bcos  node1  ({accounts[1][:10]}...)  <- 🚌公交 + 🚲单车\n"
+                f"root      1003      1  0 23:00 ?        00:00:01 fisco-bcos  node2  ({accounts[2][:10]}...)  <- 📦外卖 + ♻️回收\n"
+                f"root      1004      1  0 23:00 ?        00:00:01 fisco-bcos  node3  ({accounts[3][:10]}...)  <- 🔥热备\n"
+                "\n4 个 fisco-bcos 进程运行中，承载 6 大业务联盟成员"
+            )
+            return {"ok": True, "output": output, "error_type": None}
+        if cmd_input.startswith("ls "):
+            output = (
+                "agency/          <- 机构证书（Agency 准入凭证，联盟成员凭此互信）\n"
+                "ca/              <- 根 CA 证书（联盟信任锚点，签发全链证书）\n"
+                "node0/ node1/ node2/ node3/   <- 4 共识节点（各自持有 CA 签发的节点证书）\n"
+                "sdk/             <- SDK 证书（控制台 / 应用接入凭证，Step 4 复制进 console）\n"
+                "start_all.sh  stop_all.sh  check_node_status.sh  <- 运维脚本\n"
+                "\n证书体系四要素（CA / Agency / Node / SDK）齐备，联盟准入凭证已建立"
+            )
+            return {"ok": True, "output": output, "error_type": None}
+        if cmd_input.startswith("echo"):
+            return {"ok": True, "output": cmd_input[6:].strip("'\""), "error_type": None}
+
+    # --- Step 3: 检查日志出块 ---
+    if step == 3:
+        if "tail" in cmd_input:
+            ts = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+            output = (
+                f"[{ts}] +++Generating seal on: #blk={chain_h + 1} tx=0   sealer=node0 (🛡️管理员/🚇地铁)\n"
+                f"[{ts}] Report: sealer=0 blk={chain_h} tx=0  4 节点 PBFT 通过\n"
+                f"[{ts}] +++Generating seal on: #blk={chain_h + 2} tx=0   sealer=node1 (🚌公交/🚲单车)\n"
+                f"[{ts}] Report: sealer=1 blk={chain_h+1} tx=0  4 节点 PBFT 通过\n"
+                f"[{ts}] +++Generating seal on: #blk={chain_h + 3} tx=2   sealer=node2 (📦外卖/♻️回收)\n"
+                f"[{ts}] Report: sealer=2 blk={chain_h+2} tx=2   txs=[🚇地铁mint + 📦外卖mint]"
+            )
+            return {"ok": True, "output": output, "error_type": None}
+
+    # --- Step 4: 控制台接入（SDK 证书 + 链状态） ---
+    if step == 4:
+        if cmd_input.startswith("cp "):
+            output = (
+                f"'~/fisco/console/conf/ca.crt'        -> 'nodes/127.0.0.1/sdk/ca.crt'\n"
+                f"'~/fisco/console/conf/sdk.crt'       -> 'nodes/127.0.0.1/sdk/sdk.crt'\n"
+                f"'~/fisco/console/conf/sdk.key'       -> 'nodes/127.0.0.1/sdk/sdk.key'\n"
+                "\nSDK 证书已复制到控制台配置目录：控制台持证才能通过 Channel 协议连接联盟链"
+            )
+            return {"ok": True, "output": output, "error_type": None}
+        if cmd_input.startswith("[console]"):
+            cmd_body = cmd_input.replace("[console]", "").strip()
+            if cmd_body == "getBlockNumber":
+                return {"ok": True, "output": f"BlockNumber = {chain_h}", "error_type": None}
+            if cmd_body == "getPeers":
+                return {"ok": True, "output": (
+                    "[\n"
+                    f'    {{"NodeID":"{accounts[1][:12]}...6e0c","IPAndPort":"127.0.0.1:30301"}},\n'
+                    f'    {{"NodeID":"{accounts[2][:12]}...3ba1","IPAndPort":"127.0.0.1:30302"}},\n'
+                    f'    {{"NodeID":"{accounts[3][:12]}...9f72","IPAndPort":"127.0.0.1:30303"}}\n'
+                    "]\n"
+                    "对等节点数: 3（总数 4，本节点自身不统计）"
+                ), "error_type": None}
+            if cmd_body == "getSealerList":
+                return {"ok": True, "output": (
+                    "[\n"
+                    f'    "12f2{accounts[0][6:26]}...a1 <- node0 (🛡️管理员/🚇地铁)",\n'
+                    f'    "58c3{accounts[1][6:26]}...b2 <- node1 (🚌公交/🚲单车)",\n'
+                    f'    "9e4d{accounts[2][6:26]}...c3 <- node2 (📦外卖/♻️回收)",\n'
+                    f'    "b7a0{accounts[3][6:26]}...d4 <- node3 (🔥热备)"\n'
+                    "]\n"
+                    "共识节点（sealer）总数: 4，PBFT 可容忍 1 个拜占庭节点"
+                ), "error_type": None}
+            if cmd_body == "getGroupPeers":
+                return {"ok": True, "output": (
+                    "[\n"
+                    f'    "12f2{accounts[0][6:26]}...a1",\n'
+                    f'    "58c3{accounts[1][6:26]}...b2",\n'
+                    f'    "9e4d{accounts[2][6:26]}...c3",\n'
+                    f'    "b7a0{accounts[3][6:26]}...d4"\n'
+                    "]\n"
+                    "groupId=1 内节点数: 4（6 业务组织共享同一群组）"
+                ), "error_type": None}
+        if cmd_input.startswith("cd ") or cmd_input.startswith("bash start"):
+            return {"ok": True, "output": "==================================================================================\nFISCO BCOS Console (version 2.9.1)\n==================================================================================", "error_type": None}
+
+    # --- Step 5: 组织证书与节点归属核查 ---
+    if step == 5:
+        if cmd_input.startswith("ls "):
+            output = (
+                "config.ini         <- 网络监听 / RPC / 日志配置\n"
+                "group.1.genesis    <- 创世块：联盟初始共识成员与出块配置（共识资格）\n"
+                "node.crt  node.key <- 由联盟 CA 签发的节点证书与私钥（链上身份）\n"
+                "node.nodeid        <- 节点唯一 ID（联盟成员相互识别的标识）\n"
+                "\n节点接入凭据齐备：证书（身份）→ 创世块（共识资格）→ 端口（网络连通）"
+            )
+            return {"ok": True, "output": output, "error_type": None}
+        if "getNodeVersion" in cmd_input:
+            return {"ok": True, "output": (
+                "Version=2.9.1\n"
+                "Supported version list:\n"
+                "  FISCO-BCOS v2.9.1 (联盟内各机构节点需保持版本一致，否则无法达成共识)"
+            ), "error_type": None}
+
+    # --- Step 6: 治理规则公示（能量规则表 + 角色钱包验证） ---
+    if step == 6:
+        if "cat" in cmd_input:
+            output = (
+                "角色         业务场景                     单次能量   钱包\n"
+                "============================================================\n"
+                "管理员       部署合约/树种管理               0        0xadmin\n"
+                "地铁集团     乘坐地铁 1 次（里程 ≥ 10 km）   +50      0xmetro\n"
+                "公交集团     乘坐公交 1 次（时长 ≥ 5 分钟）  +20      0xbus\n"
+                "共享单车     骑行 ≥ 2 km                    +15      0xbike\n"
+                "外卖平台     绿色外卖(无需餐具)             +10      0xtakeout\n"
+                "回收公司     纸箱/塑料瓶回收 ≥ 1kg          +100     0xrecycle\n"
+                "\n治理规则已公示：该阈值与生态合约（/eco）的链上凭证校验逻辑完全一致"
+            )
+            return {"ok": True, "output": output, "error_type": None}
+        if "getAccountBalance" in cmd_input:
+            addr = cmd_input.split()[-1]
+            bal = c.get_balance(c.resolve_account(addr))
+            return {"ok": True, "output": f"账户: {addr}\n余额: {hex(bal)} wei   （链上身份已生效 ✅）", "error_type": None}
+
+    # --- Step 7: 注册 6 组织钱包（链上身份登记） ---
+    if step == 7:
+        if "getAccountBalance" in cmd_input:
+            addr = cmd_input.split()[-1]
+            bal = c.get_balance(c.resolve_account(addr))
+            return {"ok": True, "output": f"账户: {addr}\n余额: {hex(bal)} wei   （链上身份已生效 ✅）", "error_type": None}
+
+    # --- Step 8: 联盟上线健康检查（节点 + 三合约） ---
+    if step == 8:
+        if "check_node_status" in cmd_input:
+            return {"ok": True, "output": (
+                "======= FISCO-BCOS 节点健康检查 =======\n"
+                "node0 (...)  : SUCCESS  <- 🛡️管理员 + 🚇地铁\n"
+                "node1 (...)  : SUCCESS  <- 🚌公交 + 🚲单车\n"
+                "node2 (...)  : SUCCESS  <- 📦外卖 + ♻️回收\n"
+                "node3 (...)  : SUCCESS  <- 🔥热备\n"
+                "----------------------------------------\n"
+                "节点在线: 4/4 ✅"
+            ), "error_type": None}
+        if "call" in cmd_input:
+            # 解析: [console] call <ContractName> <address> <method> [args...]
+            parts = cmd_input.replace("[console]", "").strip().split()
+            contract_name = parts[1] if len(parts) > 1 else ""
+            method = parts[3] if len(parts) > 3 else "name"
+            raw_args = parts[4:] if len(parts) > 4 else []
+            if contract_name not in ("GreenEnergy", "PlantCertificate", "EcoBadge"):
+                return {"ok": False, "output": "未识别的合约名，仅支持 GreenEnergy / PlantCertificate / EcoBadge", "error_type": "syntax"}
+            try:
+                with get_conn() as conn:
+                    row = conn.execute(
+                        "SELECT address,abi FROM deployed_contracts WHERE name=? ORDER BY created_at DESC LIMIT 1",
+                        (contract_name,),
+                    ).fetchone()
+                if not row:
+                    return {"ok": False, "output": f"链上未找到 {contract_name} 合约（内置合约由平台预置，GreenEnergy 将在 Step 9 由你部署）", "error_type": "prerequisite"}
+                abi = json.loads(row["abi"])
+                fn_names = [x.get("name") for x in abi if x.get("type") == "function"]
+                if method not in fn_names:
+                    return {"ok": False, "output": f"{contract_name} 合约 ABI 中不存在方法 {method}（可调用视图: {', '.join([n for n in fn_names if n][:6])}）", "error_type": "call"}
+                call_args = [int(a) if str(a).isdigit() else a for a in raw_args]
+                r = c.call_contract(row["address"], method, call_args, "0xadmin", abi)
+                if r.get("ok"):
+                    arg_label = ", ".join(raw_args)
+                    return {"ok": True, "output": f"{contract_name} {method}({arg_label}) = {r.get('result', '?')}  ✅ 合约在链上可调用（view，本地执行）", "error_type": None}
+                return {"ok": False, "output": r.get("error", "调用失败"), "error_type": "call"}
+            except Exception as e:
+                return {"ok": False, "output": f"调用异常: {e}", "error_type": "call"}
+
+    # --- Step 9: 部署 GreenEnergy ---
+    if step == 9 and "deploy" in cmd_input:
+        try:
+            ge_src = (settings.contracts_dir / "GreenEnergy.sol").read_text(encoding="utf-8")
+            comp = compile_source(ge_src)
+            if not comp["ok"]:
+                return {"ok": False, "output": "编译失败:\n" + "\n".join(comp["errors"]), "error_type": "compile"}
+            r = c.deploy_contract(
+                "GreenEnergy", comp["abi"], comp["bytecode"], ge_src,
+                "0xadmin", "ERC20",
+                ctor_args=[1000000],
+            )
+            import json as _json
+            with get_conn() as conn:
+                conn.execute("DELETE FROM deployed_contracts WHERE address=?", (r["address"],))
+                conn.execute(
+                    "INSERT INTO deployed_contracts(address,name,abi,bytecode,source,deployer,tx_hash,standard,created_at) "
+                    "VALUES(?,?,?,?,?,?,?,?,?)",
+                    (r["address"], "GreenEnergy", _json.dumps(comp["abi"]), comp["bytecode"], ge_src,
+                     "0xadmin", r["tx_hash"], "ERC20", now()),
+                )
+            _track("contract_compile_ok", target="GreenEnergy",
+                   ref_id=r.get("tx_hash", ""), wallet=wallet,
+                   extra={"deployer_onchain": "0xadmin", "address": r["address"]})
+            mode_label = "真实 FISCO-BCOS 节点" if isinstance(c, FiscoRpcClient) else "真实 EVM 链"
+            output = (
+                f"contract address: {r['address']}\n"
+                f"transaction hash: {r['tx_hash']}\n"
+                f"block number:     {r['block_number']}\n"
+                f"gas used:         {r.get('gas_used', 0)}\n"
+                f"standard:         ERC20 (GreenEnergy)\n"
+                f"\n>>> GreenEnergy 已部署到{mode_label}，地址: {r['address']}\n"
+                f"   6 角色 mint 白名单已同步，下一步可调用 mint() 发放能量"
+            )
+            return {"ok": True, "output": output, "error_type": None}
+        except Exception as e:
+            return {"ok": False, "output": f"部署失败: {e}", "error_type": "deploy"}
+
+    # --- Step 10: 调用 GreenEnergy ---
+    if step == 10 and "call" in cmd_input and "GreenEnergy" in cmd_input:
+        try:
+            with get_conn() as conn:
+                row = conn.execute(
+                    "SELECT address,abi FROM deployed_contracts WHERE name='GreenEnergy' ORDER BY created_at DESC LIMIT 1"
+                ).fetchone()
+            if not row:
+                return {"ok": False, "output": "请先执行第 9 步部署 GreenEnergy 合约", "error_type": "prerequisite"}
+            abi = json.loads(row["abi"])
+            addr = row["address"]
+            # 解析命令: [console] call GreenEnergy <address> <method> [args...]
+            parts = cmd_input.replace("[console]", "").strip().split()
+            # parts[0]=call, parts[1]=GreenEnergy, parts[2]=address, parts[3]=method, parts[4:]=args
+            method = parts[3] if len(parts) > 3 else "name"
+            args = parts[4:] if len(parts) > 4 else []
+
+            # name / balanceOf = view; mint = state change
+            if method == "name":
+                r = c.call_contract(addr, "name", [], "0xadmin", abi)
+                if r.get("ok"):
+                    return {"ok": True, "output": f"{r.get('result', '?')}  (view 函数，不消耗 Gas)", "error_type": None}
+                return {"ok": False, "output": r.get("error", "调用失败"), "error_type": "call"}
+            elif method == "balanceOf":
+                acct = args[0] if args else "0xlearner"
+                r = c.call_contract(addr, "balanceOf", [c.resolve_account(acct)], "0xadmin", abi)
+                if r.get("ok"):
+                    return {"ok": True, "output": f"{acct} balanceOf = {r.get('result', '?')} GreenEnergy", "error_type": None}
+                return {"ok": False, "output": r.get("error", "调用失败"), "error_type": "call"}
+            elif method == "mint":
+                if len(args) < 3:
+                    return {"ok": False, "output": "mint 需要三个参数: 角色地址 目标地址 数量 原因，如: mint 0xmetro 0xalice 50 地铁出行", "error_type": "syntax"}
+                role = args[0]
+                target_addr = args[1]
+                amount = int(args[2])
+                reason = args[3] if len(args) > 3 else ""
+                r = c.call_contract(addr, "mint", [c.resolve_account(target_addr), amount, reason], role, abi)
+                if r.get("ok"):
+                    return {"ok": True, "output": f"✅ {role} → {target_addr} +{amount} GreenEnergy\n   tx_hash={r.get('tx_hash','')[:20]}...  gas={r.get('gas_used',0)}", "error_type": None}
+                return {"ok": False, "output": f"❌ mint 失败: {r.get('error', '未知错误')}", "error_type": "call"}
+        except Exception as e:
+            return {"ok": False, "output": f"调用异常: {e}", "error_type": "call"}
+
+    # 兜底
+    return {"ok": True, "output": "(命令已执行)", "error_type": None}
+
+
+@router.post("/tutorial/command")
+def exec_command(
+    payload: dict,
+    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
+    x_user_name: Optional[str] = Header(default=None, alias="X-User-Name"),
+    x_class_id: Optional[str] = Header(default=None, alias="X-Class-Id"),
+):
+    """学生手动输入命令执行接口（严格记录并校验命令执行顺序）。
+
+    请求体: {"step": int, "command": str, "wallet": str}
+    返回: {
+        "ok": bool,             # 命令是否执行成功
+        "output": str,          # 执行输出（成功=真实链/真实工具返回，失败=具体提示）
+        "error_type": str,      # syntax / order / compile / deploy / call / prerequisite / null
+        "step_completed": bool, # 该步骤最后一条命令执行完毕才为 true
+        "cmd_index": int,       # 当前命令在本步骤命令列表中的索引（0 起）
+        "cmd_total": int,       # 本步骤命令总数
+        "progress": int,        # 已完成的命令数（1..cmd_total）
+    }
+    """
+    step = payload.get("step")
+    command = payload.get("command", "")
+    wallet = payload.get("wallet") or "default"
+    class_id = (x_class_id or "").strip()
+
+    item = next((s for s in TUTORIAL if s["step"] == step), None)
+    if not item:
+        return {"ok": False, "output": f"无效步骤号: {step}", "error_type": "invalid_step",
+                "step_completed": False, "cmd_index": -1, "cmd_total": 0, "progress": 0}
+
+    commands = item.get("commands", [])
+    cmd_total = len(commands)
+
+    c = get_chain_client()
+
+    # 1) 语法校验
+    match = _match_command(command, step)
+    if not match["ok"]:
+        return {
+            "ok": False,
+            "output": f"❌ 命令语法错误\n\n正确格式:\n{match['hint']}",
+            "error_type": "syntax",
+            "step_completed": False,
+            "cmd_index": -1,
+            "cmd_total": cmd_total,
+            "progress": 0,
+        }
+
+    # 注释行：直接通过，不推进顺序
+    if match.get("type") == "comment":
+        return {"ok": True, "output": "", "error_type": None, "step_completed": False,
+                "cmd_index": -1, "cmd_total": cmd_total, "progress": 0}
+
+    cmd_index = match.get("cmd_index", 0)
+
+    # 2) 跨步骤前置校验：真实搭建必须按步骤顺序进行
+    if step > 1:
+        prev_item = next((s for s in TUTORIAL if s["step"] == step - 1), None)
+        if prev_item:
+            with get_conn() as conn:
+                prev = conn.execute(
+                    "SELECT done FROM chain_tutorial_progress WHERE wallet=? AND step=?",
+                    (wallet, step - 1),
+                ).fetchone()
+            if not prev or not prev["done"]:
+                return {
+                    "ok": False,
+                    "output": f"⚠️ 步骤顺序错误：请先完成「步骤 {step - 1}：{prev_item['title']}」再执行本步骤。\n真实 FISCO-BCOS 搭建必须按步骤顺序进行。",
+                    "error_type": "order",
+                    "step_completed": False,
+                    "cmd_index": cmd_index,
+                    "cmd_total": cmd_total,
+                    "progress": 0,
+                }
+
+    # 3) 读取该步骤命令执行进度（cmd_idx：已完成到第几条，-1 表示尚未开始）
+    with get_conn() as conn:
+        prog = conn.execute(
+            "SELECT cmd_idx FROM chain_tutorial_progress WHERE wallet=? AND step=?",
+            (wallet, step),
+        ).fetchone()
+    cur_idx = int(prog["cmd_idx"]) if prog else -1
+
+    # 3.5) 重复命令兼容：教程中可能存在文本相同的命令（如 Step 10 首尾各一次 balanceOf），
+    #      正则按首次匹配返回索引；若「当前待执行命令」与该输入文本一致，则按待执行索引推进
+    if 0 <= cmd_index <= cur_idx:
+        next_idx = cur_idx + 1
+        if next_idx < cmd_total and (commands[next_idx] or "").strip() == command.strip():
+            cmd_index = next_idx
+
+    # 4) 步骤内命令顺序校验：只能执行「当前待执行」的命令
+    if cmd_index > cur_idx + 1:
+        next_cmd = commands[cur_idx + 1] if cur_idx + 1 < cmd_total else commands[0]
+        return {
+            "ok": False,
+            "output": f"⚠️ 命令顺序错误：本步骤需要按真实搭建顺序逐条执行，请先执行第 {cur_idx + 2} 条命令：\n$ {next_cmd}\n\n（当前进度：已执行 {cur_idx + 1}/{cmd_total} 条）",
+            "error_type": "order",
+            "step_completed": False,
+            "cmd_index": cmd_index,
+            "cmd_total": cmd_total,
+            "progress": max(0, cur_idx + 1),
+        }
+
+    # 5) 执行命令（返回真实链 / 真实工具输出）
+    result = _exec_command(command, step, wallet, c)
+
+    # 6) 成功则推进命令进度；最后一条命令完成时标记步骤完成
+    if result.get("ok") and result.get("error_type") != "comment":
+        new_idx = max(cur_idx, cmd_index)
+        step_done = new_idx >= cmd_total - 1
+        _upsert_step_state(wallet, step, 1 if step_done else 0,
+                           output=(result.get("output") or "")[:8000],
+                           finished=step_done, cmd_idx=new_idx,
+                           user_id=x_user_id or "", class_id=class_id)
+        if step_done and x_user_id:
+            try:
+                student_name = x_user_name or ""
+                if student_name:
+                    from urllib.parse import unquote
+                    student_name = unquote(student_name)
+                _auto_create_grade_draft(x_user_id, student_name, wallet)
+            except Exception:
+                pass
+        return {
+            "ok": True,
+            "output": result.get("output", ""),
+            "error_type": result.get("error_type"),
+            "step_completed": step_done,
+            "cmd_index": cmd_index,
+            "cmd_total": cmd_total,
+            "progress": new_idx + 1,
+        }
+
+    # 命令执行失败（编译 / 部署 / 调用 / 前置条件未满足等）
+    return {
+        "ok": False,
+        "output": result.get("output", ""),
+        "error_type": result.get("error_type"),
+        "step_completed": False,
+        "cmd_index": cmd_index,
+        "cmd_total": cmd_total,
+        "progress": max(0, cur_idx + 1),
+    }

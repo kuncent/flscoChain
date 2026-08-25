@@ -174,9 +174,13 @@
             当前角色：<b>{{ roleMeta(currentRole.role_key)?.icon }} {{ roleMeta(currentRole.role_key)?.name }}</b>
             <span class="dq-tag accent" style="margin-left: 8px">{{ currentEnergyAction.amount }} 能量 / 次</span>
           </div>
-          <el-button type="primary" :loading="issuing" @click="issueEnergy">
+          <el-button type="primary" :loading="issuing" @click="openProofDlg">
             <span class="energy-btn-text">{{ currentEnergyAction.label }}</span>
           </el-button>
+        </div>
+        <div class="dq-tip" style="margin-bottom: 14px">
+          <span class="dt-label">业务凭证:</span>
+          点击上方按钮需提交真实业务凭证（如进站口 / 订单号 / 回收重量），链下校验通过后由联盟角色钱包签名 mint 能量。
         </div>
       </template>
 
@@ -219,6 +223,12 @@
             <el-form-item label="所需能量">
               <el-input-number v-model="treeForm.required_energy" :min="1000" :step="100" />
             </el-form-item>
+            <el-form-item label="图片地址">
+              <el-input v-model="treeForm.image_url" placeholder="https://... （选填，证书图片）" />
+              <div class="dq-tip" style="margin-top:4px">
+                <span class="dt-label">说明:</span>可为树种配置证书图片（https 图片地址），留空则使用默认图标 🌳
+              </div>
+            </el-form-item>
             <el-form-item label="描述">
               <el-input v-model="treeForm.description" type="textarea" :rows="2" placeholder="树种寓意或碳汇说明" />
             </el-form-item>
@@ -234,7 +244,9 @@
           <div class="dq-card-title sub-title">可兑换树种</div>
           <div class="tree-grid" v-if="trees.length">
             <div class="dq-card tree-item" v-for="t in trees" :key="t.id">
-              <div class="ti-name">🌳 {{ t.name }}</div>
+              <img v-if="t.image_url" class="ti-img" :src="t.image_url" :alt="t.name" @error="t.image_url = ''" />
+              <div v-else class="ti-emoji">🌳</div>
+              <div class="ti-name">{{ t.name }}</div>
               <div class="ti-desc">{{ t.description || '暂无描述' }}</div>
               <div class="ti-cost">所需能量：<span class="dq-mono">{{ t.required_energy }}</span></div>
               <el-button
@@ -262,7 +274,8 @@
       </div>
       <div class="cert-grid" v-if="certificates.length">
         <div class="dq-card cert-item" v-for="c in certificates" :key="c.token_id">
-          <div class="ci-badge">🌱</div>
+          <img v-if="treeImageOf(c.species_name)" class="ci-img" :src="treeImageOf(c.species_name)" :alt="c.species_name" />
+          <div v-else class="ci-badge">🌱</div>
           <div class="ci-name">{{ c.species_name || c.name || '植树证书' }}</div>
           <div class="ci-meta">
             <div>Token ID: <span class="dq-mono">{{ c.token_id }}</span></div>
@@ -292,36 +305,102 @@
       <div class="dq-card-title">
         <span class="title-icon">🎖️</span>
         勋章与骑行券兑换 (ERC1155)
+        <span class="dq-tag" style="margin-left: auto">{{ badgeTypes.length }} 种类型</span>
       </div>
       <div class="badge-grid">
-        <div class="dq-card badge-card">
-          <div class="bc-icon">🏅</div>
-          <div class="bc-name">生态勋章</div>
-          <div class="bc-desc">绿色出行达人的荣誉勋章</div>
-          <div class="bc-cost">花费 <span class="dq-mono">10</span> 能量</div>
+        <div class="dq-card badge-card" v-for="bt in badgeTypes" :key="bt.id">
+          <img v-if="bt.image_url" class="bc-img" :src="bt.image_url" :alt="bt.name" @error="bt.image_url = ''" />
+          <div v-else class="bc-icon">{{ bt.icon || (bt.badge_type === 'voucher' ? '🎫' : '🏅') }}</div>
+          <div class="bc-name">{{ bt.name }}</div>
+          <div class="bc-desc">{{ bt.desc || '绿色生活荣誉资产' }}</div>
+          <div class="bc-meta">
+            <span>花费 <span class="dq-mono">{{ bt.cost_energy }}</span> 能量</span>
+            <span>已铸 <span class="dq-mono">{{ bt.minted }}</span>/{{ bt.supply }}</span>
+          </div>
           <el-button
             type="primary"
-            :disabled="energyBalance < 10"
-            :loading="exchangingBadge === 'badge'"
-            @click="exchangeBadge('badge')"
+            :disabled="energyBalance < bt.cost_energy || bt.minted >= bt.supply"
+            :loading="exchangingBadge === String(bt.id)"
+            @click="exchangeBadgeType(bt)"
           >
-            {{ energyBalance >= 10 ? '兑换勋章' : '能量不足' }}
+            {{ bt.minted >= bt.supply ? '已售罄' : energyBalance >= bt.cost_energy ? '兑换' : '能量不足' }}
           </el-button>
         </div>
-        <div class="dq-card badge-card">
-          <div class="bc-icon">🎫</div>
-          <div class="bc-name">骑行券</div>
-          <div class="bc-desc">可兑换一次免费共享单车骑行</div>
-          <div class="bc-cost">花费 <span class="dq-mono">20</span> 能量</div>
-          <el-button
-            type="primary"
-            :disabled="energyBalance < 20"
-            :loading="exchangingBadge === 'voucher'"
-            @click="exchangeBadge('voucher')"
-          >
-            {{ energyBalance >= 20 ? '兑换骑行券' : '能量不足' }}
-          </el-button>
+      </div>
+
+      <!-- 联盟角色：新增勋章 / 骑行券类型 -->
+      <div class="dq-card badge-admin" v-if="canAddBadgeTypes">
+        <div class="dq-card-title sub-title">
+          新增勋章类型（联盟角色）
+          <span class="dq-tag info" style="margin-left: 8px">{{ currentRole?.role?.icon }} {{ currentRole?.role?.name }}</span>
         </div>
+        <el-form :inline="true" size="small">
+          <el-form-item v-if="isBike" label="资产类型">
+            <el-radio-group v-model="badgeTypeForm.badge_type">
+              <el-radio-button label="badge">生态勋章</el-radio-button>
+              <el-radio-button label="voucher">骑行券</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item :label="badgeTypeForm.badge_type === 'voucher' ? '骑行券名称' : '名称'">
+            <el-input v-model="badgeTypeForm.name" :placeholder="badgeTypeForm.badge_type === 'voucher' ? '如：绿色骑行券' : '如：城市守护者'" style="width: 150px" />
+          </el-form-item>
+          <el-form-item label="图标">
+            <el-input v-model="badgeTypeForm.icon" placeholder="emoji，如 🏅" style="width: 120px" />
+          </el-form-item>
+          <el-form-item label="消耗能量">
+            <el-input-number v-model="badgeTypeForm.cost_energy" :min="1" :step="5" style="width: 110px" />
+          </el-form-item>
+          <el-form-item label="发行上限">
+            <el-input-number v-model="badgeTypeForm.supply" :min="1" :step="10" style="width: 110px" />
+          </el-form-item>
+          <el-form-item label="图片地址">
+            <el-input v-model="badgeTypeForm.image_url" placeholder="https://... （选填）" style="width: 200px" />
+          </el-form-item>
+          <el-form-item label="描述">
+            <el-input v-model="badgeTypeForm.desc" placeholder="勋章寓意（选填）" style="width: 180px" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" :loading="addingBadgeType" @click="addBadgeType">新增</el-button>
+          </el-form-item>
+        </el-form>
+        <div class="dq-tip">
+          <span class="dt-label">说明:</span>管理员与联盟节点均可新增勋章（需先选定角色）；<b>骑行券仅共享单车公司（bike）</b>可维护。
+        </div>
+      </div>
+
+      <!-- 联盟角色铸造入口：业务方直接向居民铸造发放勋章 / 骑行券 -->
+      <div class="dq-card mint-admin" v-if="canMintBadge">
+        <div class="dq-card-title sub-title">
+          🏭 联盟角色铸造入口
+          <span class="dq-tag warn" style="margin-left: 8px">链上 FROM = {{ currentRole?.role_key }} 角色钱包</span>
+        </div>
+        <div class="dq-tip" style="margin-bottom: 10px">
+          <span class="dt-label">说明:</span>
+          联盟业务方可将勋章 / 骑行券直接铸造发放给居民钱包（ERC1155 mint），无需居民消耗能量兑换，模拟真实场景的权益空投。
+        </div>
+        <el-form :inline="true" size="small">
+          <el-form-item label="资产类型">
+            <el-select v-model="mintTypeId" style="width: 180px">
+              <el-option
+                v-for="bt in mintableTypes"
+                :key="bt.id"
+                :label="`${bt.icon || '🎖️'} ${bt.name}（剩余 ${Math.max(bt.supply - bt.minted, 0)}）`"
+                :value="bt.id"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="接收钱包">
+            <el-input v-model="mintToWallet" placeholder="0xresident / 0xlearner" style="width: 180px" />
+          </el-form-item>
+          <el-form-item label="数量">
+            <el-input-number v-model="mintQty" :min="1" :max="100" style="width: 100px" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" :loading="mintingBadge" @click="mintBadgeTo">
+              铸造发放
+            </el-button>
+          </el-form-item>
+        </el-form>
       </div>
 
       <!-- 已兑换的勋章/骑行券列表 -->
@@ -468,6 +547,19 @@
       </template>
     </el-dialog>
 
+    <!-- 10. 能量发放业务凭证表单（动态字段，按联盟角色生成） -->
+    <EnergyProofForm
+      ref="proofFormRef"
+      v-model:visible="proofDlg"
+      :role-name="currentRole ? roleMeta(currentRole.role_key)?.name : ''"
+      :points="currentEnergyAction.amount"
+      :rule="currentRuleObj"
+      :threshold-hint="currentThresholdHint"
+      :proof-no-label="currentProofNoLabel"
+      :proof-no-field="currentRuleObj?.proof_no_field"
+      @submit="submitProof"
+    />
+
     <!-- 9. 绿色资产市场（买卖 / 下架 闭环） -->
     <div class="dq-card section-card">
       <div class="dq-card-title">
@@ -542,6 +634,7 @@ import { ref, reactive, computed, onMounted, onActivated } from 'vue'
 import { ecoApi } from '@/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
+import EnergyProofForm from '@/components/EnergyProofForm.vue'
 
 /* ==================== 钱包 ==================== */
 const wallet = ref(localStorage.getItem('wallet') || '0xlearner')
@@ -599,7 +692,225 @@ const certificates = ref<any[]>([])
 const badges = ref<any[]>([])
 const walletData = ref<any>(null)
 
-const treeForm = reactive({ name: '', required_energy: 1000, description: '' })
+const treeForm = reactive({ name: '', required_energy: 1000, image_url: '', description: '' })
+
+/* ==================== 能量发放业务凭证 ==================== */
+const proofDlg = ref(false)
+const proofFormRef = ref<any>(null)
+/** 当前角色的 energy_rule（含 proof_fields 等） */
+const currentRuleObj = computed(() => currentRole.value?.role?.energy_rule || null)
+/** 阈值提示（如 distance_km ≥ 10 km） */
+const currentThresholdHint = computed(() => {
+  const r = currentRuleObj.value
+  if (!r) return ''
+  if (r.proof_field === 'no_cutlery') return 'no_cutlery = true（必须选择无需餐具）'
+  return `${r.proof_field} ≥ ${r.min} ${r.unit}`
+})
+const PROOF_NO_LABELS: Record<string, string> = {
+  trip_no: '业务单号（乘车号）', order_id: '业务单号（订单号）',
+  order_no: '业务单号（回收单号）', platform_order: '业务单号（平台订单）',
+}
+const currentProofNoLabel = computed(() =>
+  PROOF_NO_LABELS[currentRuleObj.value?.proof_no_field] || '业务单号',
+)
+
+/** 打开业务凭证表单 */
+const openProofDlg = () => {
+  if (!currentRole.value) {
+    ElMessage.warning('请先选择角色')
+    return
+  }
+  const r = currentRole.value?.role?.energy_rule
+  if (!r) {
+    ElMessage.warning('当前角色没有能量发放规则')
+    return
+  }
+  proofDlg.value = true
+}
+
+/** 提交业务凭证 → 后端校验 → 发放能量 */
+const submitProof = async (proof: Record<string, any>) => {
+  issuing.value = true
+  try {
+    const r: any = await ecoApi.issueEnergy(wallet.value, currentRole.value.role_key, proof)
+    const pfNo = currentRuleObj.value?.proof_no_field
+    ElMessage.success(`能量发放成功：+${r?.points ?? currentEnergyAction.value.amount}，业务单号 ${pfNo && proof[pfNo] ? proof[pfNo] : '-'}`)
+    logEco(
+      'energy', 'issue_energy', 'success',
+      `${roleMeta(currentRole.value.role_key)?.name} · ${currentEnergyAction.value.label} +${r?.points ?? currentEnergyAction.value.amount}点，单号 ${pfNo && proof[pfNo] ? proof[pfNo] : '-'}`,
+    )
+    proofDlg.value = false
+    await Promise.all([loadEnergyBalance(), loadEnergyRecords(), loadWallet()])
+  } catch (e: any) {
+    const msg = e?.response?.data?.detail || e?.message || '能量发放失败'
+    ElMessage.error(msg)
+    logEco('energy', 'issue_energy', 'error', msg, JSON.stringify(e ?? {}))
+  } finally {
+    issuing.value = false
+    proofFormRef.value?.setSubmitting(false)
+  }
+}
+
+/* ==================== 勋章类型 / 铸造入口 ==================== */
+const badgeTypes = ref<any[]>([])
+const badgeTypeForm = reactive({
+  badge_type: 'badge' as 'badge' | 'voucher',
+  name: '', icon: '', image_url: '', cost_energy: 10, supply: 100, desc: '',
+})
+const addingBadgeType = ref(false)
+const mintTypeId = ref<number | null>(null)
+const mintToWallet = ref('0xresident')
+const mintQty = ref(1)
+const mintingBadge = ref(false)
+
+/** 当前角色是否有铸造权限（can_issue_badge / can_issue_voucher） */
+const canMintBadge = computed(() => {
+  const r = currentRole.value?.role
+  return !!(r && (r.can_issue_badge || r.can_issue_voucher))
+})
+
+/** 当前角色为共享单车公司（骑行券唯一维护方） */
+const isBike = computed(() => currentRole.value?.role_key === 'bike')
+
+/** 是否可新增勋章 / 骑行券类型：管理员 + 任意具备发放权限的联盟角色（需先选定角色） */
+const canAddBadgeTypes = computed(() => {
+  const r = currentRole.value?.role
+  if (!r) return false
+  if (r.key === 'admin') return true
+  return !!(r.can_issue_badge || r.can_issue_voucher)
+})
+
+/** 当前角色可铸造的类型：issuer_role 为空（全体）或等于当前角色 */
+const mintableTypes = computed(() => {
+  const rk = currentRole.value?.role_key
+  return badgeTypes.value.filter(
+    (bt) => !bt.issuer_role || bt.issuer_role === rk,
+  )
+})
+
+const loadBadgeTypes = async () => {
+  try {
+    const r: any = await ecoApi.badgeTypes()
+    badgeTypes.value = r?.items || r || []
+    // 默认选中第一个可铸造类型
+    if (!mintTypeId.value && mintableTypes.value.length) {
+      mintTypeId.value = mintableTypes.value[0].id
+    }
+  } catch {
+    badgeTypes.value = []
+  }
+}
+
+/** 兑换勋章 / 骑行券（按类型 ID，能量回收闭环） */
+const exchangeBadgeType = async (bt: any) => {
+  exchangingBadge.value = String(bt.id)
+  try {
+    await ecoApi.exchangeBadge(wallet.value, bt.badge_type, bt.id)
+    ElMessage.success(`${bt.name} 兑换成功 ${bt.icon || '🎖️'}`)
+    logEco('badge', 'exchange_badge', 'success',
+      `兑换${bt.name}（type_id=${bt.id}，消耗 ${bt.cost_energy} 能量）`)
+    await Promise.all([loadEnergyBalance(), loadBadges(), loadWallet(), loadBadgeTypes()])
+  } catch (e: any) {
+    const msg = e?.response?.data?.detail || e?.message || '勋章兑换失败'
+    ElMessage.error(msg)
+    logEco('badge', 'exchange_badge', 'error',
+      `${msg} (type_id=${bt.id})`, JSON.stringify(e ?? {}))
+  } finally {
+    exchangingBadge.value = ''
+  }
+}
+
+/** 联盟角色新增勋章 / 骑行券类型 */
+const addBadgeType = async () => {
+  if (!badgeTypeForm.name.trim()) {
+    ElMessage.warning(badgeTypeForm.badge_type === 'voucher' ? '请填写骑行券名称' : '请填写勋章名称')
+    return
+  }
+  if (badgeTypeForm.cost_energy < 1) {
+    ElMessage.warning('消耗能量必须大于 0')
+    return
+  }
+  if (badgeTypeForm.supply < 1) {
+    ElMessage.warning('发行上限必须大于 0')
+    return
+  }
+  if (badgeTypeForm.badge_type === 'voucher' && !isBike.value) {
+    ElMessage.warning('骑行券仅共享单车公司（bike）可维护，请先切换角色')
+    return
+  }
+  addingBadgeType.value = true
+  try {
+    const r: any = await ecoApi.addBadgeType({
+      wallet: wallet.value,
+      badge_type: badgeTypeForm.badge_type,
+      name: badgeTypeForm.name.trim(),
+      icon: badgeTypeForm.icon.trim() || (badgeTypeForm.badge_type === 'voucher' ? '🎫' : '🏅'),
+      image_url: badgeTypeForm.image_url.trim(),
+      cost_energy: badgeTypeForm.cost_energy,
+      supply: badgeTypeForm.supply,
+      desc: badgeTypeForm.desc,
+    })
+    const label = badgeTypeForm.badge_type === 'voucher' ? '骑行券' : '勋章类型'
+    ElMessage.success(r?.updated
+      ? `骑行券「${badgeTypeForm.name}」已更新（骑行券仅维护一份，token_id=${r?.token_id}）`
+      : `${label}「${badgeTypeForm.name}」已上架（token_id=${r?.token_id}）`)
+    logEco('badge', 'badge_type_add', 'success',
+      `新增${label}：${badgeTypeForm.name}，成本 ${badgeTypeForm.cost_energy}，上限 ${badgeTypeForm.supply}`)
+    badgeTypeForm.name = ''
+    badgeTypeForm.icon = ''
+    badgeTypeForm.image_url = ''
+    badgeTypeForm.cost_energy = 10
+    badgeTypeForm.supply = 100
+    badgeTypeForm.desc = ''
+    await loadBadgeTypes()
+  } catch (e: any) {
+    const msg = e?.response?.data?.detail || e?.message || '新增勋章类型失败'
+    ElMessage.error(msg)
+    logEco('badge', 'badge_type_add', 'error', msg, JSON.stringify(e ?? {}))
+  } finally {
+    addingBadgeType.value = false
+  }
+}
+
+/** 联盟角色铸造发放勋章 / 骑行券给居民 */
+const mintBadgeTo = async () => {
+  if (!mintTypeId.value) {
+    ElMessage.warning('请选择要铸造的资产类型')
+    return
+  }
+  if (!mintToWallet.value.trim()) {
+    ElMessage.warning('请填写接收钱包')
+    return
+  }
+  const bt = badgeTypes.value.find((x) => x.id === mintTypeId.value)
+  try {
+    await ElMessageBox.confirm(
+      `确认以「${roleMeta(currentRole.value.role_key)?.name}」身份铸造 ${mintQty.value} 个「${bt?.name}」发放给 ${mintToWallet.value}？`,
+      '联盟角色铸造',
+      { confirmButtonText: '确认铸造', cancelButtonText: '取消', type: 'info' },
+    )
+  } catch { return }
+  mintingBadge.value = true
+  try {
+    await ecoApi.mintBadge({
+      wallet: wallet.value,
+      role_key: currentRole.value.role_key,
+      type_id: mintTypeId.value,
+      to_wallet: mintToWallet.value.trim(),
+      quantity: mintQty.value,
+    })
+    ElMessage.success(`铸造成功：${bt?.name} x${mintQty.value} → ${mintToWallet.value}`)
+    logEco('badge', 'badge_mint', 'success',
+      `${roleMeta(currentRole.value.role_key)?.name} 铸造 ${bt?.name} x${mintQty.value} 给 ${mintToWallet.value}`)
+    await Promise.all([loadBadgeTypes(), loadBadges()])
+  } catch (e: any) {
+    const msg = e?.response?.data?.detail || e?.message || '铸造失败'
+    ElMessage.error(msg)
+    logEco('badge', 'badge_mint', 'error', msg, JSON.stringify(e ?? {}))
+  } finally {
+    mintingBadge.value = false
+  }
+}
 
 /* ==================== 一键编译 + 部署内置合约 ==================== */
 const deployingKey = ref<string>('')   // 当前正在部署的合约 key
@@ -919,6 +1230,7 @@ const loadAll = async () => {
     loadTrees(),
     loadCertificates(),
     loadBadges(),
+    loadBadgeTypes(),
     loadWallet(),
     loadMarket(),
   ])
@@ -971,31 +1283,6 @@ const selectRole = async (role_key: string) => {
   }
 }
 
-/** 发放绿色能量 */
-const issueEnergy = async () => {
-  if (!currentRole.value) {
-    ElMessage.warning('请先选择角色')
-    logEco('energy', 'issue_energy', 'warn', '发放能量前未选择角色')
-    return
-  }
-  issuing.value = true
-  try {
-    const r: any = await ecoApi.issueEnergy(wallet.value, currentRole.value.role_key)
-    ElMessage.success(`能量发放成功：+${r?.points ?? currentEnergyAction.value.amount}`)
-    logEco(
-      'energy', 'issue_energy', 'success',
-      `${currentRole.value.name} · ${currentEnergyAction.value.label} +${r?.points ?? currentEnergyAction.value.amount}点`,
-    )
-    await Promise.all([loadEnergyBalance(), loadEnergyRecords(), loadWallet()])
-  } catch (e: any) {
-    const msg = e?.response?.data?.detail || e?.message || '能量发放失败'
-    ElMessage.error(msg)
-    logEco('energy', 'issue_energy', 'error', msg, JSON.stringify(e ?? {}))
-  } finally {
-    issuing.value = false
-  }
-}
-
 /** 添加树种（管理员） */
 const addTree = async () => {
   if (!treeForm.name) {
@@ -1016,6 +1303,7 @@ const addTree = async () => {
       `管理员上架树种：${treeForm.name}，需 ${treeForm.required_energy} 能量`)
     treeForm.name = ''
     treeForm.required_energy = 1000
+    treeForm.image_url = ''
     treeForm.description = ''
     await loadTrees()
   } catch (e: any) {
@@ -1025,6 +1313,13 @@ const addTree = async () => {
   } finally {
     addingTree.value = false
   }
+}
+
+/** 按树种名称匹配证书图片（树种配置的 image_url） */
+const treeImageOf = (speciesName?: string) => {
+  if (!speciesName) return ''
+  const t = trees.value.find((x) => x.name === speciesName)
+  return t?.image_url || ''
 }
 
 /** 兑换植树证书 */
@@ -1044,26 +1339,6 @@ const exchangeCertificate = async (species_id: number) => {
       `${msg} (species_id=${species_id})`, JSON.stringify(e ?? {}))
   } finally {
     exchangingTree.value = null
-  }
-}
-
-/** 兑换勋章 / 骑行券 */
-const exchangeBadge = async (badge_type: string) => {
-  exchangingBadge.value = badge_type
-  try {
-    const label = badgeLabel(badge_type)
-    await ecoApi.exchangeBadge(wallet.value, badge_type)
-    ElMessage.success(`${label.name}兑换成功 ${label.icon}`)
-    logEco('badge', 'exchange_badge', 'success',
-      `兑换${label.name}（type=${badge_type}）`)
-    await Promise.all([loadEnergyBalance(), loadBadges(), loadWallet()])
-  } catch (e: any) {
-    const msg = e?.response?.data?.detail || e?.message || '勋章兑换失败'
-    ElMessage.error(msg)
-    logEco('badge', 'exchange_badge', 'error',
-      `${msg} (type=${badge_type})`, JSON.stringify(e ?? {}))
-  } finally {
-    exchangingBadge.value = ''
   }
 }
 
@@ -1339,6 +1614,11 @@ onActivated(loadAll)
 }
 .tree-item {
   padding: 12px;
+  .ti-img {
+    width: 100%; height: 96px; object-fit: cover;
+    border-radius: 8px; margin-bottom: 8px; background: var(--dq-bg-2);
+  }
+  .ti-emoji { font-size: 40px; text-align: center; margin-bottom: 8px; }
   .ti-name { font-weight: 600; color: var(--dq-text); font-size: 14px; margin-bottom: 6px; }
   .ti-desc { font-size: 12px; color: var(--dq-text-dim); line-height: 1.5; margin-bottom: 6px; min-height: 32px; }
   .ti-cost { font-size: 12px; color: var(--dq-text); .dq-mono { color: var(--dq-primary); font-weight: 700; } }
@@ -1348,6 +1628,10 @@ onActivated(loadAll)
 }
 .cert-item {
   padding: 14px; text-align: center;
+  .ci-img {
+    width: 100%; height: 110px; object-fit: cover;
+    border-radius: 8px; margin-bottom: 8px; background: var(--dq-bg-2);
+  }
   .ci-badge { font-size: 36px; margin-bottom: 8px; }
   .ci-name { font-weight: 600; color: var(--dq-text); margin-bottom: 8px; }
   .ci-meta {
@@ -1380,14 +1664,33 @@ onActivated(loadAll)
 
 /* ---- 勋章 / 骑行券 ---- */
 .badge-grid {
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
 }
 .badge-card {
   padding: 18px; text-align: center;
+  .bc-img {
+    width: 72px; height: 72px; object-fit: cover;
+    border-radius: 12px; margin: 0 auto 8px; display: block; background: var(--dq-bg-2);
+  }
   .bc-icon { font-size: 40px; margin-bottom: 8px; }
   .bc-name { font-weight: 600; color: var(--dq-text); font-size: 15px; margin-bottom: 4px; }
-  .bc-desc { font-size: 12px; color: var(--dq-text-dim); margin-bottom: 8px; }
+  .bc-desc { font-size: 12px; color: var(--dq-text-dim); margin-bottom: 8px; min-height: 32px; line-height: 1.5; }
   .bc-cost { font-size: 13px; color: var(--dq-text); margin-bottom: 12px; .dq-mono { color: var(--dq-primary); font-weight: 700; } }
+  .bc-meta {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 12px; color: var(--dq-text-dim); margin-bottom: 12px;
+    .dq-mono { color: var(--dq-primary); font-weight: 700; }
+  }
+}
+.badge-admin, .mint-admin {
+  margin-top: 12px;
+  padding: 14px;
+  background: var(--dq-bg-2);
+  border: 1px dashed var(--dq-border-2);
+  border-radius: 8px;
+}
+@media (max-width: 1100px) {
+  .badge-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 600px) {
   .badge-grid { grid-template-columns: 1fr; }
