@@ -232,45 +232,9 @@
         <div class="tab-content" v-show="activeTab === 'terminal'">
           <div class="term-wrap">
             <div class="term" ref="termRef"></div>
-            <!-- 命令输入框 -->
-            <div class="cmd-input-bar" v-if="cur">
-              <span class="cmd-prompt">$</span>
-              <input
-                ref="cmdInputRef"
-                v-model="cmdInput"
-                class="cmd-input"
-                placeholder="在此手动输入命令并按回车执行（禁止粘贴）..."
-                @keydown.enter="execCommand"
-                @keydown.up="historyUp"
-                @keydown.down="historyDown"
-                @keydown="blockPasteHotkeys"
-                @paste.prevent="onPasteBlock"
-                @copy.prevent
-                @cut.prevent
-                @dragstart.prevent
-                @drop.prevent
-                @contextmenu.prevent
-                spellcheck="false"
-                autocomplete="off"
-                autocorrect="off"
-                autocapitalize="off"
-              />
-              <!-- 自动补全提示 -->
-              <div class="autocomplete-dropdown" v-if="showAutocomplete && autocompleteSuggestions.length">
-                <div 
-                  class="autocomplete-item"
-                  v-for="(suggestion, idx) in autocompleteSuggestions"
-                  :key="idx"
-                  @click="selectAutocomplete(suggestion)"
-                  :class="{ selected: idx === selectedSuggestionIdx }"
-                >
-                  {{ suggestion }}
-                </div>
-              </div>
-            </div>
           </div>
           <div class="term-foot">
-            <span class="tf-hint">💡 请按左侧「需要执行的命令」手动输入，回车执行。终端禁止粘贴，语法错误会给出具体提示。</span>
+            <span class="tf-hint">💡 在终端内直接输入命令，回车执行；上下键切换历史；Tab 补全。</span>
             <div class="tf-kw">
               <span>PBFT</span>
               <span>EVM</span>
@@ -382,10 +346,10 @@ const steps = ref<any[]>([])
 const active = ref(0)
 const loading = ref(false)
 const termRef = ref<HTMLElement>()
-const cmdInputRef = ref<HTMLInputElement>()
-const cmdInput = ref('')
+const currentLine = ref('')        // 终端行内输入缓冲（替代旧 cmdInput）
 const cmdHistory = ref<string[]>([])
 const historyIdx = ref(-1)
+const termBusy = ref(false)        // 命令执行中，屏蔽键盘输入
 const kbOpen = ref(true)
 
 /* ---------- 标签页切换 ---------- */
@@ -644,11 +608,7 @@ function saveFile() {
   ElMessage.success(`${currentFile.value.name} 已保存`)
 }
 
-/* ---------- 命令自动补全 ---------- */
-const showAutocomplete = ref(false)
-const autocompleteSuggestions = ref<string[]>([])
-const selectedSuggestionIdx = ref(0)
-
+/* ---------- 命令补全（Tab 键行内补全） ---------- */
 const ALL_COMMANDS = [
   'cd', 'ls', 'cat', 'mkdir', 'touch', 'rm', 'cp', 'mv',
   'tail', 'head', 'grep', 'echo', 'chmod', 'ps', 'kill',
@@ -657,40 +617,34 @@ const ALL_COMMANDS = [
   'fisco-bcos', 'console',
 ]
 
-watch(cmdInput, (val) => {
-  if (!val || val.length < 2) {
-    showAutocomplete.value = false
-    return
-  }
+function tabComplete(): string | null {
+  const val = currentLine.value
+  if (!val || val.length < 2) return null
   const matches = ALL_COMMANDS.filter(c => c.startsWith(val) && c !== val)
-  if (matches.length > 0) {
-    autocompleteSuggestions.value = matches.slice(0, 6)
-    selectedSuggestionIdx.value = 0
-    showAutocomplete.value = true
-  } else {
-    showAutocomplete.value = false
-  }
-})
-
-function selectAutocomplete(suggestion: string) {
-  cmdInput.value = suggestion
-  showAutocomplete.value = false
-  cmdInputRef.value?.focus()
+  return matches.length > 0 ? matches[0] : null
 }
 
-/* ---------- 双击命令填充 ---------- */
+/* ---------- 双击命令填充（写入终端行内缓冲，回车即执行） ---------- */
 function fillCommand(cmd: string) {
-  cmdInput.value = cmd
   activeTab.value = 'terminal'
-  nextTick(() => cmdInputRef.value?.focus())
-  ElMessage.success('命令已填充到输入框')
+  nextTick(() => {
+    term?.focus()
+    // 若当前行有残留输入，先擦除后填充
+    if (currentLine.value) {
+      const bs = '\b \b'.repeat(currentLine.value.length)
+      term.write(bs)
+    }
+    currentLine.value = cmd
+    term.write(cmd)
+    ElMessage.success('命令已填入终端，按回车执行')
+  })
 }
 
 watch(activeTab, (tab) => {
   if (tab === 'terminal') {
     nextTick(() => {
       try { fit?.fit() } catch {}
-      cmdInputRef.value?.focus()
+      term?.focus()
     })
   }
   if (tab === 'editor' && currentFile.value) {
@@ -973,87 +927,116 @@ async function resetAll() {
 }
 
 /* ---------- 核心：学生手动输入命令执行 ---------- */
-async function execCommand() {
-  if (!cur.value) return
-  const cmd = cmdInput.value.trim()
+async function execCommand(cmd: string) {
+  if (!cur.value || termBusy.value) return
+  cmd = cmd.trim()
   if (!cmd) return
 
   // 记录命令历史
   cmdHistory.value.push(cmd)
   historyIdx.value = cmdHistory.value.length
-  cmdInput.value = ''
+  currentLine.value = ''
 
-  // 在终端显示输入的命令（带时间戳）
-  const timestamp = new Date().toLocaleTimeString('zh-CN', { hour12: false })
-  term.writeln(`\x1b[90m[${timestamp}]\x1b[0m \x1b[32m$ ${cmd}\x1b[0m`)
+  // 命令已在终端行内输入完毕（onData 回车时已显示），这里只换行
+  term.write('\r\n')
 
   loading.value = true
+  termBusy.value = true
   startTimer()
   try {
     const wallet = app.currentWallet || '0xlearner'
     const r: any = await chainApi.execCommand(cur.value.step, cmd, wallet)
 
-    // 输出执行结果
+    // 输出执行结果（接近真实终端：# 开头为注释行 dim 灰色，[INFO]/[OK]/[WARN]/[ERROR] 按级别着色）
     const out = r.output || ''
     if (r.ok) {
-      // 成功：增强语法高亮
+      // 成功：按真实终端日志风格分色
       out.split('\n').forEach((line: string) => {
-        // 合约地址、交易哈希、区块号等关键信息（黄色高亮）
-        if (line.match(/contract address|transaction hash|block number|tx hash|block height/i)) {
+        // 注释行 / 业务映射说明（dim 灰色，像真实 shell 注释或日志的辅助信息）
+        if (/^\s*(#|<-|>>>|node\d)/.test(line) || line.startsWith('  <-')) {
+          term.writeln(`\x1b[2;37m${line}\x1b[0m`)
+        }
+        // [完成] 步骤完成标记（青色高亮）
+        else if (/^\[完成\]/.test(line)) {
+          term.writeln(`\x1b[36m${line}\x1b[0m`)
+        }
+        // [INFO] 日志级别标签（蓝色，真实 FISCO-BCOS 日志风格）
+        else if (/^\[INFO\]/.test(line)) {
+          term.writeln(`\x1b[34m${line}\x1b[0m`)
+        }
+        // [CHECK] 健康检查标签（蓝色）
+        else if (/^\[CHECK\]/.test(line)) {
+          term.writeln(`\x1b[34m${line}\x1b[0m`)
+        }
+        // [OK] / SUCCESS / completed / start successful（绿色成功）
+        else if (/^\[(OK|INFO)\]/.test(line) && line.includes('OK') || /completed|SUCCESS|start successful|all checks passed|nodes online/i.test(line)) {
+          term.writeln(`\x1b[32m${line}\x1b[0m`)
+        }
+        // Return: 视图函数返回值 / : OK 成功标记 / succeeded! 端口连通（绿色）
+        else if (/^Return[:\s]/i.test(line) || /:\s*OK\s*$/.test(line) || /succeeded!/.test(line) || /\bOK\b\s*$/.test(line)) {
+          term.writeln(`\x1b[32m${line}\x1b[0m`)
+        }
+        // [WARN] / [ERROR] 日志级别（黄/红）
+        else if (/^\[WARN\]/.test(line)) {
           term.writeln(`\x1b[33m${line}\x1b[0m`)
         }
-        // 成功标记（绿色）
-        else if (line.includes('✅') || line.includes('[完成]') || line.includes('SUCCESS') || line.includes('返回:')) {
+        else if (/^\[ERROR\]/.test(line)) {
+          term.writeln(`\x1b[31m${line}\x1b[0m`)
+        }
+        // 合约地址、交易哈希、区块号、Gas、Receipt 等 key=value 关键信息（黄色高亮）
+        else if (/contract address|transaction hash|block number|tx hash|block height|transactionHash|contractAddress|blockNumber|gasUsed|blockHash|status:/i.test(line)) {
+          term.writeln(`\x1b[33m${line}\x1b[0m`)
+        }
+        // notBefore/notAfter/subject 证书信息（青色）
+        else if (/^(subject=|notBefore=|notAfter=|issuer=)/.test(line)) {
+          term.writeln(`\x1b[36m${line}\x1b[0m`)
+        }
+        // Connection to ... 端口连通性（绿色）
+        else if (/^Connection to .* succeeded/.test(line)) {
           term.writeln(`\x1b[32m${line}\x1b[0m`)
         }
         // 十六进制地址/哈希（青色）
-        else if (line.match(/0x[a-fA-F0-9]{40,}/)) {
+        else if (/0x[a-fA-F0-9]{20,}/.test(line)) {
           term.writeln(`\x1b[36m${line}\x1b[0m`)
         }
-        // 数值/统计信息（蓝色）
-        else if (line.match(/balance|amount|gas|count|total|数量|余额|总计/i)) {
+        // 数值/统计（蓝色）
+        else if (/balance|amount|gas used|gasUsed|count|total|数量|余额|总计/i.test(line)) {
           term.writeln(`\x1b[34m${line}\x1b[0m`)
         }
-        // 表格/列表项（白色）
-        else if (line.startsWith('  ') || line.startsWith('│') || line.startsWith('├') || line.startsWith('└')) {
-          term.writeln(line)
-        }
-        // 普通输出
+        // 空行 / 普通行
         else {
           term.writeln(line)
         }
       })
-      // 成功后同步命令进度（左侧命令列表状态实时更新）
+      // 成功后同步命令进度
       if (typeof r.cmd_index === 'number' && r.cmd_index >= 0) {
         cur.value.cmd_idx = r.cmd_index
         cur.value.cmd_total = r.cmd_total
       }
     } else if (r.error_type === 'order') {
-      // 顺序错误：黄色警告提示
-      term.writeln('')
-      term.writeln('\x1b[33m⚠️  命令执行顺序错误\x1b[0m')
+      // 顺序错误：真实 shell 报错风格（bash: ...: command not found / 命令顺序约束）
+      term.writeln(`\x1b[31mbash: warning: 命令执行顺序错误\x1b[0m`)
       out.split('\n').forEach((line: string) => {
-        if (line.startsWith('$ ')) {
+        if (line.startsWith('$ ') || line.startsWith('# ')) {
           term.writeln(`\x1b[36m${line}\x1b[0m`)
         } else if (line.trim()) {
           term.writeln(`\x1b[33m${line}\x1b[0m`)
         }
       })
     } else {
-      // 失败：红色显示错误提示
-      term.writeln('')
-      term.writeln('\x1b[31m❌ 命令执行失败\x1b[0m')
+      // 失败：真实 stderr 风格（红色）
+      term.writeln(`\x1b[31mbash: error: 命令执行失败\x1b[0m`)
       out.split('\n').forEach((line: string) => {
-        if (line.includes('❌') || line.includes('语法错误') || line.includes('失败') || line.includes('Error')) {
+        if (/语法错误|失败|Error|error/i.test(line)) {
           term.writeln(`\x1b[31m${line}\x1b[0m`)
-        } else if (line.startsWith('  ▪') || line.startsWith('  •')) {
-          term.writeln(`\x1b[36m${line}\x1b[0m`)
         } else if (line.trim()) {
-          term.writeln(`\x1b[31m${line}\x1b[0m`)
+          term.writeln(`\x1b[37m${line}\x1b[0m`)
         }
       })
     }
     term.writeln('')
+    // 命令结束后输出新的 PS1 提示符（真实 shell 行为：每条命令结束都换行出新提示符）
+    term.write('\x1b[1;32mroot@fisco-vm\x1b[0m:\x1b[1;34m~/fisco\x1b[0m# ')
 
     const elapsed = stopTimer(cur.value.step)
 
@@ -1092,90 +1075,181 @@ async function execCommand() {
   } finally {
     if (curStartTs.value) stopTimer(cur.value?.step || 0)
     loading.value = false
-    // 聚焦回输入框
-    nextTick(() => cmdInputRef.value?.focus())
+    termBusy.value = false
   }
 }
 
-/* ---------- 命令历史导航（上下键） ---------- */
+/* ---------- 命令历史导航（上下键，直接操作终端行内文本） ---------- */
+function clearCurrentLine() {
+  if (currentLine.value) {
+    term.write('\b \b'.repeat(currentLine.value.length))
+    currentLine.value = ''
+  }
+}
+
 function historyUp() {
-  if (cmdHistory.value.length === 0) return
+  if (cmdHistory.value.length === 0 || termBusy.value) return
   if (historyIdx.value > 0) {
     historyIdx.value--
-    cmdInput.value = cmdHistory.value[historyIdx.value]
+  } else if (historyIdx.value === 0) {
+    return
+  } else {
+    historyIdx.value = cmdHistory.value.length - 1
   }
+  clearCurrentLine()
+  currentLine.value = cmdHistory.value[historyIdx.value]
+  term.write(currentLine.value)
 }
+
 function historyDown() {
-  if (cmdHistory.value.length === 0) return
+  if (cmdHistory.value.length === 0 || termBusy.value) return
   if (historyIdx.value < cmdHistory.value.length - 1) {
     historyIdx.value++
-    cmdInput.value = cmdHistory.value[historyIdx.value]
+    clearCurrentLine()
+    currentLine.value = cmdHistory.value[historyIdx.value]
+    term.write(currentLine.value)
   } else {
+    // 到达末尾：清空当前行
     historyIdx.value = cmdHistory.value.length
-    cmdInput.value = ''
+    clearCurrentLine()
   }
 }
 
-/* ---------- 禁止粘贴相关 ---------- */
-function onPasteBlock(e: ClipboardEvent) {
-  e.preventDefault()
-  ElMessage.warning('云桌面终端禁止粘贴，请手动输入命令')
-}
-function blockPasteHotkeys(e: KeyboardEvent) {
-  // Ctrl+V / Cmd+V
-  if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
-    e.preventDefault()
-    ElMessage.warning('云桌面终端禁止粘贴，请手动输入命令')
-    return
-  }
-  // Ctrl+Shift+V (无格式粘贴)
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'v' || e.key === 'V')) {
-    e.preventDefault()
-    ElMessage.warning('云桌面终端禁止粘贴，请手动输入命令')
-    return
-  }
-  // Shift+Insert
-  if (e.shiftKey && e.key === 'Insert') {
-    e.preventDefault()
-    ElMessage.warning('云桌面终端禁止粘贴，请手动输入命令')
-    return
-  }
-}
-
-/* ---------- 终端初始化 ---------- */
+/* ---------- 终端初始化（接近真实 Linux 登录 + FISCO-BCOS 运维机） ---------- */
 function initTerm() {
   term = new Terminal({
     theme: {
-      background: '#070b16',
-      foreground: '#d6e2ff',
+      background: '#0a0e14',          // 接近真实终端的深炭灰（非纯黑）
+      foreground: '#e6e6e6',
       cursor: '#00e6c3',
-      selectionBackground: '#1f2a44',
-      green: '#00e6c3',
-      yellow: '#ffcf4d',
-      cyan: '#4d8dff',
-      red: '#ff6b6b',
+      cursorAccent: '#0a0e14',
+      selectionBackground: '#264f4a',
+      black: '#1f1f1f', brightBlack: '#5a5a5a',
+      red: '#ff5c57', brightRed: '#ff7b7b',
+      green: '#5af78e', brightGreen: '#00e6c3',
+      yellow: '#f3f99d', brightYellow: '#ffcf4d',
+      blue: '#9aedfe', brightBlue: '#4d8dff',
+      magenta: '#ca4985', brightMagenta: '#f5379b',
+      cyan: '#9aedfe', brightCyan: '#4d8dff',
+      white: '#e6e6e6', brightWhite: '#ffffff',
     },
-    fontFamily: "'JetBrains Mono', Consolas, monospace",
+    fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, 'Courier New', monospace",
     fontSize: 13,
-    cursorBlink: false,
-    disableStdin: true,
+    lineHeight: 1.05,
+    cursorBlink: true,                // 真实终端光标闪烁
+    disableStdin: false,              // 启用终端直接输入（无外部输入框）
+    allowProposedApi: true,
+    scrollback: 5000,
   })
   fit = new FitAddon()
   term.loadAddon(fit)
   term.open(termRef.value!)
   fit.fit()
-  term.writeln('\x1b[36m╔══════════════════════════════════════════════╗\x1b[0m')
-  term.writeln('\x1b[36m║   FISCO 联盟链云桌面 · 手动输入实训终端      ║\x1b[0m')
-  term.writeln('\x1b[36m╚══════════════════════════════════════════════╝\x1b[0m')
+
+  // 真实 SSH 登录后的 motd（/etc/motd 风格）：系统信息 + 包列表 + 当前用户
+  const now = new Date()
+  const ts = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${now.toLocaleTimeString('zh-CN', { hour12: false })}`
+  term.writeln('\x1b[1;32mWelcome to Ubuntu 22.04.3 LTS (GNU/Linux 5.15.0-86-generic x86_64)\x1b[0m')
   term.writeln('')
-  term.writeln('提示：请在下方输入框手动输入命令，按回车执行。')
-  term.writeln('       语法正确 → 返回真实链执行结果（合约地址、交易哈希、Gas 等）')
-  term.writeln('       语法错误 → 给出具体错误提示和正确格式')
+  term.writeln(' * Documentation:  https://help.ubuntu.com')
+  term.writeln(' * Management:     https://landscape.canonical.com')
+  term.writeln(' * Support:        https://ubuntu.com/advantage')
+  term.writeln('')
+  term.writeln('Last login: ' + ts + ' from 192.168.1.100')
+  term.writeln('')
+  // FISCO-BCOS 运维机环境
+  term.writeln('\x1b[1;36m╔══════════════════════════════════════════════════════════════╗\x1b[0m')
+  term.writeln('\x1b[1;36m║  FISCO-BCOS 联盟链实训云桌面 · Ubuntu 22.04 + FISCO-BCOS 2.9.1 ║\x1b[0m')
+  term.writeln('\x1b[1;36m╚══════════════════════════════════════════════════════════════╝\x1b[0m')
+  term.writeln('')
+  term.writeln('\x1b[2mSystem load:    0.08              Processes:           124\x1b[0m')
+  term.writeln('\x1b[2mUsage of /:     18.5% of 49.15GB   Users logged in:    1\x1b[0m')
+  term.writeln('\x1b[2mMemory usage:   23%                IPv4 address:        192.168.1.10\x1b[0m')
+  term.writeln('\x1b[2mSwap usage:     0%                 Disk:                /dev/sda1\x1b[0m')
+  term.writeln('')
+  // 已安装工具清单（真实运维机风格）
+  term.writeln('\x1b[33mInstalled packages (chain-related):\x1b[0m')
+  term.writeln('  fisco-bcos          2.9.1       /usr/local/bin/fisco-bcos')
+  term.writeln('  console             2.9.1       ~/fisco/console')
+  term.writeln('  java                11.0.20     /usr/lib/jvm/java-11-openjdk')
+  term.writeln('  openssl             3.0.10      /usr/bin/openssl')
+  term.writeln('  curl                7.81.0      /usr/bin/curl')
+  term.writeln('  netcat-openbsd      1.219       /usr/bin/nc')
+  term.writeln('')
   if (Object.keys(stepDurationsRaw.value).length) {
-    term.writeln(`\x1b[33m已记录 ${Object.keys(stepDurationsRaw.value).length} 步历史耗时，累计 ${totalDuration.value}\x1b[0m`)
+    term.writeln(`\x1b[33m[history] 已记录 ${Object.keys(stepDurationsRaw.value).length} 步历史耗时，累计 ${totalDuration.value}\x1b[0m`)
+    term.writeln('')
   }
+  // 提示 + 第一行 PS1
+  term.writeln('\x1b[2m# 在终端内直接输入命令，回车执行；上下键切换历史；Tab 补全\x1b[0m')
   term.writeln('')
-  nextTick(() => cmdInputRef.value?.focus())
+  // 初始 PS1 提示符（真实 shell 行为：光标紧跟 # 后）
+  term.write('\x1b[1;32mroot@fisco-vm\x1b[0m:\x1b[1;34m~/fisco\x1b[0m# ')
+
+  // 终端行内输入处理（替代外部输入框）
+  term.onData((data: string) => {
+    if (termBusy.value) return  // 命令执行中，屏蔽输入
+
+    // 回车（\r = Enter）
+    if (data === '\r') {
+      const cmd = currentLine.value
+      if (cmd.trim()) {
+        execCommand(cmd)
+      } else {
+        // 空行：只换行 + 新 PS1
+        term.write('\r\n\x1b[1;32mroot@fisco-vm\x1b[0m:\x1b[1;34m~/fisco\x1b[0m# ')
+      }
+      return
+    }
+
+    // Backspace（\x7f = DEL）
+    if (data === '\x7f' || data === '\b') {
+      if (currentLine.value.length > 0) {
+        currentLine.value = currentLine.value.slice(0, -1)
+        term.write('\b \b')
+      }
+      return
+    }
+
+    // 上箭头（\x1b[A）/ 下箭头（\x1b[B）
+    if (data === '\x1b[A') { historyUp(); return }
+    if (data === '\x1b[B') { historyDown(); return }
+
+    // Tab 补全（\t）
+    if (data === '\t') {
+      const suggestion = tabComplete()
+      if (suggestion) {
+        const remain = suggestion.slice(currentLine.value.length)
+        currentLine.value = suggestion
+        term.write(remain)
+      }
+      return
+    }
+
+    // Ctrl+C（\x03）：中断当前行，输出 ^C + 新 PS1
+    if (data === '\x03') {
+      term.write('^C\r\n\x1b[1;32mroot@fisco-vm\x1b[0m:\x1b[1;34m~/fisco\x1b[0m# ')
+      currentLine.value = ''
+      return
+    }
+
+    // Ctrl+V / Cmd+V 粘贴拦截
+    if (data === '\x16') {
+      ElMessage.warning('云桌面终端禁止粘贴，请手动输入命令')
+      return
+    }
+
+    // 普通可打印字符（含 UTF-8 多字节中文）
+    // 过滤其他 ANSI 控制序列（方向键左/右/Home/End/PageUp/Down 等）避免光标错位
+    if (data >= ' ' || /[\x80-\xff]/.test(data)) {
+      currentLine.value += data
+      term.write(data)
+    }
+  })
+
+  // 终端获得焦点（点击终端区域即可输入）
+  termRef.value?.addEventListener('click', () => term?.focus())
+  nextTick(() => term?.focus())
 }
 
 /* ---------- 生命周期 ---------- */
@@ -1205,6 +1279,19 @@ onActivated(() => {
 
 /* storage 事件：多标签页时互相通知 */
 watch(() => app.chainHeight, () => { /* noop */ })
+
+// watch 钱包切换：重新加载该钱包的教程步骤与进度（header 全局切换时联动）
+watch(() => app.currentWallet, async (newWallet) => {
+  if (!newWallet) return
+  try {
+    const r: any = await chainApi.tutorial(newWallet)
+    steps.value = r.steps
+    await syncProgressFromServer()
+    // 跳到第一个未完成的步骤
+    const firstUndone = steps.value.findIndex((s: any, i: number) => !doneSteps.value.includes(s.step ?? i + 1))
+    active.value = firstUndone >= 0 ? firstUndone : steps.value.length - 1
+  } catch { /* silent */ }
+})
 
 function onResize() { try { fit?.fit() } catch {} }
 
@@ -1545,34 +1632,10 @@ onBeforeUnmount(() => {
     opacity: 0.7;
   }
 }
-.term { height: calc(100% - 42px); padding-top: 24px; }
+.term { height: 100%; padding-top: 24px; }
 :deep(.xterm) { padding: 4px 8px; }
 
-/* ---------- 命令输入框 ---------- */
-.cmd-input-bar {
-  height: 42px;
-  display: flex; align-items: center; gap: 8px;
-  padding: 0 12px;
-  background: rgba(0, 230, 195, 0.04);
-  border-top: 1px solid var(--dq-border);
-  .cmd-prompt {
-    color: var(--dq-primary);
-    font-family: var(--dq-mono);
-    font-size: 14px;
-    flex-shrink: 0;
-  }
-  .cmd-input {
-    flex: 1;
-    background: transparent;
-    border: none;
-    outline: none;
-    color: var(--dq-text);
-    font-family: var(--dq-mono);
-    font-size: 13px;
-    &::placeholder { color: var(--dq-text-dimmer); }
-    &:focus { color: var(--dq-primary); }
-  }
-}
+/* ---------- 终端底部提示条 ---------- */
 .term-foot {
   padding-top: 10px;
   display: flex; justify-content: space-between; align-items: center;
@@ -1806,37 +1869,6 @@ onBeforeUnmount(() => {
   p {
     font-size: 13px;
     margin: 0;
-  }
-}
-
-/* ---------- 自动补全下拉 ---------- */
-.autocomplete-dropdown {
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  right: 0;
-  background: var(--dq-bg);
-  border: 1px solid var(--dq-border);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  max-height: 200px;
-  overflow-y: auto;
-  z-index: 100;
-  margin-bottom: 4px;
-}
-
-.autocomplete-item {
-  padding: 8px 12px;
-  font-size: 12px;
-  font-family: var(--dq-mono);
-  color: var(--dq-text);
-  cursor: pointer;
-  transition: background 0.15s;
-
-  &:hover,
-  &.selected {
-    background: rgba(0, 230, 195, 0.1);
-    color: var(--dq-primary);
   }
 }
 

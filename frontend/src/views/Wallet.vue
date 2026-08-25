@@ -318,7 +318,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onActivated, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onActivated, onMounted } from 'vue'
 import { walletApi, ecoApi } from '@/api'
 import { useAppStore } from '@/stores/app'
 import { ElMessage } from 'element-plus'
@@ -328,8 +328,8 @@ import EmptyIllustration from '@/components/EmptyIllustration.vue'
 import TxTimeline from '@/components/TxTimeline.vue'
 
 const app = useAppStore()
-const wallet = ref(app.currentWallet)
-const setWallet = (v: string) => { app.setWallet(v); loadBalances(); loadTransfers() }
+const wallet = computed(() => app.currentWallet)
+const setWallet = (v: string) => { app.setWallet(v); loadAll() }
 
 const balances = ref<any[]>([])
 const tokens = ref<any[]>([])
@@ -337,6 +337,12 @@ const transfers = ref<any[]>([])
 
 const issue = reactive({ name: '', symbol: '', decimals: 18, total_supply: '1000000' })
 const transfer = reactive({ token_address: '', from_addr: app.currentWallet, to_addr: '', amount: '' })
+
+// watch store 钱包变化（header 全局切换时联动刷新）
+watch(() => app.currentWallet, (newWallet) => {
+  transfer.from_addr = newWallet  // 转账表单 From 地址同步
+  loadAll()
+})
 
 const short = (h: string) => h ? h.slice(0, 10) + '...' + h.slice(-4) : '-'
 

@@ -235,7 +235,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onActivated, onMounted, reactive, computed } from 'vue'
+import { ref, onActivated, onMounted, reactive, computed, watch } from 'vue'
 import { nftApi, walletApi, ecoApi } from '@/api'
 import { useAppStore } from '@/stores/app'
 import { useRoute } from 'vue-router'
@@ -465,6 +465,12 @@ const loadAll = () => {
 /* 首次进入触发 onMounted，KeepAlive 缓存后再次进入触发 onActivated，两者都执行加载 */
 onMounted(loadAll)
 onActivated(loadAll)
+
+// 钱包切换时刷新市场列表与持仓（角色/钱包联动）
+watch(() => app.currentWallet, () => {
+  buy.buyer = app.currentWallet
+  loadAll()
+})
 </script>
 
 <style scoped lang="scss">

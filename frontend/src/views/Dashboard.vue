@@ -896,6 +896,11 @@ onActivated(async () => {
   } catch (e) { /* noop */ }
   refreshCompleted()
 })
+
+// 钱包切换时刷新实训进度（角色/钱包联动）
+watch(() => app.currentWallet, () => {
+  refreshCompleted()
+})
 </script>
 
 <style scoped lang="scss">

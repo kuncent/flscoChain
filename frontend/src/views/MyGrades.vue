@@ -41,7 +41,7 @@
         </div>
         <div class="score-detail">
           <div class="detail-item" v-for="(item, key) in detailNow" :key="key">
-            <div class="detail-label">{{ dimensionLabels[key as keyof typeof dimensionLabels] || key }}</div>
+            <div class="detail-label">{{ dimensionLabels[String(key) as keyof typeof dimensionLabels] || key }}</div>
             <div class="detail-bar">
               <div class="bar-fill" :style="{ width: `${item.score}%` }"></div>
             </div>
@@ -123,13 +123,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh, Document } from '@element-plus/icons-vue'
 import { gradesApi } from '@/api'
+import { useAppStore } from '@/stores/app'
 import * as echarts from 'echarts'
 
-const wallet = ref('')
+const app = useAppStore()
+// 使用 store 中的钱包地址，保证角色/钱包切换时联动刷新
+const wallet = computed(() => app.currentWallet)
 const loading = ref(false)
 const grades = ref<any[]>([])
 const trainingNow = ref<number | null>(null)
@@ -150,17 +153,6 @@ const formatTime = (ts: string) => {
 }
 
 const loadData = async () => {
-  // 从 localStorage 获取钱包地址
-  const walletData = localStorage.getItem('wallet')
-  if (walletData) {
-    try {
-      const parsed = JSON.parse(walletData)
-      wallet.value = parsed.address || ''
-    } catch {
-      wallet.value = walletData
-    }
-  }
-
   if (!wallet.value) {
     ElMessage.warning('请先连接钱包')
     return
@@ -237,6 +229,18 @@ const renderRadarChart = () => {
 
 onMounted(() => {
   loadData()
+})
+
+// 钱包切换时自动刷新成绩（角色/钱包联动）
+watch(() => app.currentWallet, (newWallet) => {
+  if (newWallet) {
+    loadData()
+  } else {
+    // 钱包断开：清空页面数据
+    grades.value = []
+    trainingNow.value = null
+    detailNow.value = null
+  }
 })
 </script>
 

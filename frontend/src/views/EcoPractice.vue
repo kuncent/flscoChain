@@ -630,19 +630,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onActivated } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onActivated } from 'vue'
 import { ecoApi } from '@/api'
+import { useAppStore } from '@/stores/app'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import EnergyProofForm from '@/components/EnergyProofForm.vue'
 
-/* ==================== 钱包 ==================== */
-const wallet = ref(localStorage.getItem('wallet') || '0xlearner')
+/* ==================== 钱包（与 Pinia store 联动） ==================== */
+const app = useAppStore()
+const wallet = computed(() => app.currentWallet)
 const setWallet = (v: string) => {
-  wallet.value = v
-  localStorage.setItem('wallet', v)
+  app.setWallet(v)
   loadAll()
 }
+
+// watch store 钱包变化（header 全局切换时联动刷新）
+watch(() => app.currentWallet, () => {
+  loadAll()
+})
 
 /* ==================== 角色元数据（本地展示配置） ==================== */
 interface RoleMeta {
@@ -1153,8 +1159,10 @@ const loadRoles = async () => {
 const loadCurrentRole = async () => {
   try {
     currentRole.value = await ecoApi.currentRole(wallet.value)
+    app.setCurrentRole(currentRole.value)   // 同步到 Pinia store 供其他页面读取
   } catch {
     currentRole.value = null
+    app.setCurrentRole(null)
   }
 }
 
@@ -1275,7 +1283,8 @@ const selectRole = async (role_key: string) => {
     await ecoApi.selectRole(wallet.value, role_key)
     ElMessage.success(`已选择角色：${roleMeta(role_key)?.name}`)
     logEco('role', 'select_role', 'success', `选择角色：${roleMeta(role_key)?.name} (${role_key})`)
-    await loadCurrentRole()
+    // 切角色后全量刷新：角色、余额、记录、钱包、合约状态都需联动
+    await loadAll()
   } catch (e: any) {
     const msg = e?.response?.data?.detail || e?.message || '角色切换失败'
     ElMessage.error(msg)

@@ -129,6 +129,11 @@ def _compute_training_score(wallet: str) -> Tuple[float, dict]:
             "SELECT COUNT(*) AS c FROM wallet_transfers WHERE from_addr=? OR to_addr=?",
             (wallet, wallet),
         ).fetchone()["c"]
+        # 8) 绿色能量发放数（该 wallet 作为接收方，凭业务单据由联盟角色签发）
+        energy_issue_count = conn.execute(
+            "SELECT COUNT(*) AS c FROM eco_energy_records WHERE lower(wallet)=?",
+            (wallet.lower(),),
+        ).fetchone()["c"]
 
     # === 维度 1：链搭建（IDE 打开 / 工程保存）===
     opens = event_counts.get("ide_open_builtin", 0)
@@ -143,12 +148,14 @@ def _compute_training_score(wallet: str) -> Tuple[float, dict]:
     invokes = event_counts.get("interface_invoke", 0)
     chain_verify_score = min(100.0, invokes * 5 + call_count * 4 + tx_count * 3)
 
-    # === 维度 4：联盟治理（角色切换 + NFT 铸造/交易 + ERC20 转账 + 报告查看）===
+    # === 维度 4：联盟治理（角色切换 + 能量发放 + NFT 铸造/交易 + ERC20 转账 + 报告查看）===
+    # 能量发放是联盟角色核心职责：基于业务凭据签发绿色能量，体现真实联盟链治理流程
     role_switches = event_counts.get("eco_role_switch", 0)
     report_views = event_counts.get("report_view", 0)
     alliance_gov_score = min(
         100.0,
-        role_switches * 8 + nft_mint_count * 6 + nft_trade_count * 5 + transfer_count * 2 + report_views * 4,
+        role_switches * 8 + energy_issue_count * 10 + nft_mint_count * 6
+        + nft_trade_count * 5 + transfer_count * 2 + report_views * 4,
     )
 
     detail = {
@@ -176,6 +183,7 @@ def _compute_training_score(wallet: str) -> Tuple[float, dict]:
             "weight": TRAINING_WEIGHTS["alliance_gov"],
             "metrics": {
                 "eco_role_switch": role_switches,
+                "energy_issue": energy_issue_count,
                 "nft_mint": nft_mint_count,
                 "nft_trade": nft_trade_count,
                 "erc20_transfer": transfer_count,

@@ -182,12 +182,16 @@
             <span>实训报告</span>
           </el-button>
           <div class="wallet-card">
-            <div class="wc-label">当前操作钱包</div>
+            <div class="wc-label">
+              当前操作钱包
+              <span v-if="app.currentRole" class="dq-tag accent wc-role-badge">
+                {{ app.currentRole?.role?.icon || '' }} {{ app.currentRole?.role?.name || app.currentRole?.role_key || '' }}
+              </span>
+            </div>
             <el-select
-              v-model="app.currentWallet"
+              v-model="walletModel"
               size="small"
               class="wc-select"
-              @change="app.setWallet(app.currentWallet)"
               popper-class="wc-popper"
             >
               <el-option
@@ -261,6 +265,13 @@ const router = useRouter()
 const app = useAppStore()
 const auth = useAuthStore()
 const shortcutsRef = ref()
+
+// 钱包选择器：通过 setter 统一写入，确保 store + localStorage + role 重置原子执行
+// 直接 v-model="app.currentWallet" 会绕过 setWallet，导致 watcher 先用新钱包读到旧 role
+const walletModel = computed<string>({
+  get: () => app.currentWallet,
+  set: (v: string) => app.setWallet(v),
+})
 
 type RouteItem = { path: string; title: string; icon: string; tag?: string }
 
@@ -714,7 +725,8 @@ onMounted(() => {
   border: 1px solid var(--dq-border);
   border-radius: 8px;
   background: rgba(255,255,255,0.01);
-  .wc-label { font-size: 11px; color: var(--dq-text-dimmer); white-space: nowrap; }
+  .wc-label { font-size: 11px; color: var(--dq-text-dimmer); white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+  .wc-role-badge { font-size: 10px; padding: 1px 6px; }
   .wc-select { width: 280px; }
 }
 .wc-opt {

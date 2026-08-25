@@ -7,11 +7,18 @@ export const useAppStore = defineStore('app', () => {
   const chainMode = ref<'fisco' | 'evm' | 'mock'>(safeGet<'fisco' | 'evm' | 'mock'>('chain_mode_override', 'evm'))
   const chainHeight = ref(0)
   const currentWallet = ref(localStorage.getItem('wallet') || '0xlearner')
+  const currentRole = ref<any>(null)           // 当前选中角色（EcoPractice selectRole 后同步写入）
   const shortcutsOpen = ref<{ open?: () => void; close?: () => void } | null>(null)
 
   function setWallet(w: string) {
     currentWallet.value = w
     localStorage.setItem('wallet', w)
+    // 切钱包后重置角色（新钱包可能没有角色或角色不同，需重新选择）
+    currentRole.value = null
+  }
+
+  function setCurrentRole(role: any) {
+    currentRole.value = role
   }
 
   async function refreshStatus() {
@@ -59,7 +66,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   return {
-    chainMode, chainHeight, currentWallet, shortcutsOpen,
-    setWallet, refreshStatus, setChainMode, confetti,
+    chainMode, chainHeight, currentWallet, currentRole, shortcutsOpen,
+    setWallet, setCurrentRole, refreshStatus, setChainMode, confetti,
   }
 })

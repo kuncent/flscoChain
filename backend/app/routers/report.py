@@ -150,12 +150,15 @@ def _load_eco_brief(wallet: str = "") -> dict[str, Any]:
             tree_species = row["n"] if row else 0
 
             # ===== 植树证书（数量、消耗能量、不同树种兑换数 = 树种多样性）======
+            # 注意：eco_certificates 表用 owner 列存钱包，不是 wallet
+            cert_filter = (" WHERE owner = ?" if wallet else "")
+            cert_params = (wallet,) if wallet else ()
             row = conn.execute(
                 "SELECT COUNT(*) AS n, "
                 "COALESCE(SUM(cost_energy),0) AS s, "
-                "COUNT(DISTINCT tree_species) AS distinct_trees "
-                "FROM eco_certificates" + wallet_filter,
-                wallet_params
+                "COUNT(DISTINCT species_id) AS distinct_trees "
+                "FROM eco_certificates" + cert_filter,
+                cert_params
             ).fetchone()
             certificates = row["n"] if row else 0
             cert_cost_total = row["s"] if row else 0
@@ -164,13 +167,13 @@ def _load_eco_brief(wallet: str = "") -> dict[str, Any]:
             # ===== 勋章 & 骑行券 =====
             row = conn.execute(
                 "SELECT COUNT(*) AS n FROM eco_badges WHERE badge_type='badge'" +
-                (" AND wallet = ?" if wallet else ""),
+                (" AND owner = ?" if wallet else ""),
                 wallet_params if wallet else ()
             ).fetchone()
             badges = row["n"] if row else 0
             row = conn.execute(
                 "SELECT COUNT(*) AS n FROM eco_badges WHERE badge_type='voucher'" +
-                (" AND wallet = ?" if wallet else ""),
+                (" AND owner = ?" if wallet else ""),
                 wallet_params if wallet else ()
             ).fetchone()
             vouchers = row["n"] if row else 0

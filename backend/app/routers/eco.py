@@ -740,6 +740,8 @@ def issue_energy(req: EnergyIssueReq):
                     }
             raise
 
+    _track("eco_energy_issue", target=role["key"], ref_id=proof_no, wallet=req.wallet,
+           extra={"role": role["name"], "points": points, "action": action})
     return {
         "ok": True,
         "points": points,
@@ -755,8 +757,6 @@ def issue_energy(req: EnergyIssueReq):
         "contract": ge_addr,
         "method": "GreenEnergy.mint(to,value,reason)",
     }
-    _track("eco_energy_issue", target=role["key"], ref_id=proof_no, wallet=req.wallet,
-           extra={"role": role["name"], "points": points, "action": action})
 
 
 @router.get("/energy/records")
