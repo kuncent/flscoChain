@@ -60,6 +60,21 @@ const router = createRouter({
 /* 全局路由守卫：未登录跳 /login；非教师访问 /grades 跳 /dashboard */
 router.beforeEach((to, _from, next) => {
   const auth = useAuthStore()
+
+  // SSO 回调：URL 携带 token 时，无论是否已登录，都统一到 /dashboard 处理重新登录
+  // （已登录也重新登录，避免旧会话残留 / 切换账号场景）
+  const urlToken =
+    new URLSearchParams(window.location.search).get('token') ||
+    (to.query.token as string) ||
+    ''
+  if (urlToken) {
+    // 已在 /dashboard 则放行，让 Dashboard 组件处理 token 登录
+    if (to.path === '/dashboard') return next()
+    // 其他路径重定向到 /dashboard（保留 token）
+    return next({ path: '/dashboard', query: { token: urlToken } })
+  }
+
+  // 以下为无 token 的常规鉴权
   if (to.meta?.public) {
     // 单点登录自动检测：已保持登录会话则直接跳过登录页
     if (to.path === '/login' && auth.isLoggedIn) return next('/dashboard')

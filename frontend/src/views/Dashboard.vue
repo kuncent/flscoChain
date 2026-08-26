@@ -425,6 +425,7 @@
 import { ref, computed, onActivated, watch, reactive, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Check, Right, Monitor, Files, Wallet, Guide, VideoPlay, CircleCheckFilled, Lock, Refresh } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { chainApi, explorerApi, authApi } from '@/api'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
@@ -719,6 +720,36 @@ async function refreshCompleted() {
 onMounted(refreshCompleted)
 onActivated(refreshCompleted)
 
+/* ---------- SSO Token 自动登录 ----------
+ * 适用于智云 SSO 回调，URL 形如：
+ *   - http://domain/?token=xxx（URL 级参数，位于 hash 之前）
+ *   - http://domain/#/dashboard?token=xxx（hash 级参数）
+ * 无论是否已登录，URL 带 token 就重新登录（覆盖旧会话 / 刷新会话）。
+ *
+ * 设计：不阻塞 Dashboard 渲染 — 页面首访时 Vite 异步编译组件 + SSO 网络往返
+ * 叠加会导致长时间空白。改为后台静默登录，登录完成后刷新数据，用户无感。
+ */
+onMounted(async () => {
+  const ssoToken =
+    new URLSearchParams(window.location.search).get('token') ||
+    (route.query.token as string) ||
+    ''
+  if (!ssoToken) return
+  try {
+    const u = await auth.loginByToken(ssoToken)
+    // 清理 URL 上的 token（hash 与 search 都清）
+    const cleanUrl = window.location.origin + window.location.pathname + window.location.hash.split('?')[0]
+    window.history.replaceState(null, '', cleanUrl)
+    ElMessage.success(`欢迎回来，${u.name || u.username}`)
+    // 登录成功后静默刷新数据（用新身份重新拉取 overview / platformProgress）
+    await loadOverview()
+    refreshCompleted()
+  } catch {
+    // SSO 失败，回退到登录页（http 拦截器已提示错误原因）
+    router.replace('/login')
+  }
+})
+
 /* 单步是否完成（独立判断，不要求前缀连续） */
 function isStepDone(s: typeof pathSteps[0]): boolean {
   let ok = !!visited[s.to]
@@ -889,11 +920,16 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('storage', onStorage)
 })
-onActivated(async () => {
+/* 加载链上概览数据（块高 / 交易数 / 合约数等）。SSO 登录前调用会拿不到数据，需跳过 */
+async function loadOverview() {
   try {
     const raw = (await explorerApi.overview()) as any
     overview.value = raw?.data ?? raw ?? {}
   } catch (e) { /* noop */ }
+}
+
+onActivated(async () => {
+  await loadOverview()
   refreshCompleted()
 })
 
