@@ -3,9 +3,12 @@
 对接外部 API 基址：https://ecosim.sztzjy.com:166/server
 提供接口：
   1. GET  /api/auth/encrypt?pwd=xxx          明文密码 RSA 加密
-  2. POST /api/auth/login                     用户登录（账号密码 / 智云 SSO）
-  3. GET  /api/auth/zhiyun-token              生成智云 JWT Token（调试用，保留）
-  4. GET  /api/auth/session                   单点登录会话校验（仅校验是否保持登录态）
+  2. POST /api/auth/login                     用户登录（账号密码 / 智云 SSO Token）
+  3. GET  /api/auth/session                   单点登录会话校验（仅校验是否保持登录态）
+
+登录方式说明：
+  - 账号密码：传 username + passwordEncode（通过 /encrypt 获取）
+  - 智云 SSO：URL 携带 token 参数时优先用 token 登录（POST body 传 TOKEN 字段）
 
 前端不直接调用外部 SSO 服务（避免跨域 + 暴露外部域名），
 统一由本路由转发；同时本路由不存储 Token，由前端 localStorage 自行保存。
@@ -123,7 +126,7 @@ class LoginReq(BaseModel):
     """登录请求：两种登录方式二选一。
 
     - 账号密码登录：传 username + passwordEncode（通过 /encrypt 获取）
-    - 智云 SSO 登录：传 TOKEN（通过 /zhiyun-token 生成或外部获取）
+    - 智云 SSO 登录：传 TOKEN（URL 参数 ?token=xxx 携带时优先使用）
     """
     username: Optional[str] = None
     passwordEncode: Optional[str] = None
@@ -182,33 +185,7 @@ async def login(req: LoginReq):
 
 
 # ===========================================================================
-# 3. 生成智云登录 Token（调试用，保留以便后续联调）
-# ===========================================================================
-@router.get("/zhiyun-token")
-async def generate_zhiyun_token(
-    username: str = Query(..., description="用户名/学号"),
-    password: str = Query(..., description="明文密码"),
-):
-    """对应外部 GET /api/user/generateZhiYunToken?username=xxx&password=xxx"""
-    base = _external_base()
-    if not base:
-        raise HTTPException(status_code=500, detail="EXTERNAL_API_BASE 未配置")
-    async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
-        try:
-            r = await client.get(
-                f"{base}/api/user/fsoc/generateZhiYunToken",
-                params={"username": username, "password": password},
-            )
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=502, detail=f"无法连接 SSO 服务：{e}")
-    if r.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"SSO Token 生成接口 HTTP {r.status_code}")
-    data = _unwrap(r.json())
-    return {"msg": data.get("msg"), "data": data.get("data")}
-
-
-# ===========================================================================
-# 4. 单点登录 · 会话校验（仅校验是否保持登录态）
+# 3. 单点登录 · 会话校验（仅校验是否保持登录态）
 # ===========================================================================
 @router.get("/session")
 async def check_session(
@@ -252,7 +229,7 @@ async def check_session(
 
 
 # ===========================================================================
-# 5. 班级学生列表（教师查看同班学生 + 实训进度）
+# 4. 班级学生列表（教师查看同班学生 + 实训进度）
 # ===========================================================================
 @router.get("/class-students")
 def class_students(
@@ -344,7 +321,7 @@ def class_students(
 
 
 # ===========================================================================
-# 6. 平台整体实训进度概览（登录后首页展示）
+# 5. 平台整体实训进度概览（登录后首页展示）
 # ===========================================================================
 @router.get("/platform-progress")
 def platform_progress(

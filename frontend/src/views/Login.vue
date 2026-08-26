@@ -150,13 +150,14 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { User, Lock, Right } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const app = useAppStore()
 
@@ -289,6 +290,17 @@ interface Flow {
 }
 
 onMounted(() => {
+  /* SSO Token 自动登录：URL 携带 ?token=xxx 时优先用 token 登录 */
+  const ssoToken = (route.query.token as string) || ''
+  if (ssoToken) {
+    auth.loginByToken(ssoToken)
+      .then((u) => {
+        ElMessage.success(`欢迎回来，${u.name || u.username}`)
+        router.replace('/dashboard')
+      })
+      .catch(() => { /* http 拦截器已提示，回退到账号密码表单 */ })
+  }
+
   /* 时钟（仅刷新时间，块高由流光驱动） */
   clockTimer = window.setInterval(() => {
     now.value = new Date()

@@ -184,7 +184,7 @@
           <div class="wallet-card">
             <div class="wc-label">
               当前操作钱包
-              <span v-if="app.currentRole" class="dq-tag accent wc-role-badge">
+              <span v-if="app.currentRole?.role_key" class="dq-tag accent wc-role-badge">
                 {{ app.currentRole?.role?.icon || '' }} {{ app.currentRole?.role?.name || app.currentRole?.role_key || '' }}
               </span>
             </div>

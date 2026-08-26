@@ -57,3 +57,13 @@ frontend/.vite/
 backend/_*.py
 backend/verify_business.py
 _tools/
+_*.py
+_*.txt
+
+# Bug / 反馈抽取产物（本地临时分析数据）
+scripts/_*.txt
+scripts/bug_*.json
+scripts/bug_*.ndjson
+scripts/bug_*.manifest.json
+*.manifest.json
+*.ndjson

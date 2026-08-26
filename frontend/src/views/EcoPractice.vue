@@ -132,7 +132,7 @@
       <div class="dq-card-title">
         <span class="title-icon">👥</span>
         选择你的角色
-        <span v-if="currentRole" class="dq-tag" style="margin-left: auto">
+        <span v-if="currentRole?.role_key" class="dq-tag" style="margin-left: auto">
           当前：{{ roleMeta(currentRole.role_key)?.icon }} {{ roleMeta(currentRole.role_key)?.name }}
         </span>
       </div>
@@ -159,7 +159,7 @@
         绿色能量发放
         <span class="dq-live" style="margin-left: auto"><span class="dot"></span>ERC20 mint</span>
       </div>
-      <template v-if="!currentRole">
+      <template v-if="!currentRole?.role_key">
         <div class="empty-tip">请先在上方选择一个角色</div>
       </template>
       <template v-else-if="currentRole.role_key === 'admin'">
@@ -551,7 +551,7 @@
     <EnergyProofForm
       ref="proofFormRef"
       v-model:visible="proofDlg"
-      :role-name="currentRole ? roleMeta(currentRole.role_key)?.name : ''"
+      :role-name="currentRole?.role_key ? roleMeta(currentRole.role_key)?.name : ''"
       :points="currentEnergyAction.amount"
       :rule="currentRuleObj"
       :threshold-hint="currentThresholdHint"
@@ -691,6 +691,16 @@ const exchangingBadge = ref<string>('')
 const roles = ref<any[]>([])
 const currentRole = ref<any>(null)
 const contractStatus = ref<any>({})
+
+/* 钱包地址 → 联盟角色 key 映射（MainLayout 切换到联盟角色钱包时自动联动选择角色） */
+const WALLET_ROLE_MAP: Record<string, string> = {
+  '0xadmin': 'admin',
+  '0xmetro': 'metro',
+  '0xbus': 'bus',
+  '0xbike': 'bike',
+  '0xtakeout': 'takeout',
+  '0xrecycle': 'recycling',
+}
 const energyBalance = ref(0)
 const energyRecords = ref<any[]>([])
 const trees = ref<any[]>([])
@@ -722,7 +732,7 @@ const currentProofNoLabel = computed(() =>
 
 /** 打开业务凭证表单 */
 const openProofDlg = () => {
-  if (!currentRole.value) {
+  if (!currentRole.value?.role_key) {
     ElMessage.warning('请先选择角色')
     return
   }
@@ -1158,8 +1168,20 @@ const loadRoles = async () => {
 
 const loadCurrentRole = async () => {
   try {
-    currentRole.value = await ecoApi.currentRole(wallet.value)
-    app.setCurrentRole(currentRole.value)   // 同步到 Pinia store 供其他页面读取
+    const r = await ecoApi.currentRole(wallet.value)
+    // 后端返回 role_key=null 时，若当前钱包是联盟角色钱包则自动联动选择对应角色
+    if (!r?.role_key) {
+      const autoRole = WALLET_ROLE_MAP[(wallet.value || '').toLowerCase()]
+      if (autoRole) {
+        await ecoApi.selectRole(wallet.value, autoRole)
+        const r2 = await ecoApi.currentRole(wallet.value)
+        currentRole.value = r2
+        app.setCurrentRole(r2)
+        return
+      }
+    }
+    currentRole.value = r
+    app.setCurrentRole(r)
   } catch {
     currentRole.value = null
     app.setCurrentRole(null)

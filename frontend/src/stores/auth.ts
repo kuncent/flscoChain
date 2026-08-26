@@ -50,6 +50,12 @@ export const useAuthStore = defineStore('auth', () => {
     return _applyLogin(data)
   }
 
+  /** SSO Token 登录：URL 携带 token 参数时优先使用 */
+  async function loginByToken(token: string): Promise<AuthUser> {
+    const data: any = await authApi.login({ TOKEN: token })
+    return _applyLogin(data)
+  }
+
   /**
    * 单点登录 · 会话校验
    * 不再请求外部智云 SSO，仅校验当前是否保持登录态：
@@ -103,6 +109,6 @@ export const useAuthStore = defineStore('auth', () => {
   return {
     user, isLoggedIn, roleId, roleName, isTeacher, isAdmin, isStudent,
     canManageGrades, displayName,
-    loginByPassword, checkSession, logout,
+    loginByPassword, loginByToken, checkSession, logout,
   }
 })
