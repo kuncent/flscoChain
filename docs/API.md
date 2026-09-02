@@ -371,8 +371,10 @@ roleId 含义：`1=管理员`、`3=教师`、`4=学生`。
 **POST `/api/eco/market/buy`**
 
 ```json
-{ "buyer": "0xalice", "listing_id": 1 }
+{ "buyer": "stu:stu001", "listing_id": 1 }
 ```
+
+> 买方为任一非卖方的登录用户钱包（如学生专属钱包 `stu:{user_id}`）。
 
 ### 7.7 联盟钱包与异常
 
@@ -604,10 +606,7 @@ roleId 含义：`1=管理员`、`3=教师`、`4=学生`。
 | bike | 共享单车 | 0xbike | 骑行(≥2km) +15 |
 | takeout | 外卖平台 | 0xtakeout | 无需餐具 +10 |
 | recycling | 回收公司 | 0xrecycle | 回收(≥1kg) +100 |
-| — | 学习者 | 0xlearner | 学生默认钱包，合约部署者 |
-| — | Alice | 0xalice | 低碳用户 |
-| — | Bob | 0xbob | 低碳用户 |
-| — | 铸造专员 | 0xminter | NFT 铸造方 |
+| — | 学习者 | 0xlearner | 学生默认钱包，合约部署者 / 低碳个人用户（已合并原 Alice） |
 
 ## 附录 B：学习事件类型（用于成绩计算）
 

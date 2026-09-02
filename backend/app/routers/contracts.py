@@ -4,30 +4,21 @@ from __future__ import annotations
 import json
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..config import settings
 from ..chain_client import get_chain_client
 from ..db import get_conn, now
+from ..security import assert_actor_wallet, get_current_user, optional_user
 from ..tx_decoder import compile_source, decode_input_data
-import json as _json
+# 学习行为埋点统一收口至 learning.events（EventType 常量 + track 唯一写入实现）
+from ..learning.events import EventType, track as _track
+# 任务 #21：五级验证流水线 + 事件总线（响应纯新增 pipeline 字段，既有字段不变）
+from .. import verifier
+from ..events_bus import BusEvent, publish as bus_publish
 
 router = APIRouter(prefix="/api/contracts", tags=["contracts"])
-
-
-def _track(event_type: str, target: str = "", ref_id: str = "", wallet: str = "", extra: dict | None = None):
-    """轻量学习行为埋点，失败不抛错（兼容旧 DB 无 learning_events 表）。"""
-    try:
-        with get_conn() as conn:
-            conn.execute(
-                "INSERT INTO learning_events(wallet,event_type,target,ref_id,extra,created_at) "
-                "VALUES(?,?,?,?,?,?)",
-                (wallet, event_type, target, ref_id,
-                 _json.dumps(extra or {}, ensure_ascii=False), now()),
-            )
-    except Exception:
-        pass
 
 BUILTIN = {
     "ERC20": "ERC20.sol",
@@ -36,6 +27,9 @@ BUILTIN = {
     "GreenEnergy": "GreenEnergy.sol",
     "PlantCertificate": "PlantCertificate.sol",
     "EcoBadge": "EcoBadge.sol",
+    # 漏洞修复关卡合约（bugs/ 子目录）：供学生在 /audit 审计、修复后重新部署
+    "ReentrantVault": "bugs/ReentrantVault.sol",
+    "PhishingAuth": "bugs/PhishingAuth.sol",
 }
 
 
@@ -52,14 +46,16 @@ def list_builtin():
 
 
 @router.get("/builtin/{name}")
-def get_builtin(name: str, x_wallet: Optional[str] = Header(default=None, alias="X-Wallet")):
+def get_builtin(name: str, user: Optional[dict] = Depends(optional_user)):
     fn = BUILTIN.get(name)
     if not fn:
         raise HTTPException(404, "contract not found")
     p = settings.contracts_dir / fn
     source = p.read_text(encoding="utf-8") if p.exists() else ""
     # 行为埋点：学生打开内置模板源码（说明在阅读/学习合约，对应 I-1 拓展分）
-    _track("ide_open_builtin", target=name, wallet=x_wallet or "", extra={"file": fn})
+    # 读接口可匿名；已登录时埋点归属以 JWT 身份为准（不再信任 X-Wallet 自报头）
+    _track(EventType.IDE_OPEN_BUILTIN, target=name,
+           wallet=(user or {}).get("wallet") or "", extra={"file": fn})
     return {"name": name, "source": source}
 
 
@@ -70,16 +66,36 @@ class CompileReq(BaseModel):
 
 
 @router.post("/compile")
-def compile_contract(req: CompileReq, x_wallet: Optional[str] = Header(default=None, alias="X-Wallet")):
-    """真实 solc 编译，返回真实 ABI/字节码/错误。"""
-    result = compile_source(req.source)
-    ok = bool(result["ok"])
-    # 行为埋点：真实编译成功/失败（I-1 加分项："至少编译过 1 次合约"）
+def compile_contract(req: CompileReq, user: dict = Depends(get_current_user)):
+    """真实 solc 编译，返回真实 ABI/字节码/错误。行为埋点归属以 JWT 身份为准。
+
+    任务 #21：接入五级验证流水线（L1 compile → L2 semantic → L3/L4 不适用 →
+    L5 成绩摘要）；编译产物直接复用流水线 L1 结果（不二次编译），
+    响应纯新增 pipeline 字段，既有字段与状态码语义不变（编译失败仍 200 + errors）。
+    """
+    uc = verifier.user_ctx_from(user)
+    pr = verifier.run_pipeline(
+        "compile", {"name": req.name or "", "source": req.source}, uc,
+        compile_fn=lambda ctx: verifier.compile_stage(req.source),
+        semantic_fn=lambda ctx: verifier.check_compile_semantic(ctx),
+    )
+    # 流水线 L1 产物即编译结果（异常时给兼容空产物，保持既有响应字段可取）
+    result = pr.artifacts.get("compile") or {
+        "ok": False, "errors": ["编译执行异常"], "abi": [], "bytecode": "", "standard": "",
+    }
+    ok = bool(result.get("ok"))
+    # 行为埋点：真实编译成功/失败（I-1 加分项：“至少编译过 1 次合约”）
     _track(
-        "contract_compile_ok" if ok else "contract_compile_fail",
+        EventType.CONTRACT_COMPILE_OK if ok else EventType.CONTRACT_COMPILE_FAIL,
         target=req.name or "compile",
-        wallet=x_wallet or "",
+        wallet=user.get("wallet") or "",
         extra={"errors_count": len(result.get("errors") or []), "standard": result.get("standard") or ""},
+    )
+    # 任务 #21：编译事件推送（成功/失败均推，前端可感知编译行为）
+    bus_publish(
+        BusEvent.COMPILED,
+        {"name": req.name or "compile", "ok": ok, "standard": result.get("standard") or ""},
+        user_id=uc["user_id"], class_id=uc["class_id"],
     )
     return {
         "ok": ok,
@@ -89,6 +105,7 @@ def compile_contract(req: CompileReq, x_wallet: Optional[str] = Header(default=N
         "standard": result["standard"],
         "name": result.get("name") or req.name,
         "solc_version": result.get("solc_version"),
+        "pipeline": pr.pipeline,  # 任务 #21 纯新增字段（向后兼容）
     }
 
 
@@ -104,22 +121,51 @@ class DeployReq(BaseModel):
 
 
 @router.post("/deploy")
-def deploy(req: DeployReq):
+def deploy(req: DeployReq, user: dict = Depends(get_current_user)):
+    """合约部署。任务 #21：接入五级流水线 L1-L4（产物校验 → ABI 语义 →
+    钱包白名单 → 链上部署并确认回执 status）；成功时响应纯新增 pipeline 字段，
+    失败时错误响应语义与旧版一致（含构造函数参数学习性提示）。"""
+    req.deployer = assert_actor_wallet(user, req.deployer, "deployer")  # 部署者身份从 JWT 解析
+    uc = verifier.user_ctx_from(user)
     c = get_chain_client()
-    try:
-        r = c.deploy_contract(
-            req.name, req.abi, req.bytecode, req.source,
-            req.deployer, req.standard, req.ctor_args,
-        )
-    except Exception as e:
-        msg = str(e)
-        # 构造函数参数缺失时给出学习性提示
+    pr = verifier.run_pipeline(
+        "deploy",
+        {"name": req.name, "deployer": req.deployer, "standard": req.standard,
+         "abi": req.abi, "bytecode": req.bytecode, "source": req.source,
+         "ctor_args": req.ctor_args},
+        uc,
+        compile_fn=verifier.check_deploy_artifacts,
+        semantic_fn=verifier.check_deploy_semantic,
+        business_fns=[("wallet_whitelist", verifier.check_wallet_whitelist)],
+        onchain_fn=lambda ctx: verifier.onchain_deploy(c, req),
+    )
+    if pr.artifacts.get("onchain") is None:
+        # L4 未执行（L1-L3 拦截）或执行异常：保持既有 400 错误语义（含学习性提示）
+        if pr.onchain_error:
+            msg = pr.onchain_error
+            # 构造函数参数缺失时给出学习性提示（既有逻辑原样保留）
+            ctor = next((x for x in req.abi if x.get("type") == "constructor"), None)
+            hint = ""
+            if ctor and not req.ctor_args:
+                params = ", ".join(f"{i['type']} {i['name']}" for i in ctor.get("inputs", []))
+                hint = f" 该合约构造函数需要参数 ({params})，请在部署表单中填写。"
+            raise HTTPException(400, msg + hint)
+        failed = next((s for s in pr.stages if not s.get("ok") and not s.get("skipped")), None)
+        detail = f"[{failed['stage']}] {failed['detail']}" if failed else "校验未通过"
+        raise HTTPException(400, f"部署流水线校验失败: {detail}")
+    # 任务 #25 评审修复：L4 已执行但回执判定失败（如 FISCO 回执 status≠0）时，
+    # 必须 400 拦截——不得把失败部署写入 deployed_contracts 返回 200。
+    onchain_stage = next((s for s in pr.stages if s.get("stage") == "onchain"), None)
+    if onchain_stage is not None and not onchain_stage.get("ok") and not onchain_stage.get("skipped"):
+        msg = onchain_stage.get("detail") or pr.onchain_error or "部署回执确认失败"
+        # 构造函数参数学习性提示（与既有错误路径文案风格一致）
         ctor = next((x for x in req.abi if x.get("type") == "constructor"), None)
         hint = ""
         if ctor and not req.ctor_args:
             params = ", ".join(f"{i['type']} {i['name']}" for i in ctor.get("inputs", []))
             hint = f" 该合约构造函数需要参数 ({params})，请在部署表单中填写。"
-        raise HTTPException(400, msg + hint)
+        raise HTTPException(400, f"部署流水线校验失败: [onchain] {msg}。" + hint)
+    r = pr.artifacts["onchain"]
     with get_conn() as conn:
         # EVM 重启后地址可能复用，先清除旧记录避免 UNIQUE 冲突
         conn.execute("DELETE FROM deployed_contracts WHERE address=?", (r["address"],))
@@ -129,7 +175,18 @@ def deploy(req: DeployReq):
             (r["address"], req.name, json.dumps(req.abi), req.bytecode, req.source,
              req.deployer, r["tx_hash"], req.standard, now()),
         )
-    return r
+    # 任务 #21：部署语义事件推送（任务 #25：DEPLOYED 全链客户端三处重复发布已删除，
+    # 统一由本路由层发布（带 user_id 定向）；tx_confirmed 由 chain_client 出块点统一发布）
+    bus_publish(
+        BusEvent.DEPLOYED,
+        {"name": req.name, "address": r.get("address") or "",
+         "tx_hash": r.get("tx_hash") or "", "block_number": r.get("block_number"),
+         "deployer": req.deployer},
+        user_id=uc["user_id"], class_id=uc["class_id"],
+    )
+    resp = dict(r)
+    resp["pipeline"] = pr.pipeline  # 任务 #21 纯新增字段（向后兼容）
+    return resp
 
 
 @router.get("/deployed")
@@ -176,7 +233,8 @@ class CallReq(BaseModel):
 
 
 @router.post("/call")
-def call(req: CallReq):
+def call(req: CallReq, user: dict = Depends(get_current_user)):
+    req.caller = assert_actor_wallet(user, req.caller, "caller")  # 调用者身份从 JWT 解析
     abi = req.abi
     if not abi:
         with get_conn() as conn:
@@ -217,7 +275,7 @@ def call(req: CallReq):
 
     # 行为埋点：接口调试真实调用（对应 I-2 "是否使用过接口调试"）
     _track(
-        "interface_invoke",
+        EventType.INTERFACE_INVOKE,
         target=req.method or "call",
         ref_id=r.get("tx_hash", ""),
         wallet=req.caller or "",
@@ -265,16 +323,35 @@ class AuditReq(BaseModel):
     name: str = "Contract"
 
 
+def _strip_solidity_comments(source: str) -> str:
+    """剥离 Solidity 注释（// 行注释与 /* */ 块注释），返回仅供匹配用的文本。
+
+    学生修复漏洞后常保留注释掉的旧漏洞代码（如
+    // msg.sender.call.value(_amount)();  // 旧写法（已修复）），
+    若检测器按原文匹配会导致修复后 high 永不清零，
+    编程关卡（curriculum_l5 成就，要求审计 high=0）无法通关。
+    块注释以等量换行占位，保持检测报告的行号不漂移；
+    不处理字符串字面量中的注释符号（教学检测场景可接受）。
+    """
+    import re
+    no_block = re.sub(r'/\*.*?\*/', lambda m: '\n' * m.group(0).count('\n'),
+                      source, flags=re.DOTALL)
+    return '\n'.join(line.split('//', 1)[0] for line in no_block.split('\n'))
+
+
 @router.post("/audit")
-def audit_contract(req: AuditReq, x_wallet: Optional[str] = Header(default=None, alias="X-Wallet")):
+def audit_contract(req: AuditReq, user: dict = Depends(get_current_user)):
     """合约安全审计 - 检测常见 Solidity 漏洞。"""
     import re as _re
     source = req.source
     issues = []
+    # 先剥离注释再匹配：所有检测器只对真实代码生效，
+    # 注释掉的旧漏洞行 / 含敏感关键字的说明注释不再造成误报。
+    lines = _strip_solidity_comments(source).split('\n')
+    clean_source = '\n'.join(lines)
 
-    # 1. 重入攻击检测
-    if ".call(" in source or ".call{" in source:
-        lines = source.split('\n')
+    # 1. 重入攻击检测（覆盖 0.5+ 的 .call{...} 与 0.4.x 的 .call.value(...)() 写法）
+    if ".call(" in clean_source or ".call{" in clean_source or ".call.value(" in clean_source:
         in_func = False
         found_call = False
         call_line = 0
@@ -284,7 +361,7 @@ def audit_contract(req: AuditReq, x_wallet: Optional[str] = Header(default=None,
                 in_func = True
                 found_call = False
             elif in_func:
-                if '.call(' in s or '.call{' in s:
+                if '.call(' in s or '.call{' in s or '.call.value(' in s:
                     found_call = True
                     call_line = i + 1
                 elif found_call and ('=' in s or '+=' in s or '-=' in s) and not s.startswith('//'):
@@ -299,7 +376,7 @@ def audit_contract(req: AuditReq, x_wallet: Optional[str] = Header(default=None,
                     in_func = False
 
     # 2. tx.origin 认证风险
-    if 'tx.origin' in source:
+    if 'tx.origin' in clean_source:
         issues.append({
             "severity": "high", "type": "tx_origin",
             "message": "使用 tx.origin 进行认证存在钓鱼攻击风险",
@@ -307,15 +384,14 @@ def audit_contract(req: AuditReq, x_wallet: Optional[str] = Header(default=None,
         })
 
     # 3. selfdestruct 风险
-    if 'selfdestruct' in source:
+    if 'selfdestruct' in clean_source:
         issues.append({
             "severity": "high", "type": "self_destruct",
             "message": "合约包含 selfdestruct，可能导致合约被意外销毁",
             "suggestion": "谨慎使用 selfdestruct，确保有严格的访问控制",
         })
 
-    # 4. 未检查的外部调用返回值
-    lines = source.split('\n')
+    # 4. 未检查的外部调用返回值（lines 已剥离注释，下一行的注释不当作保护）
     for i, line in enumerate(lines):
         s = line.strip()
         if ('.call(' in s or '.send(' in s) and not s.startswith('//'):
@@ -334,8 +410,8 @@ def audit_contract(req: AuditReq, x_wallet: Optional[str] = Header(default=None,
     if version_match:
         ver = version_match.group(1).lstrip('^~')
         if ver.startswith('0.') and not ver.startswith('0.8'):
-            if any(op in source for op in [' + ', ' - ', ' * ']):
-                if 'SafeMath' not in source and 'using' not in source:
+            if any(op in clean_source for op in [' + ', ' - ', ' * ']):
+                if 'SafeMath' not in clean_source and 'using' not in clean_source:
                     issues.append({
                         "severity": "medium", "type": "integer_overflow",
                         "message": "Solidity 0.8 以下版本存在整数溢出风险",
@@ -343,7 +419,7 @@ def audit_contract(req: AuditReq, x_wallet: Optional[str] = Header(default=None,
                     })
 
     # 6. 弱随机数
-    if ('block.timestamp' in source or 'blockhash' in source) and 'rand' in source.lower():
+    if ('block.timestamp' in clean_source or 'blockhash' in clean_source) and 'rand' in clean_source.lower():
         issues.append({
             "severity": "medium", "type": "weak_randomness",
             "message": "使用区块变量生成随机数存在可预测风险",
@@ -367,7 +443,7 @@ def audit_contract(req: AuditReq, x_wallet: Optional[str] = Header(default=None,
         'function' in l and ('public' in l or 'external' in l) and 'view' not in l and 'pure' not in l
         for l in lines
     )
-    if has_state_fn and 'event ' not in source and 'emit ' not in source:
+    if has_state_fn and 'event ' not in clean_source and 'emit ' not in clean_source:
         issues.append({
             "severity": "low", "type": "missing_events",
             "message": "状态修改函数未触发事件",
@@ -375,8 +451,8 @@ def audit_contract(req: AuditReq, x_wallet: Optional[str] = Header(default=None,
         })
 
     # 9. 缺少访问控制
-    has_acl = any(kw in source for kw in ['onlyOwner', 'require(msg.sender', 'modifier', 'AccessControl'])
-    has_sensitive = any(kw in source for kw in ['mint', 'burn', 'transfer', 'withdraw', 'selfdestruct'])
+    has_acl = any(kw in clean_source for kw in ['onlyOwner', 'require(msg.sender', 'modifier', 'AccessControl'])
+    has_sensitive = any(kw in clean_source for kw in ['mint', 'burn', 'transfer', 'withdraw', 'selfdestruct'])
     if has_sensitive and not has_acl:
         issues.append({
             "severity": "medium", "type": "missing_access_control",
@@ -396,7 +472,7 @@ def audit_contract(req: AuditReq, x_wallet: Optional[str] = Header(default=None,
     medium = sum(1 for i in issues if i['severity'] == 'medium')
     low = sum(1 for i in issues if i['severity'] == 'low')
 
-    _track("contract_audit", target=req.name, wallet=x_wallet or "",
+    _track(EventType.CONTRACT_AUDIT, target=req.name, wallet=user.get("wallet") or "",
            extra={"issues": len(issues), "high": high, "medium": medium, "low": low})
 
     return {

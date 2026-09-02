@@ -75,6 +75,46 @@
       </div>
     </section>
 
+    <!-- 搭链进度 · 班级看板（chain_tutorial_progress 聚合 + 班级学生名单） -->
+    <section class="dq-card chain-progress-card" v-if="chainProgress">
+      <div class="dq-card-title">
+        ⛓️ 搭链进度 · 班级看板
+        <span class="dq-tag" style="margin-left:8px">
+          {{ chainProgress.class_id ? `班级 ${chainProgress.class_id}` : '全部班级' }}
+        </span>
+        <span class="dq-tag info" style="margin-left:8px">
+          平均完成 {{ chainProgress.avg_done_steps ?? 0 }} / {{ chainProgress.items?.[0]?.total_steps ?? 10 }} 步
+        </span>
+      </div>
+      <el-table :data="chainProgress.items || []" v-loading="chainLoading" stripe size="small"
+                empty-text="暂无搭链进度数据（学生尚未开始 10 步搭链实训）">
+        <el-table-column type="index" label="#" width="48" />
+        <el-table-column prop="student_id" label="学号" min-width="110" />
+        <el-table-column prop="name" label="姓名" min-width="90" />
+        <el-table-column label="钱包" min-width="110">
+          <template #default="{ row }">{{ shortAddr(row.wallet) }}</template>
+        </el-table-column>
+        <el-table-column label="完成步数" width="180">
+          <template #default="{ row }">
+            <div class="cp-progress">
+              <el-progress :percentage="Number(row.progress_pct) || 0" :stroke-width="8"
+                           :color="progColor(Number(row.progress_pct) || 0)" :show-text="false" />
+              <span class="cp-steps">{{ row.done_steps }}/{{ row.total_steps }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="当前卡点" min-width="230">
+          <template #default="{ row }">
+            <span v-if="row.stuck_step" class="cp-stuck">Step {{ row.stuck_step }} · {{ row.stuck_title }}</span>
+            <el-tag v-else type="success" size="small" effect="plain">全部完成</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="平均耗时/步" width="110" align="center">
+          <template #default="{ row }">{{ fmtAvgDur(row.avg_duration_seconds) }}</template>
+        </el-table-column>
+      </el-table>
+    </section>
+
     <!-- 筛选 -->
     <section class="dq-card filter-card">
       <el-form :inline="true" size="small" :model="filter">
@@ -214,7 +254,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Refresh, Search, InfoFilled } from '@element-plus/icons-vue'
-import { gradesApi } from '@/api'
+import { gradesApi, chainApi, authApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -223,6 +263,31 @@ const loading = ref(false)
 const refreshing = ref(false)
 const rows = ref<any[]>([])
 const stats = ref<any[]>([])
+
+/* ---------- 搭链进度 · 班级看板（chain_tutorial_progress 聚合） ---------- */
+const chainProgress = ref<any>(null)
+const chainLoading = ref(false)
+async function loadChainProgress() {
+  chainLoading.value = true
+  try {
+    // 复用既有班级学生接口：取教师所在班级 ID（管理员为空时后端返回全部学生）
+    const cs: any = await authApi.classStudents().catch(() => null)
+    const classId = cs?.class_id || ''
+    chainProgress.value = await chainApi.classProgress(classId)
+  } catch {
+    chainProgress.value = null   // 搭链进度拉取失败不影响成绩主列表
+  } finally {
+    chainLoading.value = false
+  }
+}
+function fmtAvgDur(sec: any): string {
+  if (sec === null || sec === undefined) return '—'
+  const n = Number(sec)
+  if (!isFinite(n) || n <= 0) return '—'
+  if (n < 60) return `${n.toFixed(0)} 秒`
+  if (n < 3600) return `${Math.floor(n / 60)} 分 ${Math.round(n % 60)} 秒`
+  return `${(n / 3600).toFixed(1)} 小时`
+}
 
 const filter = reactive({
   student_id: '',
@@ -439,6 +504,7 @@ function fmt(ts: any): string {
 
 onMounted(() => {
   loadAll()
+  loadChainProgress()
 })
 </script>
 
@@ -525,6 +591,20 @@ onMounted(() => {
     .sv.success { color: var(--dq-success); }
     &.highlight .sv { font-size: 14px; }
   }
+}
+
+/* ---------- 搭链进度 · 班级看板 ---------- */
+.chain-progress-card { padding: 16px 18px; }
+.cp-progress {
+  display: flex; align-items: center; gap: 8px;
+  .el-progress { flex: 1; }
+  .cp-steps { font-family: var(--dq-mono); font-size: 12px; font-weight: 700; color: var(--dq-text); flex-shrink: 0; }
+}
+.cp-stuck {
+  font-size: 12px; color: var(--dq-warn);
+  background: rgba(255, 207, 77, 0.08);
+  border: 1px solid rgba(255, 207, 77, 0.25);
+  padding: 2px 8px; border-radius: 4px;
 }
 
 .filter-card { padding: 14px 18px 0; }

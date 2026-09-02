@@ -14,9 +14,9 @@
         <div class="flow-step">
           <div class="fs-no">01</div>
           <div class="fs-info">
-            <div class="fs-title">发行 Token</div>
-            <div class="fs-desc">在真实链上部署 ERC20 合约，构造函数将总量铸造到你的 owner 地址</div>
-            <div class="fs-tags"><span class="fs-kw">deploy</span><span class="fs-kw">constructor</span><span class="fs-kw">SSTORE</span></div>
+            <div class="fs-title">发行 Token（管理员治理）</div>
+            <div class="fs-desc">在真实链部署 ERC20 合约，构造函数将总量铸造到发行者地址；发行权仅限联盟管理员（0xadmin），绿色能量（GE）即管理员发行的平台唯一流通货币</div>
+            <div class="fs-tags"><span class="fs-kw">deploy</span><span class="fs-kw">constructor</span><span class="fs-kw">治理闭环</span></div>
           </div>
         </div>
         <div class="flow-arrow">→</div>
@@ -122,8 +122,10 @@
           </el-form-item>
         </el-form>
         <div class="dq-tip">
-          <span class="dt-label">说明:</span>点击发行会在真实链部署 ERC20 合约，构造函数将发行量铸造到你的地址。
-          所有学生共享同一条联盟链<i>公共账本</i>：任何学生发行的代币对全员可见、可查询、可转账，
+          <span class="dt-label">说明:</span>点击发行会在真实链部署 ERC20 合约，构造函数将发行量铸造到发行者（管理员）地址。
+          绿色能量（GreenEnergy / GE）是联盟唯一流通货币：能量发放 / 资产兑换 / 两个市场的资产交易均以它计价结算；
+          管理员另行发行的其他代币仅用于 ERC20 机制教学演示，不参与市场结算。
+          所有学生共享同一条联盟链<i>公共账本</i>：任何代币对全员可见、可查询、可转账，
           发行的合约源码会自动登记到「智能合约 IDE」工程，与监听器数据保持一致。
         </div>
       </div>
@@ -146,7 +148,7 @@
             </el-button>
           </el-form-item>
         </el-form>
-        <div class="dq-tip"><span class="dt-label">说明:</span>转账调用 transfer 函数，消耗 Gas，触发 Transfer 事件，可在浏览器查看。</div>
+        <div class="dq-tip"><span class="dt-label">说明:</span>转账调用 transfer 函数，消耗 Gas，触发 Transfer 事件，可在浏览器查看。绿色资产市场购买会自动执行能量转账，无需在此手动操作；此处用于体验 ERC20 转账机制（如同学间互转能量）。</div>
       </div>
     </div>
 

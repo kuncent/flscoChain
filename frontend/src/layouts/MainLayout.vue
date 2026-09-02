@@ -69,6 +69,19 @@
           </el-menu-item>
         </el-sub-menu>
 
+        <!-- 成就中心（行为数据服务端自动核验） -->
+        <el-sub-menu index="g-achv">
+          <template #title>
+            <span class="menu-group-icon achv">🏆</span>
+            <span class="menu-group-label">成就中心</span>
+          </template>
+          <el-menu-item v-for="r in groupAchievements" :key="r.path" :index="r.path">
+            <el-icon><component :is="r.icon" /></el-icon>
+            <span>{{ r.title }}</span>
+            <span class="menu-tag" v-if="r.tag">{{ r.tag }}</span>
+          </el-menu-item>
+        </el-sub-menu>
+
         <!-- 教学管理（教师 / 管理员可见） -->
         <el-sub-menu v-if="auth.canManageGrades" index="g-teach">
           <template #title>
@@ -195,7 +208,7 @@
               popper-class="wc-popper"
             >
               <el-option
-                v-for="w in walletList"
+                v-for="w in walletOptions"
                 :key="w.addr"
                 :value="w.addr"
                 :label="w.name + '  ' + w.addr"
@@ -225,7 +238,8 @@
             </template>
             <div class="user-pop-body">
               <div class="up-row"><span class="up-k">姓名</span><span class="up-v">{{ auth.displayName || '—' }}</span></div>
-              <div class="up-row" v-if="auth.user?.username"><span class="up-k">学号</span><span class="up-v dq-mono">{{ auth.user.username }}</span></div>
+              <div class="up-row" v-if="auth.user?.studentId"><span class="up-k">学号</span><span class="up-v dq-mono">{{ auth.user.studentId }}</span></div>
+              <div class="up-row" v-else-if="auth.user?.username"><span class="up-k">账号</span><span class="up-v dq-mono">{{ auth.user.username }}</span></div>
               <div class="up-row" v-if="auth.user?.schoolName"><span class="up-k">学校</span><span class="up-v">{{ auth.user.schoolName }}</span></div>
               <div class="up-row"><span class="up-k">角色</span><span class="up-v" :class="roleClass">{{ auth.roleName }}</span></div>
               <el-button type="danger" size="small" class="up-logout" @click="onLogout">
@@ -301,6 +315,9 @@ const groupPractice: RouteItem[] = [
 const groupEco: RouteItem[] = [
   { path: '/monitor', title: '调用监听器', icon: 'BellFilled' },
 ]
+const groupAchievements: RouteItem[] = [
+  { path: '/achievements', title: '成就墙 · 挑战任务', icon: 'Medal', tag: '积分' },
+]
 
 /* 教学管理分组：教师 / 管理员可见（在 template 中按 auth.canManageGrades 控制显示） */
 const groupTeach: RouteItem[] = [
@@ -318,6 +335,7 @@ const groupMap: Record<string, string> = {
   '/wallet': '联盟治理与运营',
   '/nft': '联盟治理与运营',
   '/monitor': '链上验证',
+  '/achievements': '成就激励',
   '/report': '实训交付',
   '/grades': '教学管理',
 }
@@ -332,6 +350,7 @@ const tagMap: Record<string, string> = {
   '/nft': '阶段 3 · 绿色资产',
   '/monitor': '阶段 4 · 调用监听',
   '/explorer': '阶段 4 · 链上查询',
+  '/achievements': '成就 · 积分与挑战',
   '/report': '交付 · 生成报告',
   '/grades': '教学 · 学生成绩管理',
 }
@@ -339,13 +358,13 @@ const progressMap: Record<string, number> = {
   '/dashboard': 8, '/cloud': 22,
   '/ide': 34, '/contracts': 42, '/interfaces': 52,
   '/eco': 70, '/wallet': 78, '/nft': 85,
-  '/monitor': 92, '/explorer': 96, '/grades': 88, '/report': 100,
+  '/monitor': 92, '/explorer': 96, '/grades': 88, '/report': 100, '/achievements': 98,
 }
 
-const defaultOpen = ['g-learn', 'g-contract', 'g-explorer', 'g-practice', 'g-eco', 'g-teach']
+const defaultOpen = ['g-learn', 'g-contract', 'g-explorer', 'g-practice', 'g-eco', 'g-achv', 'g-teach']
 
 const reportItem: RouteItem = { path: '/report', title: '生成实训报告', icon: 'Document', tag: '交付' }
-const menus = [...groupLearn, ...groupContract, ...groupExplorer, ...groupPractice, ...groupEco, ...groupTeach, reportItem]
+const menus = [...groupLearn, ...groupContract, ...groupExplorer, ...groupPractice, ...groupEco, ...groupAchievements, ...groupTeach, reportItem]
 
 const currentTitle = computed(() => {
   const m = menus.find((x) => route.path.startsWith(x.path))
@@ -413,9 +432,11 @@ async function onLogout() {
   router.replace('/login')
 }
 
-/* ---------- 绿色低碳联盟链内置角色钱包列表 ----------
-   6 联盟节点组织钱包 + 3 普通用户钱包 + 1 学习者部署钱包，共 10 个。
-   按联盟治理角色从高到低排列，便于实训中快速切换身份操作。
+/* ---------- 绿色低碳联盟链钱包选择器 ----------
+   1 我的钱包（普通用户） + 6 联盟节点组织钱包。
+   「我的钱包」对应登录账号本人钱包（一人一钱包），承载普通用户（低碳居民）身份，
+   已合并原「学习者（0xlearner）」公共演示钱包；原 Bob / 铸造专员无业务用途已下线。
+   联盟节点钱包按治理角色从高到低排列，切换前端钱包同时联动切换生态角色。
 */
 const walletList = [
   { addr: '0xadmin',     name: '🛡️ 联盟管理员',   role: '超级管理员 / Owner',      klass: 'warn'   },
@@ -424,11 +445,24 @@ const walletList = [
   { addr: '0xbike',      name: '🚲 共享单车',     role: '发能量方 +15 / 次',         klass: 'primary' },
   { addr: '0xtakeout',   name: '📦 外卖平台',     role: '发能量方 +10 / 次',         klass: 'primary' },
   { addr: '0xrecycle',   name: '♻️ 回收公司',     role: '发能量方 +100 / 次',        klass: 'accent'  },
-  { addr: '0xlearner',   name: '👨‍🎓 学习者',      role: '合约部署者 / 实训发起方',    klass: ''        },
-  { addr: '0xalice',     name: 'Alice',           role: '低碳用户 · 个人',           klass: 'info'    },
-  { addr: '0xbob',       name: 'Bob',             role: '低碳用户 · 个人',           klass: 'info'    },
-  { addr: '0xminter',    name: '铸造专员',        role: 'NFT 资产铸造方',            klass: 'accent'  },
 ]
+
+/** 「我的钱包」= 登录账号本人钱包（学生为后端发放的 stu: 专属别名，教师/管理员为账号 ID） */
+const myWalletAddr = computed(() => auth.user?.wallet || '0xlearner')
+
+/** 下拉选项 = 我的钱包（置顶） + 6 联盟角色钱包；
+ * 兜底：当前钱包不在列表中（如旧会话残留值）时补充为未命名选项，避免选中值显示为空 */
+const walletOptions = computed(() => {
+  const opts = [
+    { addr: myWalletAddr.value, name: '💼 我的钱包', role: '普通用户 · 低碳居民', klass: 'info' },
+    ...walletList,
+  ]
+  const cur = app.currentWallet
+  if (cur && !opts.some((w) => w.addr === cur)) {
+    opts.push({ addr: cur, name: '未命名钱包', role: '当前使用', klass: 'danger' })
+  }
+  return opts
+})
 
 onMounted(() => {
   app.refreshStatus()

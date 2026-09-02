@@ -4,12 +4,13 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..config import settings
 from ..chain_client import get_chain_client
 from ..db import get_conn, now
+from ..security import assert_actor_wallet, get_current_user
 from ..tx_decoder import compile_source
 
 router = APIRouter(prefix="/api/wallet", tags=["wallet"])
@@ -27,13 +28,14 @@ class IssueReq(BaseModel):
 
 
 @router.post("/issue")
-def issue(req: IssueReq):
+def issue(req: IssueReq, user: dict = Depends(get_current_user)):
     """真实发行 ERC20：编译 ERC20.sol → EVM 部署（构造函数初始化总量）→ 记录。"""
     name = (req.name or "").strip()
     symbol = (req.symbol or "").strip()
     # 发币权限闭环：新代币发行是联盟治理行为，仅管理员钱包（0xadmin）可操作，
     # 避免学生随意发币造成账本混乱；学生可使用管理员发行的绿色能量参与生态流转
-    owner = (req.owner or "").strip()
+    owner = assert_actor_wallet(user, (req.owner or "").strip(), "owner")  # 发行者身份从 JWT 解析
+    req.owner = owner
     if owner.lower() != ADMIN_WALLET:
         raise HTTPException(
             403,
@@ -153,8 +155,9 @@ class TransferReq(BaseModel):
 
 
 @router.post("/transfer")
-def transfer(req: TransferReq):
-    """真实 ERC20 transfer 调用。"""
+def transfer(req: TransferReq, user: dict = Depends(get_current_user)):
+    """真实 ERC20 transfer 调用。转出方身份从 JWT 验签解析，防伪造他人钱包转账。"""
+    req.from_addr = assert_actor_wallet(user, req.from_addr, "from_addr")
     c = get_chain_client()
     abi = _load_abi(req.token_address)
     r = c.call_contract(req.token_address, "transfer",

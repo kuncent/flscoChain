@@ -1,0 +1,151 @@
+version: "3.8"
+
+# =====================================================================
+# 沙盘 / 多班级演示编排 —— docker-compose.sandbox.yml（任务 #23）
+#
+# 与主 compose（deploy/docker-compose.yml）的区别：
+#   1. 定位不同：主 compose 面向单班教学 / 生产单链；本文件面向
+#      「沙盘演示 + 多班级并发压测」场景，可与主 compose 在同一台
+#      宿主机并行共存 —— 容器名加 sandbox- 前缀、宿主机端口整体上移
+#      （20200→30200 / 8545→18545 / P2P 30300→30301），互不冲突。
+#      若确认与主 compose 不同时运行，可把端口改回 20200/8545。
+#   2. 额外包含 backend 服务（uvicorn 单 worker，--workers 1 明示）。
+#      后端链状态为 py-evm 进程内单例 + 班级注册表内存态，多进程
+#      会导致链状态 / 班级数据分裂，因此「单进程 + 进程内异步并发」
+#      是硬约束；多班级吞吐靠异步 I/O，不靠横向加 worker。
+#   3. SSE（/api/notify/stream）要求前置 nginx 对 /api/notify/ 关闭
+#      缓冲（proxy_buffering off; proxy_cache off），deploy/nginx.chain.conf
+#      已含该配置可直接复用；若另起 nginx 实例请同步复制该 location 段。
+#   4. 可选 Prometheus / Grafana 观测服务默认注释，按需取消注释启用。
+#
+# 节点目录准备（与主 compose 同一套 build_chain.sh 流程）：
+#   cd deploy && bash build_chain.sh -l 127.0.0.1:4 -p 30300,20200,8545
+#   mv nodes sandbox-nodes          # 避免与主 compose 的 nodes/ 混用
+# 启动：
+#   docker compose -f docker-compose.sandbox.yml up -d
+# =====================================================================
+
+services:
+  # ---------------- FISCO-BCOS 4 节点（与主 compose 同构，前缀/端口隔离） ----------------
+  fisco-sandbox-node0:
+    image: fiscoorg/fisco-bcos:latest
+    container_name: fisco-sandbox-node0
+    hostname: node0
+    working_dir: /fisco/nodes/127.0.0.1/node0
+    command: ["./fisco-bcos", "-c", "config.ini"]
+    volumes:
+      - ./sandbox-nodes/127.0.0.1/node0:/fisco/nodes/127.0.0.1/node0
+    ports:
+      - "30200:20200"   # RPC（宿主机 30200，避开主 compose 的 20200）
+      - "18545:8545"    # Channel（宿主机 18545，避开主 compose 的 8545）
+    networks:
+      - fisco-sandbox-net
+
+  fisco-sandbox-node1:
+    image: fiscoorg/fisco-bcos:latest
+    container_name: fisco-sandbox-node1
+    hostname: node1
+    working_dir: /fisco/nodes/127.0.0.1/node1
+    command: ["./fisco-bcos", "-c", "config.ini"]
+    volumes:
+      - ./sandbox-nodes/127.0.0.1/node1:/fisco/nodes/127.0.0.1/node1
+    networks:
+      - fisco-sandbox-net
+
+  fisco-sandbox-node2:
+    image: fiscoorg/fisco-bcos:latest
+    container_name: fisco-sandbox-node2
+    hostname: node2
+    working_dir: /fisco/nodes/127.0.0.1/node2
+    command: ["./fisco-bcos", "-c", "config.ini"]
+    volumes:
+      - ./sandbox-nodes/127.0.0.1/node2:/fisco/nodes/127.0.0.1/node2
+    networks:
+      - fisco-sandbox-net
+
+  fisco-sandbox-node3:
+    image: fiscoorg/fisco-bcos:latest
+    container_name: fisco-sandbox-node3
+    hostname: node3
+    working_dir: /fisco/nodes/127.0.0.1/node3
+    command: ["./fisco-bcos", "-c", "config.ini"]
+    volumes:
+      - ./sandbox-nodes/127.0.0.1/node3:/fisco/nodes/127.0.0.1/node3
+    networks:
+      - fisco-sandbox-net
+
+  # FISCO 控制台（部署 / 调用合约，排障用；与主 compose 同款）
+  fisco-sandbox-console:
+    image: fiscoorg/fisco-bcos-console:latest
+    container_name: fisco-sandbox-console
+    working_dir: /fisco/console
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./sandbox-console:/fisco/console
+    depends_on:
+      - fisco-sandbox-node0
+    networks:
+      - fisco-sandbox-net
+
+  # ---------------- 后端（FastAPI + uvicorn） ----------------
+  # 单 worker 为硬约束：py-evm 进程内单例 / 班级注册表内存态不允许多进程
+  # （见文件头说明 2）。多班级并发由进程内 asyncio 并发承接。
+  backend:
+    image: python:3.11-slim
+    container_name: chain-sandbox-backend
+    working_dir: /app
+    volumes:
+      - ../backend:/app                # 源码 + storage（DB / keystore 持久化）
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+             uvicorn app.main:app
+             --host 0.0.0.0 --port 8000
+             --workers 1
+             --log-level info --access-log"
+    environment:
+      # ===== 链连接：指向本编排内 node0 的 Channel 端口 =====
+      - CHAIN_MODE=fisco
+      - FISCO_RPC_HOST=fisco-sandbox-node0   # compose 网络内按服务名解析
+      - FISCO_RPC_PORT=8545                  # 容器内 Channel 端口（宿主机映射为 18545）
+      - FISCO_GROUP_ID=1
+      # ===== SSO 登录（压测账号必须已在该 SSO 侧预置，见 scripts/loadtest.py 头部说明）=====
+      - EXTERNAL_API_BASE=https://ecosim.sztzjy.com:166/server
+      # ===== 安全项：生产沙盘务必显式配置（说明同 backend/.env.example）=====
+      - JWT_SECRET=                          # 留空则首启动自动生成并持久化
+      - KEYSTORE_PASSWORD=                   # 链账户密钥库口令，生成后勿更换
+      # ===== CORS：沙盘多班级若跨域访问前端，按 .env.example 说明补充来源 =====
+      # - CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+    ports:
+      - "8100:8000"     # 宿主机 8100，避开宿主机上可能已在跑的后端 8000
+    depends_on:
+      - fisco-sandbox-node0
+    networks:
+      - fisco-sandbox-net
+
+  # ---------------- 可选：观测栈（默认不启用，取消注释即用） ----------------
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: chain-sandbox-prometheus
+  #   volumes:
+  #     - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  #   ports:
+  #     - "9090:9090"
+  #   networks:
+  #     - fisco-sandbox-net
+  #
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: chain-sandbox-grafana
+  #   environment:
+  #     - GF_SECURITY_ADMIN_PASSWORD=admin
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - prometheus
+  #   networks:
+  #     - fisco-sandbox-net
+
+networks:
+  fisco-sandbox-net:
+    driver: bridge

@@ -5,6 +5,8 @@ pydantic-settings==2.2.1
 python-multipart==0.0.9
 websockets==12.0
 httpx==0.27.0
+# 服务端 JWT 鉴权（登录签发 / 验签 / 角色依赖）
+PyJWT==2.8.0
 # 真实 EVM 链 + 真实 Solidity 编译
 py-evm==0.10.0b1
 eth-tester==0.9.1b1

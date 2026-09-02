@@ -9,7 +9,7 @@
       教师录入教师评分 → 系统合成综合成绩 → 形成完整评价。
 
 权限：仅教师（roleId=3）和管理员（roleId=1）可访问；学生（roleId=4）禁止。
-身份通过 HTTP Header `X-User-Id` / `X-Role-Id` / `X-User-Name` 传递。
+身份通过 JWT 验签解析（Authorization: Bearer，见 app/security.py），不再信任 X-* 自报头。
 
 接口：
   GET    /api/grades/list                 成绩列表（含实训/教师/综合 3 项）
@@ -25,10 +25,13 @@ import json
 from typing import Optional, Tuple
 from urllib.parse import unquote
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from ..db import get_conn, now
+from ..db import get_conn, now, scope_where
+from ..security import ensure_own_wallet, require_role, get_current_user, PRIVILEGED_ROLES
+# 实训成绩原始计数统一由 learning.events.aggregate 聚合（单一事实源，只计数不含公式）
+from ..learning.events import aggregate as aggregate_training_counts
 
 
 def _decode_name(raw: str) -> str:
@@ -58,19 +61,10 @@ TRAINING_WEIGHTS = {
 }
 
 
-def _require_teacher(
-    x_role_id: Optional[str] = Header(default=None, alias="X-Role-Id"),
-    x_user_id: Optional[str] = Header(default=None, alias="X-User-Id"),
-    x_user_name: Optional[str] = Header(default=None, alias="X-User-Name"),
-) -> Tuple[int, str, str]:
-    """校验当前登录身份是否可访问成绩模块；返回 (roleId, userId, userName)。"""
-    try:
-        rid = int(x_role_id) if x_role_id else 0
-    except (TypeError, ValueError):
-        rid = 0
-    if rid not in ALLOWED_ROLES:
-        raise HTTPException(status_code=403, detail="无权限访问学生成绩模块（仅教师 / 管理员）")
-    return rid, (x_user_id or ""), _decode_name(x_user_name or "")
+def _require_teacher(user: dict = Depends(require_role(1, 3))) -> Tuple[int, str, str]:
+    """校验当前登录身份是否可访问成绩模块（基于 JWT 角色：1 管理员 / 3 教师）；
+    返回 (roleId, userId, userName)。"""
+    return int(user.get("role_id") or 0), (user.get("user_id") or ""), (user.get("user_name") or "")
 
 
 # ===========================================================================
@@ -90,92 +84,60 @@ def _compute_training_score(wallet: str) -> Tuple[float, dict]:
     if not wallet:
         return 0.0, {k: {"score": 0, "weight": v, "metrics": {}} for k, v in TRAINING_WEIGHTS.items()}
 
-    with get_conn() as conn:
-        # 1) 学习事件按类型计数
-        event_counts = {
-            r["event_type"]: r["cnt"]
-            for r in conn.execute(
-                "SELECT event_type, COUNT(*) AS cnt FROM learning_events WHERE wallet=? GROUP BY event_type",
-                (wallet,),
-            ).fetchall()
-        }
-        # 2) 已部署合约数（该 wallet 部署的）
-        deploy_count = conn.execute(
-            "SELECT COUNT(*) AS c FROM deployed_contracts WHERE deployer=?",
-            (wallet,),
-        ).fetchone()["c"]
-        # 3) 合约调用次数（该 wallet 调用的）
-        call_count = conn.execute(
-            "SELECT COUNT(*) AS c FROM contract_calls WHERE caller=?",
-            (wallet,),
-        ).fetchone()["c"]
-        # 4) 链上交易笔数（该 wallet 发起 / 接收）
-        tx_count = conn.execute(
-            "SELECT COUNT(*) AS c FROM transactions WHERE from_addr=? OR to_addr=?",
-            (wallet, wallet),
-        ).fetchone()["c"]
-        # 5) NFT 铸造数（该 wallet 作为作者）
-        nft_mint_count = conn.execute(
-            "SELECT COUNT(*) AS c FROM nfts WHERE author=?",
-            (wallet,),
-        ).fetchone()["c"]
-        # 6) NFT 交易数（该 wallet 买 / 卖）
-        nft_trade_count = conn.execute(
-            "SELECT COUNT(*) AS c FROM nft_trades WHERE from_addr=? OR to_addr=?",
-            (wallet, wallet),
-        ).fetchone()["c"]
-        # 7) ERC20 转账数
-        transfer_count = conn.execute(
-            "SELECT COUNT(*) AS c FROM wallet_transfers WHERE from_addr=? OR to_addr=?",
-            (wallet, wallet),
-        ).fetchone()["c"]
-        # 8) 绿色能量发放数（该 wallet 作为接收方，凭业务单据由联盟角色签发）
-        energy_issue_count = conn.execute(
-            "SELECT COUNT(*) AS c FROM eco_energy_records WHERE lower(wallet)=?",
-            (wallet.lower(),),
-        ).fetchone()["c"]
+    # 原始计数统一由 learning.events.aggregate 聚合（单一事实源）：
+    # 钱包候选集兼容双轨口径（写路径 0xlearner / 读路径 userId）+ lower(wallet) IN
+    # 归一，计数口径与本函数原实现逐字一致；评分公式与封顶逻辑保持不变。
+    m = aggregate_training_counts(wallet)
 
-    # === 维度 1：链搭建（IDE 打开 / 工程保存）===
-    opens = event_counts.get("ide_open_builtin", 0)
-    saves = event_counts.get("ide_save_project", 0)
-    chain_setup_score = min(100.0, opens * 5 + saves * 10)
+    # === 维度 1：链搭建（IDE 打开 / 工程保存 / 搭链教程完成步数）===
+    opens = m["ide_open_builtin"]
+    saves = m["ide_save_project"]
+    # 教程每完成 1 步 +8 分（共 10 步封顶 80 分）；合计仍以 100 分封顶。
+    # 新增项只增不减：存量用户分数只会持平或上升。
+    chain_setup_score = min(100.0, opens * 5 + saves * 10 + m["tutorial_done"] * 8)
 
     # === 维度 2：合约开发（编译成功 + 部署数）===
-    compiles_ok = event_counts.get("contract_compile_ok", 0)
-    contract_dev_score = min(100.0, compiles_ok * 5 + deploy_count * 25)
+    compiles_ok = m["contract_compile_ok"]
+    contract_dev_score = min(100.0, compiles_ok * 5 + m["deployed_contracts"] * 25)
 
     # === 维度 3：链上验证（接口调用 + 合约调用 + 链上交易）===
-    invokes = event_counts.get("interface_invoke", 0)
-    chain_verify_score = min(100.0, invokes * 5 + call_count * 4 + tx_count * 3)
+    invokes = m["interface_invoke"]
+    chain_verify_score = min(100.0, invokes * 5 + m["contract_calls"] * 4 + m["transactions"] * 3)
 
-    # === 维度 4：联盟治理（角色切换 + 能量发放 + NFT 铸造/交易 + ERC20 转账 + 报告查看）===
-    # 能量发放是联盟角色核心职责：基于业务凭据签发绿色能量，体现真实联盟链治理流程
-    role_switches = event_counts.get("eco_role_switch", 0)
-    report_views = event_counts.get("report_view", 0)
+    # === 维度 4：联盟治理（角色切换 + 能量发放 + NFT 铸造/交易 + 绿色市场成交 + ERC20 转账 + 报告查看）===
+    # 能量发放是联盟角色核心职责：基于业务凭据签发绿色能量，体现真实联盟链治理流程；
+    # 绿色市场成交（eco_market_trade）是业务闭环最后一环：绿色资产即链上 NFT，成交即流通。
+    role_switches = m["eco_role_switch"]
+    report_views = m["report_view"]
     alliance_gov_score = min(
         100.0,
-        role_switches * 8 + energy_issue_count * 10 + nft_mint_count * 6
-        + nft_trade_count * 5 + transfer_count * 2 + report_views * 4,
+        role_switches * 8 + m["energy_issue"] * 10 + m["nft_mint"] * 6
+        + m["nft_trade"] * 5 + m["eco_market_trade"] * 5
+        + m["erc20_transfer"] * 2 + report_views * 4,
     )
 
     detail = {
         "chain_setup": {
             "score": round(chain_setup_score, 1),
             "weight": TRAINING_WEIGHTS["chain_setup"],
-            "metrics": {"ide_open_builtin": opens, "ide_save_project": saves},
+            "metrics": {
+                "ide_open_builtin": opens,
+                "ide_save_project": saves,
+                "tutorial_done": m["tutorial_done"],
+            },
         },
         "contract_dev": {
             "score": round(contract_dev_score, 1),
             "weight": TRAINING_WEIGHTS["contract_dev"],
-            "metrics": {"contract_compile_ok": compiles_ok, "deployed_contracts": deploy_count},
+            "metrics": {"contract_compile_ok": compiles_ok, "deployed_contracts": m["deployed_contracts"]},
         },
         "chain_verify": {
             "score": round(chain_verify_score, 1),
             "weight": TRAINING_WEIGHTS["chain_verify"],
             "metrics": {
                 "interface_invoke": invokes,
-                "contract_calls": call_count,
-                "transactions": tx_count,
+                "contract_calls": m["contract_calls"],
+                "transactions": m["transactions"],
             },
         },
         "alliance_gov": {
@@ -183,10 +145,11 @@ def _compute_training_score(wallet: str) -> Tuple[float, dict]:
             "weight": TRAINING_WEIGHTS["alliance_gov"],
             "metrics": {
                 "eco_role_switch": role_switches,
-                "energy_issue": energy_issue_count,
-                "nft_mint": nft_mint_count,
-                "nft_trade": nft_trade_count,
-                "erc20_transfer": transfer_count,
+                "energy_issue": m["energy_issue"],
+                "nft_mint": m["nft_mint"],
+                "nft_trade": m["nft_trade"],
+                "eco_market_trade": m["eco_market_trade"],
+                "erc20_transfer": m["erc20_transfer"],
                 "report_view": report_views,
             },
         },
@@ -427,20 +390,36 @@ def refresh_all_training(_=Depends(_require_teacher)):
 # 学生端：按 wallet 查看自己的成绩（无需教师权限）
 # ===========================================================================
 @router.get("/my")
-def my_grades(wallet: str = Query(..., description="学生链上钱包地址")):
+def my_grades(
+    wallet: str = Query(..., description="学生链上钱包地址"),
+    user: dict = Depends(get_current_user),
+):
     """学生查看自己的实训成绩（按 wallet 查询，无需教师权限）。
 
-    返回该 wallet 关联的所有成绩记录 + 实时计算的实训成绩明细。
-    如果该 wallet 尚未有成绩记录，则实时计算并返回预览（不入库）。
+    身份校验：学生仅能查询自己钱包（钱包从 JWT 取，必须与登录身份一致）；
+    教师 / 管理员可查任意钱包。返回该 wallet 关联的所有成绩记录 +
+    实时计算的实训成绩明细；若该 wallet 尚未有成绩记录，则实时计算并返回预览（不入库）。
     """
     w = wallet.strip()
     if not w:
         raise HTTPException(400, "wallet 必填")
+    ensure_own_wallet(user, w)  # 学生仅能查自己钱包，教师/管理员不受限
+
+    # 多租户 scope 浅接线：学生（非特权角色）按本人 user_id 收紧可见范围
+    # （命中本人归属行 + 未登记归属旧行，见 db.scope_where）；教师/管理员
+    # 传 None 不过滤，保持全局视图，避免特权视角"丢数据"。
+    # 注：student_grades 租户列由 db.init_db 在线迁移补齐（旧行 DEFAULT ''）。
+    scope_uid = (user.get("user_id") or "").strip() or None
+    if int(user.get("role_id") or 0) in PRIVILEGED_ROLES:
+        scope_uid = None
+    sc, sp = scope_where("student_grades", user_id=scope_uid)
 
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM student_grades WHERE wallet=? ORDER BY course ASC",
-            (w,),
+            "SELECT * FROM student_grades WHERE wallet=?"
+            + (" AND " + sc if sc else "")
+            + " ORDER BY course ASC",
+            (w, *sp),
         ).fetchall()
 
     items = []
@@ -473,15 +452,18 @@ def auto_draft_grade(
     student_id: str = Query("", description="学号（可选，为空则用 wallet 前 10 位）"),
     student_name: str = Query("", description="学生姓名（可选）"),
     course: str = Query("区块链实训", description="课程名称"),
+    user: dict = Depends(get_current_user),
 ):
     """报告生成时自动为学生创建/更新成绩草稿（打通 report→grades）。
 
     闭环逻辑：学生完成实训 → 查看/下载报告 → 系统自动按 wallet 计算实训成绩
     → 写入 student_grades 作为草稿（teacher_id='system', score=0 待教师录入）。
+    身份校验：学生仅能为自己钱包生成草稿（钱包必须与 JWT 身份一致）；教师/管理员不受限。
     """
     w = wallet.strip()
     if not w:
         raise HTTPException(400, "wallet 必填")
+    ensure_own_wallet(user, w)  # 学生仅能写本人钱包，教师/管理员不受限
 
     sid = student_id.strip() or f"W{w[:10]}"
     sname = student_name.strip() or f"学生_{w[:6]}"

@@ -464,8 +464,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onActivated, onMounted } from 'vue'
+import { ref, computed, onActivated, onMounted, onUnmounted } from 'vue'
 import { explorerApi } from '@/api'
+// 任务 #21：SSE 推送触发刷新（与既有拉取逻辑叠加，不替换）
+import { onBusEvent } from '@/api/events'
 import { ElMessage } from 'element-plus'
 import { Search, Link, Cpu, Document, Files, Lightning, Timer, Right, Coin, Connection, BellFilled, MagicStick, User, CircleCheck, Warning } from '@element-plus/icons-vue'
 import CountUp from '@/components/CountUp.vue'
@@ -701,6 +703,30 @@ const goAddr = async (a: string) => {
 const loadAll = () => { loadOverview(); loadBlocks(); loadTxs(); loadContracts(); loadAnalysis() }
 onMounted(loadAll)
 onActivated(loadAll)
+
+/* ---------- 任务 #21/#25：SSE 推送触发刷新 ----------
+ * 交易确认 → 刷区块/交易/概览；合约部署 → 刷合约列表/概览（保留既有拉取，纯叠加）。
+ * 任务 #25：加 400ms 防抖——同一事件类型高频推送（课堂多端并发交易）合并为一次刷新，
+ * 避免请求放大；按事件类型各自一个防抖函数，互不干扰。 */
+function debounceFn(fn: () => void, ms: number) {
+  let t: ReturnType<typeof setTimeout> | null = null
+  const w = () => {
+    if (t) clearTimeout(t)
+    t = setTimeout(() => { t = null; fn() }, ms)
+  }
+  ;(w as any).cancel = () => { if (t) { clearTimeout(t); t = null } }
+  return w as typeof w & { cancel: () => void }
+}
+const debouncedTxRefresh = debounceFn(() => { loadBlocks(); loadTxs(); loadOverview() }, 400)
+const debouncedDeployRefresh = debounceFn(() => { loadContracts(); loadOverview() }, 400)
+const offPushTx = onBusEvent('tx_confirmed', () => { debouncedTxRefresh() })
+const offPushDeploy = onBusEvent('deployed', () => { debouncedDeployRefresh() })
+onUnmounted(() => {
+  offPushTx()
+  offPushDeploy()
+  debouncedTxRefresh.cancel()
+  debouncedDeployRefresh.cancel()
+})
 </script>
 
 <style scoped lang="scss">

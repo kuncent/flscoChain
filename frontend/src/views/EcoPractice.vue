@@ -132,7 +132,9 @@
       <div class="dq-card-title">
         <span class="title-icon">👥</span>
         选择你的角色
-        <span v-if="currentRole?.role_key" class="dq-tag" style="margin-left: auto">
+        <span class="role-sub">联盟角色 = 能量发行方（审核凭证 / 铸造勋章 / 管理树种）；普通用户 = 低碳行为赚能量、兑资产</span>
+        <span v-if="residentActive" class="dq-tag" style="margin-left: auto">当前：👨‍🎓 普通用户</span>
+        <span v-else-if="currentRole?.role_key" class="dq-tag" style="margin-left: auto">
           当前：{{ roleMeta(currentRole.role_key)?.icon }} {{ roleMeta(currentRole.role_key)?.name }}
         </span>
       </div>
@@ -149,23 +151,149 @@
           <div class="rc-desc">{{ r.desc }}</div>
           <div class="rc-rule dq-mono">{{ r.rule }}</div>
         </div>
+        <!-- 普通用户（低碳居民）：非联盟发放角色，与「我的钱包」（登录账号本人钱包）绑定，表示未选择任何联盟角色 -->
+        <div
+          class="role-card"
+          :class="{ active: residentActive }"
+          @click="selectResident"
+        >
+          <div class="rc-icon">👨‍🎓</div>
+          <div class="rc-name">普通用户</div>
+          <div class="rc-desc">低碳居民（普通用户），5 种低碳行为赚能量，攒能量兑资产</div>
+          <div class="rc-rule dq-mono">获取能量 · 兑换资产 · 市场交易</div>
+        </div>
       </div>
     </div>
 
-    <!-- 4. 绿色能量发放区 -->
+    <!-- 3.5 角色工作台：职责 / 权限位 / 链上活动统计 / 待办运营动作 -->
+    <div class="dq-card section-card">
+      <div class="dq-card-title">
+        <span class="title-icon">🧰</span>
+        角色工作台
+        <span v-if="currentRole?.role_key" class="dq-tag" style="margin-left: auto">
+          {{ roleMeta(currentRole.role_key)?.icon }} {{ roleMeta(currentRole.role_key)?.name }}
+        </span>
+        <el-button
+          v-if="currentRole?.role_key"
+          size="small"
+          :loading="wbLoading"
+          style="margin-left: 8px"
+          @click="loadWorkbench"
+        >刷新</el-button>
+      </div>
+      <div v-if="!currentRole?.role_key" class="empty-tip">
+        {{ residentActive
+          ? '当前身份为普通用户（无联盟工作台），如需体验联盟节点职责，请选择上方 6 个联盟角色之一'
+          : '请先在上方选择一个角色，工作台将展示该角色的职责、权限位与链上活动统计' }}
+      </div>
+      <el-collapse v-else v-model="wbActive" class="wb-collapse">
+        <el-collapse-item name="wb">
+          <template #title>
+            <span class="wb-title">联盟节点职责 · 权限位 · 链上活动 · 待办运营动作</span>
+          </template>
+
+          <div v-if="!workbench && !wbLoading" class="empty-tip small">
+            工作台数据加载失败，点击右上角「刷新」重试
+          </div>
+          <template v-else-if="workbench">
+            <!-- 职责 + 权限位 -->
+            <div class="wb-head">
+              <div class="wb-desc">{{ workbench.role?.desc }}</div>
+              <div class="wb-perms">
+                <span v-if="workbench.permissions?.has_energy_rule" class="dq-tag accent">⚡ 能量发放节点</span>
+                <span v-if="workbench.permissions?.can_issue_badge" class="dq-tag warn">🎖️ 可发放勋章</span>
+                <span v-if="workbench.permissions?.can_issue_voucher" class="dq-tag info">🎫 可发放骑行券</span>
+                <span v-if="workbench.permissions?.can_manage_trees" class="dq-tag">🌳 可管理树种</span>
+              </div>
+            </div>
+
+            <!-- 角色钱包链上活动统计 -->
+            <div class="wb-stats">
+              <div class="dq-card wb-stat">
+                <div class="ws-label">合约调用（本角色钱包）</div>
+                <div class="ws-num">{{ workbench.activity?.contract_calls?.total ?? 0 }}</div>
+                <div class="ws-sub">
+                  成功 {{ workbench.activity?.contract_calls?.success ?? 0 }} ·
+                  失败 {{ workbench.activity?.contract_calls?.failed ?? 0 }}
+                </div>
+              </div>
+              <div class="dq-card wb-stat">
+                <div class="ws-label">链上交易（收 / 发）</div>
+                <div class="ws-num">{{ workbench.activity?.transactions?.total ?? 0 }}</div>
+                <div class="ws-sub">
+                  发出 {{ workbench.activity?.transactions?.sent ?? 0 }} ·
+                  接收 {{ workbench.activity?.transactions?.received ?? 0 }}
+                </div>
+              </div>
+              <div class="dq-card wb-stat">
+                <div class="ws-label">绿色能量发放（本角色）</div>
+                <div class="ws-num">{{ workbench.activity?.energy?.issue_count ?? 0 }}<em> 次</em></div>
+                <div class="ws-sub">累计 {{ workbench.activity?.energy?.total_points ?? 0 }} 点能量</div>
+              </div>
+            </div>
+
+            <!-- 待办运营动作（由权限位静态推导） -->
+            <div class="wb-todos">
+              <div class="dq-card-title sub-title">待办运营动作</div>
+              <div class="wb-todo" v-for="t in workbench.todos || []" :key="t.key">
+                <span class="wt-dot"></span>
+                <div class="wt-body">
+                  <div class="wt-title">{{ t.title }}</div>
+                  <div class="wt-desc">{{ t.desc }}</div>
+                </div>
+                <span class="dq-tag muted">{{ t.source }}</span>
+              </div>
+              <div v-if="!(workbench.todos || []).length" class="empty-tip small">
+                该角色暂无静态映射的待办动作
+              </div>
+            </div>
+          </template>
+          <div v-else class="empty-tip small">工作台数据加载中…</div>
+        </el-collapse-item>
+      </el-collapse>
+    </div>
+
+    <!-- 4. 绿色能量发放 / 获取区 -->
     <div class="dq-card section-card">
       <div class="dq-card-title">
         <span class="title-icon">⚡</span>
-        绿色能量发放
+        {{ residentActive && !currentRole?.role_key ? '绿色能量获取' : '绿色能量发放' }}
         <span class="dq-live" style="margin-left: auto"><span class="dot"></span>ERC20 mint</span>
       </div>
       <template v-if="!currentRole?.role_key">
-        <div class="empty-tip">请先在上方选择一个角色</div>
+        <div v-if="residentActive" class="resident-energy">
+          <div class="dq-note">
+            <span class="dn-label">能量获取方式</span>
+            普通用户（居民）通过 <b>5 种低碳行为</b>获取绿色能量：选择行为并提交对应业务凭证，
+            由对应联盟节点自动审核（阈值校验）后以其组织钱包上链发放——这正是联盟角色的意义：
+            <b>只有联盟节点拥有能量发行权</b>。能量入账本人钱包，可用于兑换证书 / 勋章 / 骑行券与市场交易。
+          </div>
+          <div class="energy-ways">
+            <div v-for="r in energyWayRoles" :key="r.key" class="energy-way-card">
+              <div class="ew-head">
+                <span class="ew-icon">{{ r.icon }}</span>
+                <span class="ew-name">{{ r.name }}</span>
+                <span class="ew-points dq-mono">+{{ r.energy_rule.points }}</span>
+              </div>
+              <div class="ew-desc">{{ r.desc }}</div>
+              <el-button
+                size="small"
+                type="primary"
+                plain
+                :loading="issuing && issuingRoleKey === r.key"
+                @click="openProofDlg(r.key)"
+              >
+                提交{{ r.energy_rule.action }}凭证
+              </el-button>
+            </div>
+          </div>
+        </div>
+        <div v-else class="empty-tip">请先在上方选择一个角色</div>
       </template>
       <template v-else-if="currentRole.role_key === 'admin'">
         <div class="dq-note">
           <span class="dn-label">管理员模式</span>
-          管理员不发放绿色能量，请前往下方「植树证书管理」添加树种，或切换为其他角色体验能量发放。
+          管理员不直接发放绿色能量，承担三项能量治理职责：① <b>树种管理</b>（在下方上架树种、设定证书兑换成本）；② <b>能量国库</b>（居民兑换资产消耗的能量回收转入 0xadmin 国库，防止通胀）；③ <b>账本回填</b>（沙盒链重置后由管理员 mint 回填居民余额）。如需体验能量发放请切换为其他业务角色。
         </div>
       </template>
       <template v-else>
@@ -174,7 +302,7 @@
             当前角色：<b>{{ roleMeta(currentRole.role_key)?.icon }} {{ roleMeta(currentRole.role_key)?.name }}</b>
             <span class="dq-tag accent" style="margin-left: 8px">{{ currentEnergyAction.amount }} 能量 / 次</span>
           </div>
-          <el-button type="primary" :loading="issuing" @click="openProofDlg">
+          <el-button type="primary" :loading="issuing" @click="openProofDlg()">
             <span class="energy-btn-text">{{ currentEnergyAction.label }}</span>
           </el-button>
         </div>
@@ -184,8 +312,8 @@
         </div>
       </template>
 
-      <!-- 最近能量发放记录 -->
-      <div class="dq-card-title sub-title">最近能量发放记录</div>
+      <!-- 最近能量记录（联盟角色 = 发放流水；普通用户 = 获取流水） -->
+      <div class="dq-card-title sub-title">{{ residentActive && !currentRole?.role_key ? '最近能量获取记录' : '最近能量发放记录' }}</div>
       <el-table :data="energyRecords" border size="small" v-if="energyRecords.length">
         <el-table-column prop="role_key" label="角色" width="120">
           <template #default="{ row }">
@@ -194,6 +322,9 @@
         </el-table-column>
         <el-table-column prop="action" label="行为" min-width="120">
           <template #default="{ row }">{{ row.action }}</template>
+        </el-table-column>
+        <el-table-column prop="proof_no" label="业务单号" min-width="140">
+          <template #default="{ row }"><span class="dq-mono">{{ row.proof_no || '-' }}</span></template>
         </el-table-column>
         <el-table-column prop="points" label="能量" width="100">
           <template #default="{ row }"><span class="dq-mono energy-val">+{{ row.points }}</span></template>
@@ -378,6 +509,10 @@
           <span class="dt-label">说明:</span>
           联盟业务方可将勋章 / 骑行券直接铸造发放给居民钱包（ERC1155 mint），无需居民消耗能量兑换，模拟真实场景的权益空投。
         </div>
+        <div v-if="!isBike" class="dq-tip" style="margin-bottom: 10px">
+          <span class="dt-label">权限提示:</span>
+          骑行券（voucher）仅共享单车公司（bike）可维护与发放；当前角色仅可铸造发放生态勋章。
+        </div>
         <el-form :inline="true" size="small">
           <el-form-item label="资产类型">
             <el-select v-model="mintTypeId" style="width: 180px">
@@ -390,7 +525,7 @@
             </el-select>
           </el-form-item>
           <el-form-item label="接收钱包">
-            <el-input v-model="mintToWallet" placeholder="0xresident / 0xlearner" style="width: 180px" />
+            <el-input v-model="mintToWallet" placeholder="stu:xxx / 0xresident" style="width: 180px" />
           </el-form-item>
           <el-form-item label="数量">
             <el-input-number v-model="mintQty" :min="1" :max="100" style="width: 100px" />
@@ -471,28 +606,30 @@
           <div class="eb-sub">GreenEnergy (ERC20)</div>
         </div>
 
-        <!-- ERC721 资产列表 -->
+        <!-- 我的绿色资产：当前钱包持有的证书 / 勋章 / 骑行券统一视图（不再按 ERC 标准分块，
+             详细展示与挂牌操作见上方「植树证书」「勋章与骑行券」两个专区） -->
         <div class="dq-card wallet-block">
-          <div class="dq-card-title sub-title">ERC721 资产（植树证书）</div>
-          <div v-if="erc721Assets.length" class="asset-list">
-            <div class="asset-item" v-for="a in erc721Assets" :key="a.token_id">
-              <span class="ai-name">🌱 {{ a.species_name || a.name || '植树证书' }}</span>
-              <span class="dq-tag accent">ID: {{ a.token_id }}</span>
+          <div class="dq-card-title sub-title">
+            🌱 我的绿色资产
+            <span class="dq-tag" style="margin-left: 8px">{{ walletAssets.length }} 项</span>
+          </div>
+          <div class="dq-tip" style="margin-bottom: 8px">
+            <span class="dt-label">来源:</span>
+            植树证书由 PlantCertificate（ERC721，每份唯一）消耗能量兑换；
+            勋章 / 骑行券由 EcoBadge（ERC1155）能量兑换或联盟角色铸造发放获得。
+            详细的挂牌 / 在售操作见上方资产专区。
+          </div>
+          <div v-if="walletAssets.length" class="asset-list">
+            <div class="asset-item" v-for="a in walletAssets" :key="a.key">
+              <span class="ai-name">{{ a.icon }} {{ a.name }}</span>
+              <span class="ai-tags">
+                <span class="dq-tag" :class="a.standard === 'ERC721' ? 'accent' : 'warn'">{{ a.standard }}</span>
+                <span class="dq-mono dim">{{ a.idText }}</span>
+                <span v-if="a.listed" class="dq-tag info">📍 在售</span>
+              </span>
             </div>
           </div>
-          <div v-else class="empty-tip small">暂无 ERC721 资产</div>
-        </div>
-
-        <!-- ERC1155 资产列表 -->
-        <div class="dq-card wallet-block">
-          <div class="dq-card-title sub-title">ERC1155 资产（勋章 / 骑行券）</div>
-          <div v-if="erc1155Assets.length" class="asset-list">
-            <div class="asset-item" v-for="a in erc1155Assets" :key="a.badge_type">
-              <span class="ai-name">{{ badgeLabel(a.badge_type).icon }} {{ badgeLabel(a.badge_type).name }}</span>
-              <span class="dq-tag warn">x{{ a.amount }}</span>
-            </div>
-          </div>
-          <div v-else class="empty-tip small">暂无 ERC1155 资产</div>
+          <div v-else class="empty-tip small">暂无绿色资产，兑换证书 / 勋章 / 骑行券后在此展示</div>
         </div>
       </div>
 
@@ -506,6 +643,9 @@
         </el-table-column>
         <el-table-column prop="action" label="行为" min-width="120">
           <template #default="{ row }">{{ row.action }}</template>
+        </el-table-column>
+        <el-table-column prop="proof_no" label="业务单号" min-width="140">
+          <template #default="{ row }"><span class="dq-mono">{{ row.proof_no || '-' }}</span></template>
         </el-table-column>
         <el-table-column prop="points" label="能量" width="100">
           <template #default="{ row }"><span class="dq-mono energy-val">+{{ row.points }}</span></template>
@@ -551,7 +691,7 @@
     <EnergyProofForm
       ref="proofFormRef"
       v-model:visible="proofDlg"
-      :role-name="currentRole?.role_key ? roleMeta(currentRole.role_key)?.name : ''"
+      :role-name="activeIssueRole ? roleMeta(activeIssueRole.key)?.name : ''"
       :points="currentEnergyAction.amount"
       :rule="currentRuleObj"
       :threshold-hint="currentThresholdHint"
@@ -633,6 +773,7 @@
 import { ref, reactive, computed, watch, onMounted, onActivated } from 'vue'
 import { ecoApi } from '@/api'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import EnergyProofForm from '@/components/EnergyProofForm.vue'
@@ -664,10 +805,12 @@ const ROLE_META: Record<string, RoleMeta> = {
   metro:     { icon: '🚇', name: '地铁集团', desc: '城市地铁运营方', rule: '乘坐地铁 +50 能量',     action: '乘坐地铁',   amount: 50 },
   bus:       { icon: '🚌', name: '公交集团', desc: '城市公交运营方', rule: '乘坐公交 +20 能量',     action: '乘坐公交',   amount: 20 },
   bike:      { icon: '🚲', name: '共享单车', desc: '共享单车运营方，可发放骑行券', rule: '共享单车骑行 +15 能量', action: '共享单车骑行', amount: 15 },
-  delivery:  { icon: '📦', name: '外卖平台', desc: '绿色外卖服务平台', rule: '绿色外卖 +10 能量',   action: '绿色外卖',   amount: 10 },
+  takeout:   { icon: '📦', name: '外卖平台', desc: '绿色外卖服务平台', rule: '绿色外卖 +10 能量',   action: '绿色外卖',   amount: 10 },
   recycling: { icon: '♻️', name: '回收公司', desc: '旧物回收公司',   rule: '旧物回收 +100 能量',   action: '旧物回收',   amount: 100 },
 }
-const roleMeta = (key?: string) => (key ? ROLE_META[key] : undefined)
+/* 历史别名兼容：旧 key delivery / 钱包缩写 recycle → 后端权威 key（与 alliance_roles.ROLE_ALIAS 一致） */
+const ROLE_KEY_ALIAS: Record<string, string> = { delivery: 'takeout', recycle: 'recycling' }
+const roleMeta = (key?: string) => (key ? ROLE_META[ROLE_KEY_ALIAS[key] || key] : undefined)
 
 /** 角色列表：合并本地元数据，保证六个角色稳定展示 */
 const roleList = computed(() =>
@@ -706,15 +849,28 @@ const energyRecords = ref<any[]>([])
 const trees = ref<any[]>([])
 const certificates = ref<any[]>([])
 const badges = ref<any[]>([])
-const walletData = ref<any>(null)
 
 const treeForm = reactive({ name: '', required_energy: 1000, image_url: '', description: '' })
 
 /* ==================== 能量发放业务凭证 ==================== */
 const proofDlg = ref(false)
 const proofFormRef = ref<any>(null)
-/** 当前角色的 energy_rule（含 proof_fields 等） */
-const currentRuleObj = computed(() => currentRole.value?.role?.energy_rule || null)
+/** 本次发放目标角色 key：普通用户在行为卡片选定 > 当前联盟角色（角色扮演发放） */
+const issuingRoleKey = ref('')
+/** 本次发放目标角色定义（优先后端权威 ROLES 数据，含 energy_rule 凭证字段） */
+const activeIssueRole = computed<any>(() => {
+  const key = issuingRoleKey.value || currentRole.value?.role_key || ''
+  if (!key) return null
+  return (
+    roles.value.find((r: any) => r.key === key)
+    || (currentRole.value?.role_key === key ? currentRole.value?.role : null)
+    || null
+  )
+})
+/** 具备能量发放规则的业务角色 = 普通用户（居民）的 5 种低碳行为获取能量方式 */
+const energyWayRoles = computed(() => roles.value.filter((r: any) => r.energy_rule))
+/** 本次发放目标角色的 energy_rule（含 proof_fields 等） */
+const currentRuleObj = computed(() => activeIssueRole.value?.energy_rule || null)
 /** 阈值提示（如 distance_km ≥ 10 km） */
 const currentThresholdHint = computed(() => {
   const r = currentRuleObj.value
@@ -730,33 +886,40 @@ const currentProofNoLabel = computed(() =>
   PROOF_NO_LABELS[currentRuleObj.value?.proof_no_field] || '业务单号',
 )
 
-/** 打开业务凭证表单 */
-const openProofDlg = () => {
-  if (!currentRole.value?.role_key) {
+/** 打开业务凭证表单（roleKey：普通用户在行为卡片选定；缺省取当前联盟角色） */
+const openProofDlg = (roleKey?: string) => {
+  const key = roleKey || currentRole.value?.role_key
+  if (!key) {
     ElMessage.warning('请先选择角色')
     return
   }
-  const r = currentRole.value?.role?.energy_rule
-  if (!r) {
-    ElMessage.warning('当前角色没有能量发放规则')
+  const def = roles.value.find((r: any) => r.key === key)
+    || (currentRole.value?.role_key === key ? currentRole.value?.role : null)
+  if (!def?.energy_rule) {
+    ElMessage.warning('该角色没有能量发放规则')
     return
   }
+  issuingRoleKey.value = key
   proofDlg.value = true
 }
 
-/** 提交业务凭证 → 后端校验 → 发放能量 */
+/** 提交业务凭证 → 后端校验 → 联盟节点发放能量（居民申请 / 角色扮演两种模式） */
 const submitProof = async (proof: Record<string, any>) => {
+  const rk = activeIssueRole.value?.key || currentRole.value?.role_key
+  if (!rk) return
   issuing.value = true
   try {
-    const r: any = await ecoApi.issueEnergy(wallet.value, currentRole.value.role_key, proof)
+    const r: any = await ecoApi.issueEnergy(wallet.value, rk, proof)
     const pfNo = currentRuleObj.value?.proof_no_field
-    ElMessage.success(`能量发放成功：+${r?.points ?? currentEnergyAction.value.amount}，业务单号 ${pfNo && proof[pfNo] ? proof[pfNo] : '-'}`)
+    const pts = r?.points ?? currentEnergyAction.value.amount
+    const prefix = r?.mode === 'resident_apply' ? '业务凭证审核通过' : '能量发放成功'
+    ElMessage.success(`${prefix}，【${roleMeta(rk)?.name}】已发放：+${pts}，业务单号 ${pfNo && proof[pfNo] ? proof[pfNo] : '-'}`)
     logEco(
       'energy', 'issue_energy', 'success',
-      `${roleMeta(currentRole.value.role_key)?.name} · ${currentEnergyAction.value.label} +${r?.points ?? currentEnergyAction.value.amount}点，单号 ${pfNo && proof[pfNo] ? proof[pfNo] : '-'}`,
+      `${roleMeta(rk)?.name} · ${currentEnergyAction.value.label} +${pts}点（${r?.mode || 'role_play'}），单号 ${pfNo && proof[pfNo] ? proof[pfNo] : '-'}`,
     )
     proofDlg.value = false
-    await Promise.all([loadEnergyBalance(), loadEnergyRecords(), loadWallet()])
+    await Promise.all([loadEnergyBalance(), loadEnergyRecords()])
   } catch (e: any) {
     const msg = e?.response?.data?.detail || e?.message || '能量发放失败'
     ElMessage.error(msg)
@@ -825,7 +988,7 @@ const exchangeBadgeType = async (bt: any) => {
     ElMessage.success(`${bt.name} 兑换成功 ${bt.icon || '🎖️'}`)
     logEco('badge', 'exchange_badge', 'success',
       `兑换${bt.name}（type_id=${bt.id}，消耗 ${bt.cost_energy} 能量）`)
-    await Promise.all([loadEnergyBalance(), loadBadges(), loadWallet(), loadBadgeTypes()])
+    await Promise.all([loadEnergyBalance(), loadBadges(), loadBadgeTypes()])
   } catch (e: any) {
     const msg = e?.response?.data?.detail || e?.message || '勋章兑换失败'
     ElMessage.error(msg)
@@ -1114,33 +1277,41 @@ const allDeployed = computed(() => deployedCount.value === 3)
 
 const isAdmin = computed(() => currentRole.value?.role_key === 'admin')
 
-/** 当前角色的能量发放动作 */
+/** 当前发放目标角色的能量发放动作 */
 const currentEnergyAction = computed(() => {
-  const m = roleMeta(currentRole.value?.role_key)
+  const m = roleMeta(activeIssueRole.value?.key || currentRole.value?.role_key)
   return {
     label: m?.action ? `${m.icon} ${m.action}` : '发放能量',
     amount: m?.amount || 0,
   }
 })
 
-/** 钱包 ERC721 资产 */
-const erc721Assets = computed(() => {
-  if (walletData.value?.erc721) return walletData.value.erc721
-  // 从证书列表中筛选当前钱包持有
-  return certificates.value.filter((c) => c.owner === wallet.value)
-})
-
-/** 钱包 ERC1155 资产 */
-const erc1155Assets = computed(() => {
-  if (walletData.value?.erc1155) return walletData.value.erc1155
-  // 按类型聚合当前钱包的勋章数量（后端每次兑换 1 个）
-  const map: Record<string, number> = {}
-  for (const b of badges.value) {
-    if (b.owner === wallet.value) {
-      map[b.badge_type] = (map[b.badge_type] || 0) + 1
+/** 钱包持有的绿色资产统一视图（证书 ERC721 + 勋章/骑行券 ERC1155，仅当前钱包持有项）。
+ * 数据复用已加载的 certificates / badges（不再按 ERC 标准分块，也不重复请求 /wallet 聚合接口），
+ * owner 比较统一小写口径，与页面其余归属判断一致 */
+const walletAssets = computed(() => {
+  const w = (wallet.value || '').toLowerCase()
+  const owned = (owner: any) => String(owner || '').toLowerCase() === w
+  const certs = certificates.value.filter((c) => owned(c.owner)).map((c: any) => ({
+    key: `cert_${c.id}`,
+    icon: '🌱',
+    name: c.species_name || c.name || '植树证书',
+    standard: 'ERC721',
+    idText: `ID: ${c.token_id}`,
+    listed: isListed('certificate', Number(c.id)),
+  }))
+  const bdg = badges.value.filter((b: any) => owned(b.owner)).map((b: any) => {
+    const t = b.badge_type === 'voucher' ? 'voucher' : 'badge'
+    return {
+      key: `${t}_${b.id}`,
+      icon: badgeLabel(b.badge_type).icon,
+      name: b.name || badgeLabel(b.badge_type).name,
+      standard: 'ERC1155',
+      idText: `ID: ${b.token_id}`,
+      listed: isListed(t, Number(b.id)),
     }
-  }
-  return Object.entries(map).map(([badge_type, amount]) => ({ badge_type, amount }))
+  })
+  return [...certs, ...bdg]
 })
 
 /* ==================== 工具函数 ==================== */
@@ -1168,7 +1339,7 @@ const loadRoles = async () => {
 
 const loadCurrentRole = async () => {
   try {
-    const r = await ecoApi.currentRole(wallet.value)
+    const r: any = await ecoApi.currentRole(wallet.value)
     // 后端返回 role_key=null 时，若当前钱包是联盟角色钱包则自动联动选择对应角色
     if (!r?.role_key) {
       const autoRole = WALLET_ROLE_MAP[(wallet.value || '').toLowerCase()]
@@ -1241,11 +1412,25 @@ const loadBadges = async () => {
   }
 }
 
-const loadWallet = async () => {
+/* ==================== 角色工作台（职责 / 权限位 / 活动统计 / 待办） ==================== */
+const wbActive = ref<string[]>(['wb'])
+const workbench = ref<any>(null)
+const wbLoading = ref(false)
+
+/** 加载当前角色的工作台聚合数据（角色未选时不请求） */
+const loadWorkbench = async () => {
+  const rk = currentRole.value?.role_key
+  if (!rk) {
+    workbench.value = null
+    return
+  }
+  wbLoading.value = true
   try {
-    walletData.value = await ecoApi.wallet(wallet.value)
+    workbench.value = await ecoApi.roleWorkbench(rk)
   } catch {
-    walletData.value = null
+    workbench.value = null
+  } finally {
+    wbLoading.value = false
   }
 }
 
@@ -1261,9 +1446,10 @@ const loadAll = async () => {
     loadCertificates(),
     loadBadges(),
     loadBadgeTypes(),
-    loadWallet(),
     loadMarket(),
   ])
+  // 工作台依赖 currentRole，需在角色加载完成后请求
+  await loadWorkbench()
   loading.value = false
 }
 
@@ -1311,6 +1497,43 @@ const selectRole = async (role_key: string) => {
     const msg = e?.response?.data?.detail || e?.message || '角色切换失败'
     ElMessage.error(msg)
     logEco('role', 'select_role', 'error', msg, JSON.stringify(e ?? {}))
+  }
+}
+
+/* ==================== 普通用户（低碳居民）角色卡片 ==================== */
+const auth = useAuthStore()
+/** 「我的钱包」= 登录账号本人钱包（一人一钱包），承载普通用户身份（已合并原学习者 0xlearner） */
+const myWalletAddr = computed(() => auth.user?.wallet || app.currentWallet || '0xlearner')
+/** 当前钱包是否为联盟角色钱包（切到该钱包时前端自动联动选择对应角色） */
+const isAllianceRoleWallet = computed(() => !!WALLET_ROLE_MAP[(wallet.value || '').toLowerCase()])
+/** 普通用户 = 当前钱包未选择任何联盟角色（联盟角色钱包会自动联动角色，排除在外） */
+const residentActive = computed(() => !currentRole.value?.role_key && !isAllianceRoleWallet.value)
+
+/** 选择普通用户：清除当前钱包的联盟角色选择；仅当身处联盟角色钱包时才回落「我的钱包」 */
+const selectResident = async () => {
+  if (residentActive.value) return
+  const toMyWallet = isAllianceRoleWallet.value
+  try {
+    await ElMessageBox.confirm(
+      toMyWallet
+        ? '切换为「普通用户」身份？当前处于联盟角色钱包，将切换到「我的钱包」并清除已选的联盟角色。普通用户不发放能量，可用绿色能量体验兑换与市场交易。'
+        : `切换为「普通用户」身份？将清除当前钱包（${wallet.value}）已选的联盟角色。普通用户不发放能量，可用绿色能量兑换证书 / 勋章 / 骑行券，并体验市场交易。`,
+      '普通用户',
+      { confirmButtonText: '确认', cancelButtonText: '取消', type: 'info' },
+    )
+  } catch {
+    return // 用户取消
+  }
+  try {
+    if (toMyWallet) app.setWallet(myWalletAddr.value)
+    await ecoApi.clearRole(toMyWallet ? myWalletAddr.value : wallet.value)
+    ElMessage.success(toMyWallet ? '已切换为普通用户（我的钱包）' : '已切换为普通用户（已清除联盟角色）')
+    logEco('role', 'select_resident', 'success', toMyWallet ? '切换为普通用户（我的钱包）' : '切换为普通用户（清除当前钱包联盟角色）')
+    await loadAll()
+  } catch (e: any) {
+    const msg = e?.response?.data?.detail || e?.message || '切换普通用户失败'
+    ElMessage.error(msg)
+    logEco('role', 'select_resident', 'error', msg, JSON.stringify(e ?? {}))
   }
 }
 
@@ -1362,7 +1585,7 @@ const exchangeCertificate = async (species_id: number) => {
     ElMessage.success('植树证书兑换成功 🌱')
     logEco('certificate', 'exchange_cert', 'success',
       `兑换：${species?.name ?? '未知树种'}（species_id=${species_id}）`)
-    await Promise.all([loadEnergyBalance(), loadCertificates(), loadWallet()])
+    await Promise.all([loadEnergyBalance(), loadCertificates()])
   } catch (e: any) {
     const msg = e?.response?.data?.detail || e?.message || '证书兑换失败'
     ElMessage.error(msg)
@@ -1520,6 +1743,66 @@ onActivated(loadAll)
   }
 }
 
+/* ---- 角色工作台 ---- */
+.wb-collapse {
+  border: none;
+  :deep(.el-collapse-item__header) {
+    font-size: 13px;
+    color: var(--dq-text-dim);
+    background: transparent;
+    border-bottom: 1px solid var(--dq-border);
+  }
+  :deep(.el-collapse-item__wrap) {
+    background: transparent;
+    border-bottom: none;
+  }
+  :deep(.el-collapse-item__content) { padding-bottom: 6px; }
+}
+.wb-title { font-size: 13px; }
+.wb-head { margin-bottom: 12px; }
+.wb-desc {
+  font-size: 13px; color: var(--dq-text-dim); line-height: 1.7; margin-bottom: 8px;
+}
+.wb-perms { display: flex; gap: 8px; flex-wrap: wrap; }
+.wb-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  margin-bottom: 14px;
+}
+.wb-stat {
+  padding: 12px 14px;
+  .ws-label { font-size: 12px; color: var(--dq-text-dim); }
+  .ws-num {
+    font-size: 24px; font-weight: 700; color: var(--dq-primary);
+    font-family: var(--dq-mono); margin-top: 4px;
+    em { font-style: normal; font-size: 12px; font-weight: 400; }
+  }
+  .ws-sub { font-size: 11px; color: var(--dq-text-dim); margin-top: 4px; }
+}
+@media (max-width: 900px) {
+  .wb-stats { grid-template-columns: 1fr; }
+}
+.wb-todos { margin-top: 4px; }
+.wb-todo {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; margin-bottom: 8px;
+  background: var(--dq-bg-2);
+  border: 1px solid var(--dq-border);
+  border-radius: 8px;
+  transition: border-color .2s;
+  &:hover { border-color: rgba(0, 230, 195, 0.4); }
+  .wt-dot {
+    flex-shrink: 0;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--dq-primary); margin-top: 6px;
+    box-shadow: 0 0 6px var(--dq-primary-glow);
+  }
+  .wt-body { flex: 1; min-width: 0; }
+  .wt-title { font-size: 13px; font-weight: 600; color: var(--dq-text); }
+  .wt-desc {
+    font-size: 12px; color: var(--dq-text-dim); margin-top: 2px; line-height: 1.6;
+  }
+}
+
 /* ---- 区块卡片 ---- */
 .section-card { margin-bottom: 14px; }
 .sub-title {
@@ -1580,7 +1863,7 @@ onActivated(loadAll)
 
 /* ---- 角色选择 ---- */
 .role-grid {
-  display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px;
 }
 .role-card {
   padding: 14px 10px;
@@ -1632,6 +1915,32 @@ onActivated(loadAll)
 }
 .energy-val {
   color: var(--dq-success); font-weight: 700;
+}
+
+/* ---- 普通用户（居民）5 种低碳行为获取能量 ---- */
+.resident-energy { margin-bottom: 14px; }
+.energy-ways {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px; margin-top: 12px;
+}
+.energy-way-card {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 14px;
+  background: var(--dq-bg-2);
+  border: 1px solid var(--dq-border);
+  border-radius: 8px;
+  transition: border-color 0.2s;
+  &:hover { border-color: var(--dq-primary); }
+  .ew-head { display: flex; align-items: center; gap: 8px; }
+  .ew-icon { font-size: 20px; }
+  .ew-name { font-weight: 600; font-size: 13px; color: var(--dq-text); }
+  .ew-points { margin-left: auto; color: var(--dq-success); font-weight: 700; }
+  .ew-desc { font-size: 12px; color: var(--dq-text-dim); line-height: 1.5; flex: 1; }
+}
+
+/* ---- 角色分工说明 ---- */
+.role-sub {
+  font-size: 12px; font-weight: normal; color: var(--dq-text-dim); margin-left: 8px;
 }
 
 /* ---- 植树证书 ---- */
@@ -1729,7 +2038,7 @@ onActivated(loadAll)
 
 /* ---- 综合钱包 ---- */
 .wallet-grid {
-  display: grid; grid-template-columns: 280px 1fr 1fr; gap: 14px;
+  display: grid; grid-template-columns: 280px 1fr; gap: 14px;
   align-items: stretch;
 }
 .energy-balance {
@@ -1747,7 +2056,7 @@ onActivated(loadAll)
   .eb-sub { font-size: 11px; color: var(--dq-text-dim); margin-top: 8px; }
 }
 .wallet-block { padding: 12px 14px; }
-.asset-list { display: flex; flex-direction: column; gap: 8px; }
+.asset-list { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; }
 .asset-item {
   display: flex; justify-content: space-between; align-items: center;
   padding: 9px 12px;
@@ -1757,6 +2066,7 @@ onActivated(loadAll)
   transition: all .15s;
   &:hover { border-color: var(--dq-border-2); }
   .ai-name { color: var(--dq-text); font-size: 13px; font-weight: 500; }
+  .ai-tags { display: inline-flex; align-items: center; gap: 6px; }
 }
 @media (max-width: 1000px) {
   .wallet-grid { grid-template-columns: 1fr; }

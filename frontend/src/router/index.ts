@@ -41,6 +41,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'eco',        name: 'eco',        component: asyncPage(() => import('@/views/EcoPractice.vue')),  meta: { title: '绿色低碳联盟链',  icon: 'Promotion' } },
       { path: 'report',     name: 'report',     component: asyncPage(() => import('@/views/Report.vue')),       meta: { title: '实训报告',       icon: 'Document'  } },
       { path: 'my-grades',  name: 'my-grades',  component: asyncPage(() => import('@/views/MyGrades.vue')),     meta: { title: '我的成绩',       icon: 'Trophy'    } },
+      { path: 'achievements', name: 'achievements', component: asyncPage(() => import('@/views/Achievements.vue')), meta: { title: '成就中心',       icon: 'Medal'     } },
       // 教师专属：学生成绩管理
       {
         path: 'grades',

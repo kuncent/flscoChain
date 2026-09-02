@@ -2,12 +2,12 @@ import http from './http'
 
 /** 跨专业综合实训平台 登录 */
 export const authApi = {
-  /** 明文密码 RSA 加密（用于账号密码登录） */
-  encrypt: (pwd: string) => http.get('/auth/encrypt', { params: { pwd } }),
+  /** 明文密码 RSA 加密（用于账号密码登录；POST 传体，密码不再走 URL） */
+  encrypt: (pwd: string) => http.post('/auth/encrypt', { pwd }),
   /** 登录：账号密码（username + passwordEncode）或 智云 SSO（TOKEN） */
   login: (data: { username?: string; passwordEncode?: string; TOKEN?: string }) =>
     http.post('/auth/login', data),
-  /** 单点登录 · 会话校验：仅校验当前是否保持登录态（不调用外部智云 SSO） */
+  /** 会话校验：后端对 Bearer JWT 真实验签（不调用外部智云 SSO） */
   session: () => http.get('/auth/session'),
   /** 班级学生列表（教师查看同班学生 + 实训进度概要） */
   classStudents: () => http.get('/auth/class-students') as Promise<any>,
@@ -52,6 +52,11 @@ export const chainApi = {
     http.post('/chain/tutorial/command', { step, command, wallet }) as Promise<any>,
   progress: (wallet = 'default') => http.get('/chain/tutorial/progress', { params: { wallet } }) as Promise<any>,
   resetProgress: (wallet = 'default') => http.post('/chain/tutorial/progress/reset', { wallet }) as Promise<any>,
+  /** 组织-节点-角色矩阵（4 逻辑节点 ↔ 6 联盟组织 + 角色职责摘要，公开只读） */
+  roleMatrix: () => http.get('/chain/tutorial/rolematrix') as Promise<any>,
+  /** 班级搭链进度聚合（教师/管理员；classId 为空时后端按 JWT 身份定位班级） */
+  classProgress: (classId = '') =>
+    http.get('/chain/tutorial/progress/class', { params: classId ? { class_id: classId } : {} }) as Promise<any>,
 }
 
 // 云桌面文件操作 API
@@ -119,6 +124,8 @@ export const nftApi = {
   get: (id: string) => http.get(`/nft/${id}`),
   buy: (data: any) => http.post('/nft/buy', data),
   trades: (id: string) => http.get(`/nft/${id}/trades`),
+  /** 全量数字 NFT 成交记录（跨 token，权威数据源，供市场页交易时间线展示） */
+  tradesAll: (limit = 200) => http.get('/nft/trades', { params: { limit } }),
   upload: (file: File) => {
     const fd = new FormData()
     fd.append('file', file)
@@ -147,6 +154,13 @@ export const achievementApi = {
     http.post('/achievements/challenges/progress', { challenge_id, progress }),
 }
 
+/** 联盟运营微任务（L5 · 10 微任务，服务端自动验收） */
+export const missionsApi = {
+  /** 拉取任务清单 + 每项服务端自动验收状态（verify.verified / verify.progress / verify.source） */
+  curriculum: (wallet: string) =>
+    http.get('/missions/curriculum', { params: { wallet } }) as Promise<any>,
+}
+
 export const reportApi = {
   /** 获取实训报告聚合数据 */
   aggregate: () => http.get('/report/aggregate'),
@@ -163,6 +177,8 @@ export const chainApiExtra = {
 export const ecoApi = {
   roles: () => http.get('/eco/roles'),
   selectRole: (wallet: string, role_key: string) => http.post('/eco/role/select', { wallet, role_key }),
+  /** 清除联盟角色选择，回到普通用户身份 */
+  clearRole: (wallet: string) => http.post('/eco/role/clear', { wallet }),
   currentRole: (wallet: string) => http.get('/eco/role/current', { params: { wallet } }),
   contractStatus: () => http.get('/eco/contracts/status'),
   builtinContracts: () => http.get('/eco/contracts/builtin'),
@@ -208,4 +224,44 @@ export const ecoApi = {
   /** 绿色资产市场：取消挂牌 */
   marketCancel: (listing_id: number, seller: string) =>
     http.post('/eco/market/cancel', { listing_id, seller }),
+  /** 绿色资产市场：已成交记录（权威数据源，供市场页交易时间线展示） */
+  marketTrades: (limit = 100) => http.get('/eco/market/trades', { params: { limit } }),
+  /** 角色工作台：职责 / 权限位 / 角色钱包链上活动统计 / 待办运营动作（只读聚合） */
+  roleWorkbench: (role_key: string) =>
+    http.get('/eco/role/workbench', { params: { role_key } }) as Promise<any>,
+  /** 监管审计视角：块高 / 合约调用健康度 / 异常调用明细 / 各角色能量发放对比（全链只读聚合） */
+  auditOverview: () => http.get('/eco/audit/overview') as Promise<any>,
 }
+
+/** 学习路径单一事实源（Dashboard 路径卡从后端拉取 + 服务端核验，替代前端硬编码） */
+export { learningApi, getLearningPath } from './learning'
+
+/** 任务 #22：运营沙盘（故障演练场景 / 轮次启停 / 处置动作 / 实时 KPI 记分板） */
+export const sandboxApi = {
+  /** 本班场景列表（教师/管理员） */
+  scenarios: () => http.get('/sandbox/scenarios') as Promise<any>,
+  /** 创建场景（教师/管理员；scenario_type: node_down/consensus_stall/replay_attack/gas_spike） */
+  createScenario: (data: {
+    scenario_type: string; title?: string; target_tps?: number;
+    duration_s?: number; quota?: number; node_index?: number
+  }) => http.post('/sandbox/scenarios', data) as Promise<any>,
+  /** 启动一轮演练（教师/管理员） */
+  startRound: (scenario_id: number) => http.post('/sandbox/rounds/start', { scenario_id }) as Promise<any>,
+  /** 停止轮次（教师/管理员；一键停止负载线程 + 恢复故障态） */
+  stopRound: (round_id: number) => http.post(`/sandbox/rounds/${round_id}/stop`) as Promise<any>,
+  /** 本班轮次台账（教师/管理员） */
+  rounds: (limit = 20) => http.get('/sandbox/rounds', { params: { limit } }) as Promise<any>,
+  /** 轮次 KPI 明细（教师/管理员） */
+  kpis: (round_id: number) => http.get(`/sandbox/rounds/${round_id}/kpis`) as Promise<any>,
+  /** 本班进行中的轮次 + 实时 KPI + 故障态（全员） */
+  activeRound: () => http.get('/sandbox/rounds/active') as Promise<any>,
+  /** 提交处置动作（全员；action_type: restart_node/audit_replay/fix_redeploy/throttle_tx） */
+  submitAction: (round_id: number, data: { action_type: string; description?: string }) =>
+    http.post(`/sandbox/rounds/${round_id}/action`, data) as Promise<any>,
+  /** 本班沙盘故障态（节点离线标记 / 共识暂停标记） */
+  nodes: () => http.get('/sandbox/nodes') as Promise<any>,
+}
+
+/** 任务 #21：事件总线（SSE 推送）客户端封装 */
+export { eventStream, onBusEvent, EVENT_TYPES } from './events'
+export type { BusEventType, NotifyEventPayload } from './events'

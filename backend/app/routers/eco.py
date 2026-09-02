@@ -7,105 +7,45 @@
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..config import settings
 from ..chain_client import get_chain_client
-from ..db import get_conn, now
+from ..db import _lock as _DB_LOCK, get_conn, now
+from ..security import assert_actor_wallet, get_current_user
 from ..tx_decoder import compile_source
+# 联盟角色权威定义与权限助手已统一至 app/learning/alliance_roles.py（ROLES/ROLE_ALIAS
+# 逐字段原样迁入；本模块经 import 保持原引用入口，散落的权限 if-else 改用统一助手，
+# 403 文案与校验结果语义完全不变）
+from ..learning.alliance_roles import (
+    ROLES,
+    ROLE_ALIAS,
+    ensure_admin_for_trees,
+    ensure_asset_owner,
+    ensure_bike_for_voucher,
+    ensure_issuer_role,
+    ensure_minter_role,
+)
+# 学习行为埋点统一收口至 learning.events（EventType 常量 + track 唯一写入实现）
+from ..learning.events import EventType, track as _track
+# 任务 #21：五级验证流水线（记录模式：L3/L4 复用本接口既有校验与执行结果）+ 事件总线
+from .. import verifier
+from ..events_bus import BusEvent, publish as bus_publish
 
-
-def _track(event_type: str, target: str = "", ref_id: str = "", wallet: str = "", extra: dict | None = None):
-    """轻量学习行为埋点，写入 learning_events（不阻塞主流程）。"""
-    try:
-        with get_conn() as conn:
-            conn.execute(
-                "INSERT INTO learning_events(wallet,event_type,target,ref_id,extra,created_at) "
-                "VALUES(?,?,?,?,?,?)",
-                (wallet, event_type, target, ref_id,
-                 json.dumps(extra or {}, ensure_ascii=False), now()),
-            )
-    except Exception:
-        pass
 
 router = APIRouter(prefix="/api/eco", tags=["eco"])
 
 # ===========================================================================
-# 六个联盟链节点角色定义
+# 六个联盟链节点角色定义（ROLES / ROLE_ALIAS）已迁至 app/learning/alliance_roles.py
+# （权威定义，内容逐字段原样迁入；本文件顶部 import 保持引用入口不变。前端
+#  EnergyProofForm.vue 依赖的 energy_rule.proof_fields 亦随迁未动。）
 # ===========================================================================
-ROLES = [
-    {"key": "admin",    "name": "管理员",   "icon": "🛡️", "color": "#4d8dff", "wallet": "0xadmin",
-     "desc": "平台管理方，部署合约、管理树种、发放植树证书", "energy_rule": None,
-     "can_issue_badge": False, "can_issue_voucher": False, "can_manage_trees": True},
-    {"key": "metro",    "name": "地铁集团", "icon": "🚇", "color": "#00e6c3", "wallet": "0xmetro",
-     "desc": "城市地铁运营方，乘坐地铁(≥10km)发放50点绿色能量",
-     "energy_rule": {"action": "地铁通勤", "points": 50, "proof_field": "distance_km", "min": 10, "unit": "km",
-                     "proof_no_field": "trip_no",   # 业务单号：地铁乘车号（同一张乘车记录不重复发放）
-                     "proof_fields": [
-                         {"key": "station_in",  "label": "进站口", "type": "text",   "required": True, "placeholder": "如：国贸站"},
-                         {"key": "station_out", "label": "出站口", "type": "text",   "required": True, "placeholder": "如：西二旗站"},
-                         {"key": "board_time",  "label": "进站时间", "type": "text", "required": True, "placeholder": "如 2026-08-25 08:05"},
-                         {"key": "line",        "label": "线路",   "type": "text",   "required": False, "placeholder": "如：1号线"},
-                         {"key": "distance_km", "label": "乘坐里程(km)", "type": "number", "required": True, "placeholder": "需 ≥ 10 km"},
-                     ],
-                     "proof_example": '{"line":"1号线","distance_km":12,"trip_no":"BJ202608070001"}'},
-     "can_issue_badge": True, "can_issue_voucher": False, "can_manage_trees": False},
-    {"key": "bus",      "name": "公交集团", "icon": "🚌", "color": "#ffcf4d", "wallet": "0xbus",
-     "desc": "城市公交运营方，乘坐公交(≥5分钟)发放20点绿色能量",
-     "energy_rule": {"action": "公交出行", "points": 20, "proof_field": "ride_minutes", "min": 5, "unit": "min",
-                     "proof_no_field": "trip_no",   # 业务单号：公交乘车号
-                     "proof_fields": [
-                         {"key": "route",        "label": "公交线路", "type": "text",   "required": True, "placeholder": "如：86路"},
-                         {"key": "board_time",   "label": "上车时间", "type": "text",   "required": True, "placeholder": "如 2026-08-25 08:20"},
-                         {"key": "ride_minutes", "label": "乘车时长(分钟)", "type": "number", "required": True, "placeholder": "需 ≥ 5 min"},
-                     ],
-                     "proof_example": '{"route":"86路","ride_minutes":20,"trip_no":"BUS20260807001"}'},
-     "can_issue_badge": True, "can_issue_voucher": False, "can_manage_trees": False},
-    {"key": "bike",     "name": "共享单车", "icon": "🚲", "color": "#f5379b", "wallet": "0xbike",
-     "desc": "共享单车运营方，骑行(≥2km)发放15点能量，可发放骑行券",
-     "energy_rule": {"action": "共享单车骑行", "points": 15, "proof_field": "distance_km", "min": 2, "unit": "km",
-                     "proof_no_field": "order_id",  # 业务单号：单车订单号
-                     "proof_fields": [
-                         {"key": "order_id",    "label": "骑行订单号", "type": "text",   "required": True, "placeholder": "如：BK2026080701234"},
-                         {"key": "distance_km", "label": "骑行里程(km)", "type": "number", "required": True, "placeholder": "需 ≥ 2 km"},
-                         {"key": "duration_min","label": "骑行时长(分钟)", "type": "number", "required": False, "placeholder": "选填，如 15"},
-                     ],
-                     "proof_example": '{"order_id":"BK2026080701234","distance_km":3.2,"duration_min":15}'},
-     "can_issue_badge": True, "can_issue_voucher": True, "can_manage_trees": False},
-    {"key": "takeout",  "name": "外卖平台", "icon": "📦", "color": "#ff7849", "wallet": "0xtakeout",
-     "desc": "绿色外卖服务平台，选择「无需餐具」发放10点绿色能量",
-     "energy_rule": {"action": "绿色外卖(无需餐具)", "points": 10, "proof_field": "no_cutlery", "min": 1, "unit": "flag",
-                     "proof_no_field": "order_id",  # 业务单号：外卖订单号（同一订单不重复发）
-                     "proof_fields": [
-                         {"key": "order_id",   "label": "外卖订单号", "type": "text",   "required": True, "placeholder": "如：MT2026080700123"},
-                         {"key": "merchant",   "label": "商家名称", "type": "text",     "required": False, "placeholder": "选填，如：轻食沙拉"},
-                         {"key": "no_cutlery", "label": "已选择「无需餐具」", "type": "switch", "required": True, "placeholder": ""},
-                     ],
-                     "proof_example": '{"order_id":"MT2026080700123","no_cutlery":true,"platform_order":"ELM2026080701"}'},
-     "can_issue_badge": True, "can_issue_voucher": False, "can_manage_trees": False},
-    {"key": "recycling","name": "回收公司", "icon": "♻️", "color": "#52c41a", "wallet": "0xrecycle",
-     "desc": "旧物回收公司，回收(≥1kg)发放100点绿色能量",
-     "energy_rule": {"action": "可回收物回收", "points": 100, "proof_field": "weight_kg", "min": 1, "unit": "kg",
-                     "proof_no_field": "order_no",  # 业务单号：回收单号（同一回收不重复发）
-                     "proof_fields": [
-                         {"key": "order_no",  "label": "回收单号", "type": "text",   "required": True, "placeholder": "如：RC20260807001"},
-                         {"key": "category",  "label": "回收物分类", "type": "text", "required": True, "placeholder": "如：塑料瓶 / 纸箱"},
-                         {"key": "weight_kg", "label": "回收重量(kg)", "type": "number", "required": True, "placeholder": "需 ≥ 1 kg"},
-                     ],
-                     "proof_example": '{"order_id":"RC20260807001","weight_kg":2.5,"category":"塑料瓶"}'},
-     "can_issue_badge": True, "can_issue_voucher": False, "can_manage_trees": False},
-]
-
-# 角色别名兼容：前端若传 'delivery' 旧 key，自动映射到 'takeout'
-ROLE_ALIAS = {
-    "delivery":  "takeout",     # 旧 key（可能前端/脚本残留） → 新 key takeout
-    "recycle":   "recycling",   # 兼容缩写：recycle 是 wallet 别名，ROLES.key 是 recycling
-}
 
 # 内置合约清单（名称与 deployed_contracts.name 对应）
 BUILTIN_CONTRACTS = [
@@ -135,6 +75,11 @@ class RoleSelectReq(BaseModel):
     wallet: str
     role_key: str
 
+
+class RoleClearReq(BaseModel):
+    wallet: str
+
+# role/clear 端点位于本文件「3. 绿色能量」分区前，用于普通用户（居民/学习者）身份切换
 
 class EnergyIssueReq(BaseModel):
     wallet: str           # 接收能量的用户钱包（学习者 / 普通用户）
@@ -364,7 +309,9 @@ def _get_energy_ledger_balance(wallet: str) -> int:
     - 市场购买：买方扣减；
     - 市场售出：卖方增加。
 
-    该口径可在后端重启后保持稳定，避免 py-evm 内存链重置导致页面余额归零。
+    该口径用于审计/流水与展示余额基准（纯读，无链上写副作用）；
+    写路径（兑换/能量回收/挂牌购买）在账本→链上回填同步后，
+    以链上 balanceOf 校验并执行转账。
     """
     w = _norm_wallet(wallet)
     if not w:
@@ -394,25 +341,32 @@ def _get_energy_ledger_balance(wallet: str) -> int:
 
 
 def _get_energy_balance(wallet: str) -> str:
-    """查询钱包绿色能量余额。
+    """查询钱包绿色能量余额（纯读，不产生任何链上写副作用）。
 
-    优先使用持久化业务账本，保证重启后钱包与资产市场仍然一致；如果账本没有记录，
-    再尝试读取链上 GreenEnergy.balanceOf 作为补充。
+    口径：账本余额（持久化业务账本）优先，链上余额只读回退：
+    - 账本有记录时直接返回账本净额（沙盒链重启重置后仍能正确展示历史余额）；
+    - 账本无记录时只读查询链上 GreenEnergy.balanceOf（不 mint、不回填）；
+    - 合约未部署 / 链上调用异常时返回 0。
+
+    链上回填（_sync_chain_balance，差额>0 时由 0xadmin 真实发起 GreenEnergy.mint）
+    仅保留在写路径（兑换 / 能量回收 / 挂牌购买等已有调用点）：
+    GET /energy/balance、画像等读接口不再触发链上交易，
+    避免页面加载污染块高与交易流、并发首访重复 mint。
     """
-    ledger_balance = _get_energy_ledger_balance(wallet)
-    if ledger_balance > 0:
-        return str(ledger_balance)
+    ledger = _get_energy_ledger_balance(wallet)
+    if ledger > 0:
+        return str(ledger)
     addr, abi = _find_contract("GreenEnergy")
     if not addr:
-        return str(ledger_balance)
+        return "0"
     c = get_chain_client()
     try:
         r = c.call_contract(addr, "balanceOf", [c.resolve_account(wallet)], wallet, abi)
-        if not r.get("ok"):
-            return str(ledger_balance)
-        return str(r.get("result") or ledger_balance)
+        if r.get("ok"):
+            return str(_to_int(r.get("result", "0")))
     except Exception:
-        return str(ledger_balance)
+        pass
+    return "0"
 
 
 def _sync_chain_balance(wallet: str) -> None:
@@ -489,19 +443,22 @@ def list_roles():
 
 
 @router.post("/role/select")
-def select_role(req: RoleSelectReq):
-    """选择 / 切换联盟节点角色（INSERT OR REPLACE）。"""
-    if not _find_role(req.role_key):
+def select_role(req: RoleSelectReq, user: dict = Depends(get_current_user)):
+    """选择 / 切换联盟节点角色（INSERT OR REPLACE）。操作者身份从 JWT 验签解析。"""
+    role = _find_role(req.role_key)
+    if not role:
         raise HTTPException(400, f"未知角色: {req.role_key}")
+    req.wallet = assert_actor_wallet(user, req.wallet)  # 防伪造他人身份
+    # 以权威 key 落库（delivery/recycle 等别名在此归一化，避免前后端 key 不一致导致页面联动错位）
     with get_conn() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO eco_role_selections(wallet, role_key, selected_at) VALUES(?,?,?)",
-            (req.wallet, req.role_key, now()),
+            (req.wallet, role["key"], now()),
         )
     # 行为埋点：学生切换联盟角色（对应 alliance_gov 维度的 eco_role_switch 指标）
-    _track("eco_role_switch", target=req.role_key, wallet=req.wallet or "",
-           extra={"role_key": req.role_key})
-    return {"ok": True, "role": _find_role(req.role_key)}
+    _track(EventType.ECO_ROLE_SWITCH, target=role["key"], wallet=req.wallet or "",
+           extra={"role_key": role["key"]})
+    return {"ok": True, "role": role}
 
 
 @router.get("/role/current")
@@ -514,7 +471,149 @@ def current_role(wallet: str):
         ).fetchone()
     if not row:
         return {"role_key": None}
-    return {"role_key": row["role_key"], "role": _find_role(row["role_key"])}
+    role = _find_role(row["role_key"])
+    # 库里可能有历史别名 key（delivery/recycle），统一回权威 key，保证前端角色卡片高亮联动一致
+    key = role["key"] if role else row["role_key"]
+    return {"role_key": key, "role": role}
+
+
+def _workbench_todos(role: dict) -> list:
+    """由 ROLES 权限位静态推导的「待办运营动作」清单（只读映射，不修改 ROLES 结构）。
+
+    推导规则（与任务要求的静态映射一致）：
+    - can_issue_voucher=true → 审核并发放绿色出行凭证（骑行券）
+    - can_issue_badge=true   → 铸造发放生态勋章（ERC1155）
+    - can_manage_trees=true  → 上架 / 维护树种并发放植树证书
+    - energy_rule 存在       → 审核业务凭证并发放绿色能量
+    """
+    todos: list = []
+    rule = role.get("energy_rule")
+    if rule:
+        todos.append({
+            "key": "issue_energy",
+            "source": "energy_rule",
+            "title": f"审核业务凭证并发放绿色能量（{rule.get('action', '')} +{rule.get('points', '?')} 点/次）",
+            "desc": (f"核验 {rule.get('proof_field', '')} ≥ {rule.get('min', '?')} {rule.get('unit', '')}，"
+                     "同一业务单号 + 同一角色不重复发放"),
+        })
+    if role.get("can_issue_badge"):
+        todos.append({
+            "key": "issue_badge",
+            "source": "can_issue_badge",
+            "title": "铸造发放生态勋章（ERC1155）",
+            "desc": "向达标居民铸造生态勋章，或由居民消耗能量自助兑换",
+        })
+    if role.get("can_issue_voucher"):
+        todos.append({
+            "key": "issue_voucher",
+            "source": "can_issue_voucher",
+            "title": "审核并发放绿色出行凭证（骑行券）",
+            "desc": "骑行券仅由共享单车节点维护与发放（issuer_role=bike）",
+        })
+    if role.get("can_manage_trees"):
+        todos.append({
+            "key": "manage_trees",
+            "source": "can_manage_trees",
+            "title": "上架 / 维护可兑换树种并发放植树证书",
+            "desc": "管理树种目录与所需能量，居民凭能量兑换 ERC721 植树证书",
+        })
+    if role.get("key") == "admin":
+        # 管理员不发放能量，但承担能量治理职责（国库回收 + 账本回填）
+        todos.append({
+            "key": "energy_treasury",
+            "source": "admin",
+            "title": "能量国库管理（回收 + 账本回填）",
+            "desc": "居民兑换证书/勋章/骑行券消耗的能量转入管理员国库（0xadmin）；"
+                    "沙盒链重置后由管理员 mint 回填居民账本余额",
+        })
+    return todos
+
+
+@router.get("/role/workbench")
+def role_workbench(role_key: str, user: dict = Depends(get_current_user)):
+    """角色工作台：职责 + 权限位 + 该角色钱包的链上活动统计 + 待办运营动作清单（只读聚合）。
+
+    - 职责与权限位直接读 ROLES 定义（不修改既有字段结构）
+    - 链上活动统计：contract_calls 按 caller、transactions 收发、eco_energy_records 按 role_key
+    - 待办运营动作：由 can_issue_* 权限位静态推导（见 _workbench_todos）
+    """
+    role = _find_role(role_key)
+    if not role:
+        raise HTTPException(404, f"未知角色: {role_key}")
+    role_wallet = (role.get("wallet") or f"0x{role['key']}").strip()
+    # 角色钱包在链上的真实地址（六个联盟角色均为固定演示别名，链初始化时已注册，解析无副作用）
+    resolved_addr = ""
+    try:
+        resolved = get_chain_client().resolve_account(role_wallet)
+        if resolved:
+            resolved_addr = str(resolved)
+    except Exception:
+        resolved_addr = ""
+    # 合约调用 / 交易的归属匹配：同时兼容「角色别名」与「链上真实地址」两种落库口径
+    candidates = {role_wallet.lower()}
+    if resolved_addr:
+        candidates.add(resolved_addr.lower())
+    ph = ",".join("?" for _ in candidates)
+    cands = list(candidates)
+    ok_ph = ",".join("?" for _ in range(2))
+    with get_conn() as conn:
+        # 合约调用统计（按 caller）
+        call_total = conn.execute(
+            f"SELECT COUNT(*) FROM contract_calls WHERE lower(COALESCE(caller,'')) IN ({ph})", cands,
+        ).fetchone()[0] or 0
+        call_ok = conn.execute(
+            f"SELECT COUNT(*) FROM contract_calls WHERE lower(COALESCE(caller,'')) IN ({ph}) "
+            f"AND lower(COALESCE(status,'')) IN ({ok_ph})", cands + ["success", "1"],
+        ).fetchone()[0] or 0
+        call_methods = conn.execute(
+            f"SELECT method, COUNT(*) AS count FROM contract_calls "
+            f"WHERE lower(COALESCE(caller,'')) IN ({ph}) "
+            "GROUP BY method ORDER BY count DESC LIMIT 8", cands,
+        ).fetchall()
+        # 链上交易收发统计
+        tx_sent = conn.execute(
+            f"SELECT COUNT(*) FROM transactions WHERE lower(COALESCE(from_addr,'')) IN ({ph})", cands,
+        ).fetchone()[0] or 0
+        tx_recv = conn.execute(
+            f"SELECT COUNT(*) FROM transactions WHERE lower(COALESCE(to_addr,'')) IN ({ph})", cands,
+        ).fetchone()[0] or 0
+        # 绿色能量发放统计（按 role_key：发放次数 / 总量 / 最近发放时间）
+        er = conn.execute(
+            "SELECT COUNT(*) AS issue_count, COALESCE(SUM(points),0) AS total_points, "
+            "MAX(created_at) AS last_issued_at FROM eco_energy_records WHERE role_key=?",
+            (role["key"],),
+        ).fetchone()
+    return {
+        "role_key": role["key"],
+        "role": dict(role),
+        "permissions": {
+            "can_issue_badge": bool(role.get("can_issue_badge")),
+            "can_issue_voucher": bool(role.get("can_issue_voucher")),
+            "can_manage_trees": bool(role.get("can_manage_trees")),
+            "has_energy_rule": bool(role.get("energy_rule")),
+        },
+        "activity": {
+            "wallet": role_wallet,
+            "chain_address": resolved_addr,
+            "contract_calls": {
+                "total": int(call_total),
+                "success": int(call_ok),
+                "failed": int(call_total) - int(call_ok),
+                "methods": [{"method": r["method"], "count": r["count"]} for r in call_methods],
+            },
+            "transactions": {
+                "sent": int(tx_sent),
+                "received": int(tx_recv),
+                "total": int(tx_sent) + int(tx_recv),
+            },
+            "energy": {
+                "issue_count": int(er["issue_count"] or 0),
+                "total_points": int(er["total_points"] or 0),
+                "last_issued_at": er["last_issued_at"] or "",
+            },
+        },
+        "todos": _workbench_todos(role),
+    }
 
 
 # ===========================================================================
@@ -564,12 +663,13 @@ class ContractDeployReq(BaseModel):
 
 
 @router.post("/contracts/deploy")
-def deploy_builtin_contract(req: ContractDeployReq):
+def deploy_builtin_contract(req: ContractDeployReq, user: dict = Depends(get_current_user)):
     """一键编译 + 部署内置绿色合约。
 
     流程：读取源码 → solc 编译 → 调用 EVM 部署 → 写入 deployed_contracts 表。
     若该合约已部署，则重新部署并覆盖旧记录（保留最新地址）。
     """
+    req.deployer = assert_actor_wallet(user, req.deployer, "deployer")  # 部署者身份从 JWT 解析
     target = next((c for c in BUILTIN_CONTRACTS if c["name"] == req.name), None)
     if not target:
         raise HTTPException(400, f"未知合约: {req.name}，支持: GreenEnergy / PlantCertificate / EcoBadge")
@@ -619,21 +719,69 @@ def deploy_builtin_contract(req: ContractDeployReq):
 # ===========================================================================
 # 3. 绿色能量
 # ===========================================================================
+def _energy_replay_pipeline(reason: str) -> dict:
+    """幂等命中（防刷）返回的 pipeline：不落新 task_runs，仅标注 replay。"""
+    return {
+        "run_id": "",
+        "ok": True,
+        "status": "idempotent",
+        "latency_ms": 0.0,
+        "stages": [{"stage": "replay", "ok": True, "detail": reason,
+                    "latency_ms": 0.0, "skipped": True}],
+    }
+
+
+@router.post("/role/clear")
+def clear_role(req: RoleClearReq, user: dict = Depends(get_current_user)):
+    """清除当前钱包的联盟角色选择，回到普通用户（居民/学习者）身份。"""
+    req.wallet = assert_actor_wallet(user, req.wallet)
+    with get_conn() as conn:
+        conn.execute("DELETE FROM eco_role_selections WHERE wallet=?", (req.wallet,))
+    _track(EventType.ECO_ROLE_SWITCH, target="resident", wallet=req.wallet or "", extra={"role_key": ""})
+    return {"ok": True}
+
+
 @router.post("/energy/issue")
-def issue_energy(req: EnergyIssueReq):
+def issue_energy(req: EnergyIssueReq, user: dict = Depends(get_current_user)):
     """根据角色规则发放绿色能量（调用 GreenEnergy.mint）。
 
     真实业务逻辑（与实训业务模型一致）：
-    1. 调用者必须是联盟角色钱包（0xmetro / 0xbus / 0xbike / 0xtakeout / 0xrecycle）—— FROM 是发放方钱包，不是接收方！
-    2. 必须提供对应业务凭证（乘车里程 / 时长 / 外卖订单 / 回收重量），并通过阈值校验
-    3. 同一业务单号 + 同一发放角色不允许重复发能量（UNIQUE 防刷）
-    4. 写入链上 + 写入业务账本，双写一致
+    1. 发放交易 FROM = 联盟角色组织钱包（0xmetro / 0xbus / 0xbike / 0xtakeout / 0xrecycle）——
+       联盟角色的核心意义即「能量发行方」，只有联盟节点有权 mint 绿色能量；
+    2. 两种发放模式：
+       - 居民申请（操作者未选联盟角色 = 普通用户）：居民提交低碳行为凭证，
+         对应联盟节点审核（阈值校验）后发放到自己钱包——普通用户的 5 种获取能量方式；
+       - 角色扮演（操作者已选联盟角色）：选中角色必须与发放角色一致，体验联盟节点审核发放职责；
+    3. 必须提供对应业务凭证（乘车里程 / 时长 / 外卖订单 / 回收重量），并通过阈值校验；
+    4. 同一业务单号 + 同一发放角色不允许重复发能量（UNIQUE 防刷）；
+    5. 写入链上 + 写入业务账本，双写一致。
 
     force=True 可跳过校验（教师演示用），但记录中会标记 proof_validated=0。
+
+    任务 #21：走五级验证流水线（记录模式）——L1 compile / L2 semantic 不适用（skipped），
+    L3 business 复用本接口既有校验结果（角色权限 + 业务凭证阈值，不重复校验两次），
+    L4 onchain 复用 GreenEnergy.mint 执行结果；响应既有字段全保留，追加 pipeline。
+    成功/失败均写 task_runs；幂等命中返回 replay 标记、不重复落行。
     """
+    _t0 = time.perf_counter()
+    uc = verifier.user_ctx_from(user)
+    _pl = {"wallet": req.wallet or "", "role_key": req.role_key or "", "force": bool(req.force)}
+    try:
+        return _issue_energy_core(req, user, uc, _t0, _pl)
+    except HTTPException as e:
+        # 任一环节失败也落一行 task_runs（status=failed），随后原样抛出（错误语义不变）
+        verifier.record_failure("energy_issue", _pl, uc, _t0, detail=str(e.detail),
+                                task_ref=(req.proof or {}).get("proof_no", "") if isinstance(req.proof, dict) else "")
+        raise
+
+
+def _issue_energy_core(req: "EnergyIssueReq", user: dict, uc: dict,
+                       _t0: float, _pl: dict) -> dict:
+    """issue_energy 主体（既有逻辑原样保留，仅在返回前追加 pipeline 与事件）。"""
     role = _find_role(req.role_key)
     if not role:
         raise HTTPException(400, f"未知角色: {req.role_key}")
+    req.wallet = assert_actor_wallet(user, req.wallet)  # 接收方钱包必须与登录身份匹配（或内置生态钱包）
     rule = role.get("energy_rule")
     if not rule:
         raise HTTPException(400, f"角色 [{role['name']}] 没有能量发放规则")
@@ -641,21 +789,16 @@ def issue_energy(req: EnergyIssueReq):
     if not req.wallet:
         raise HTTPException(400, "接收能量的钱包 wallet 必填")
 
-    # 权限闭环：操作者（对应 req.wallet 的学生）当前选中的联盟角色必须与发放角色一致，
-    # 避免未切换角色即可随意调用发币接口；教师演示可使用 force=true 跳过。
-    if not req.force:
-        sel = _selected_role(req.wallet)
-        if not sel:
-            raise HTTPException(
-                403,
-                f"操作者未选择联盟角色：请先在「绿色低碳联盟链」页面切换到【{role['name']}】后再发放能量",
-            )
-        if sel["key"] != role["key"]:
-            raise HTTPException(
-                403,
-                f"操作者当前选择的是【{sel['name']}】，与本次发放角色【{role['name']}】不一致。"
-                f"请先在「绿色低碳联盟链」切换为对应联盟角色",
-            )
+    # 权限闭环（两种发放模式）：
+    # - 操作者钱包已选联盟角色 → 角色扮演发放：选中角色必须与发放角色一致，
+    #   避免未切换角色即可随意调用发币接口；
+    # - 操作者钱包未选角色（普通用户/居民身份）→ 居民申请发放：提交低碳行为凭证，
+    #   由对应联盟节点审核（下方阈值校验）后发放，链上 FROM 仍是该组织钱包，
+    #   体现「只有联盟节点有发行权」的角色意义；教师演示可用 force=true 跳过校验。
+    sel = _selected_role(req.wallet)
+    mode = "force" if req.force else ("role_play" if sel else "resident_apply")
+    if not req.force and sel is not None:
+        ensure_issuer_role(role, sel)
 
     ge_addr, ge_abi = _find_contract("GreenEnergy")
     if not ge_addr:
@@ -692,30 +835,25 @@ def issue_energy(req: EnergyIssueReq):
             "proof_no": dup["proof_no"], "proof_validated": bool(dup["proof_validated"]),
             "proof_threshold": dup["proof_threshold"] or "",
             "warning": "该业务单号已发放过能量，已做幂等返回",
+            "mode": mode,
             "issued_by": issuer_wallet, "received_by": req.wallet,
+            "pipeline": _energy_replay_pipeline(
+                f"幂等命中：proof_no={dup['proof_no']} 已发放，直接返回旧结果"),
         }
 
-    # 3. 调用 GreenEnergy.mint(receiver, value, action)
-    # ⚠️ 真实业务：FROM = 发放方联盟角色钱包（0xmetro 等），不是接收者 req.wallet！
-    r = c.call_contract(
-        ge_addr, "mint",
-        [c.resolve_account(req.wallet), points, action],
-        issuer_wallet, ge_abi,
-    )
-    if not r.get("ok"):
-        raise HTTPException(400, f"能量发放失败（合约调用 by {issuer_wallet}）: {r.get('error','')}")
-    tx_hash = r.get("tx_hash", "")
-
-    # 4. 写入业务账本（含新增 5 列溯源字段）
-    with get_conn() as conn:
+    # 3. 并发防双铸占位（任务 #25 评审修复 TOCTOU）：先在 db 全局锁内 INSERT 占位行
+    # （tx_hash=''），靠 UNIQUE(proof_no, role_key) 拦截并发同单号请求；
+    # 占位成功后再链上 mint，成功则 UPDATE 回填 tx_hash；mint 失败则删除占位行、
+    # 按原错误语义抛出。占位命中 UNIQUE → 走原幂等回放路径（不重复落行）。
+    with _DB_LOCK, get_conn() as conn:
         try:
             conn.execute(
                 """INSERT INTO eco_energy_records(
                     wallet, role_key, role_name, action, points, tx_hash, created_at,
                     issuer_wallet, proof_no, proof_payload, proof_validated, proof_threshold
-                ) VALUES(?,?,?,?,?,?, ?,?,?,?,?,?)""",
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    req.wallet, role["key"], role["name"], action, points, tx_hash, now(),
+                    req.wallet, role["key"], role["name"], action, points, "", now(),
                     issuer_wallet,
                     proof_no,
                     json.dumps(proof, ensure_ascii=False) if proof else None,
@@ -724,8 +862,8 @@ def issue_energy(req: EnergyIssueReq):
                 ),
             )
         except Exception as e:
-            # UNIQUE 命中了上面的防刷查询漏掉的并发情况
-            if "UNIQUE" in str(e).upper() or "unique" in str(e):
+            # UNIQUE 命中（并发占位已由其它请求完成）→ 原幂等回放路径
+            if "UNIQUE" in str(e).upper():
                 row = conn.execute(
                     "SELECT * FROM eco_energy_records WHERE proof_no=? AND role_key=? LIMIT 1",
                     (proof_no, role["key"]),
@@ -736,12 +874,62 @@ def issue_energy(req: EnergyIssueReq):
                         "points": row["points"], "tx_hash": row["tx_hash"] or "",
                         "action": row["action"],
                         "proof_no": proof_no,
+                        "mode": mode,
                         "issued_by": issuer_wallet, "received_by": req.wallet,
+                        "pipeline": _energy_replay_pipeline(
+                            f"幂等命中（UNIQUE 占位）：proof_no={proof_no} 已发放"),
                     }
             raise
 
-    _track("eco_energy_issue", target=role["key"], ref_id=proof_no, wallet=req.wallet,
+    # 4. 调用 GreenEnergy.mint(receiver, value, action)
+    # ⚠️ 真实业务：FROM = 发放方联盟角色钱包（0xmetro 等），不是接收者 req.wallet！
+    r = c.call_contract(
+        ge_addr, "mint",
+        [c.resolve_account(req.wallet), points, action],
+        issuer_wallet, ge_abi,
+    )
+    if not r.get("ok"):
+        # mint 失败：删除占位行释放单号（下次可重试），再按原错误语义抛出
+        with _DB_LOCK, get_conn() as conn:
+            conn.execute(
+                "DELETE FROM eco_energy_records WHERE proof_no=? AND role_key=? AND tx_hash=''",
+                (proof_no, role["key"]),
+            )
+        raise HTTPException(400, f"能量发放失败（合约调用 by {issuer_wallet}）: {r.get('error','')}")
+    tx_hash = r.get("tx_hash", "")
+
+    # 5. 回填 tx_hash 完成占位行的双写闭环（链上 + 业务账本）
+    with _DB_LOCK, get_conn() as conn:
+        conn.execute(
+            "UPDATE eco_energy_records SET tx_hash=? WHERE proof_no=? AND role_key=?",
+            (tx_hash, proof_no, role["key"]),
+        )
+
+    _track(EventType.ECO_ENERGY_ISSUE, target=role["key"], ref_id=proof_no, wallet=req.wallet,
            extra={"role": role["name"], "points": points, "action": action})
+
+    # 任务 #21：记录模式流水线——L3 复用既有校验结果（角色权限 + 凭证阈值），
+    # L4 复用 mint 执行结果，不重复校验 / 不重复算分（L5 只读聚合出成绩影响摘要）
+    _stages = [
+        verifier.stage_skipped("compile", "能量发放非合约编译类任务"),
+        verifier.stage_skipped("semantic", "无 ABI/构造参数语义校验需求"),
+        verifier.stage_result(
+            "business", True,
+            f"角色权限与业务凭证校验通过（proof_no={proof_no}，force={bool(req.force)}）"),
+        verifier.stage_result(
+            "onchain", bool(r.get("ok")),
+            f"GreenEnergy.mint 上链成功，tx={tx_hash}",
+            latency_ms=(time.perf_counter() - _t0) * 1000),
+    ]
+    _pipeline = verifier.finalize_run(
+        "energy_issue", _pl, uc, _stages, started_at=_t0, task_ref=proof_no)
+
+    # 事件总线：能量发放成功 → SSE 推送（线程安全，前端 Monitor/Dashboard 刷新）
+    bus_publish(BusEvent.ENERGY_ISSUED,
+                {"role_key": role["key"], "points": points, "tx_hash": tx_hash,
+                 "proof_no": proof_no, "wallet": req.wallet},
+                user_id=uc.get("user_id") or "", class_id=uc.get("class_id") or "")
+
     return {
         "ok": True,
         "points": points,
@@ -752,10 +940,12 @@ def issue_energy(req: EnergyIssueReq):
         "proof_validated": bool(pr["ok"] and not req.force),
         "proof_threshold": pr.get("threshold") or "",
         "proof_msg": pr.get("msg") or "",
+        "mode": mode,                     # resident_apply=居民申请 / role_play=角色扮演 / force=教师演示
         "issued_by": issuer_wallet,       # 发放方联盟角色钱包（链上 FROM）
         "received_by": req.wallet,        # 接收方用户钱包（链上 mint(to)）
         "contract": ge_addr,
         "method": "GreenEnergy.mint(to,value,reason)",
+        "pipeline": _pipeline,
     }
 
 
@@ -788,16 +978,16 @@ def list_trees():
 
 
 @router.post("/trees/add")
-def add_tree(req: TreeAddReq):
+def add_tree(req: TreeAddReq, user: dict = Depends(get_current_user)):
     """管理员新增树种。"""
-    # 验证 wallet 的角色是 admin
+    req.wallet = assert_actor_wallet(user, req.wallet)  # 操作者身份从 JWT 解析
+    # 验证 wallet 的角色是 admin（统一权限助手；精确 wallet=? 匹配口径保持不变）
     with get_conn() as conn:
         row = conn.execute(
             "SELECT role_key FROM eco_role_selections WHERE wallet=?",
             (req.wallet,),
         ).fetchone()
-    if not row or row["role_key"] != "admin":
-        raise HTTPException(403, "仅管理员可新增树种")
+    ensure_admin_for_trees(row["role_key"] if row else None)
     # 验证所需能量下限
     if req.required_energy < 1000:
         raise HTTPException(400, "树种所需能量不能少于 1000")
@@ -815,8 +1005,9 @@ def add_tree(req: TreeAddReq):
 # 5. 植树证书兑换
 # ===========================================================================
 @router.post("/certificates/exchange")
-def exchange_certificate(req: CertExchangeReq):
+def exchange_certificate(req: CertExchangeReq, user: dict = Depends(get_current_user)):
     """花费绿色能量兑换植树证书。"""
+    req.wallet = assert_actor_wallet(user, req.wallet)  # 兑换者身份从 JWT 解析
     # 1. 查找树种信息
     with get_conn() as conn:
         tree = conn.execute(
@@ -881,7 +1072,7 @@ def exchange_certificate(req: CertExchangeReq):
             (str(token_id), req.species_id, tree["name"], req.wallet, cost,
              pc_addr, tx_hash, cert_no, now()),
         )
-    _track("eco_cert_exchange", target=tree["name"], ref_id=cert_no, wallet=req.wallet,
+    _track(EventType.ECO_CERT_EXCHANGE, target=tree["name"], ref_id=cert_no, wallet=req.wallet,
            extra={"species_id": req.species_id, "cost": cost, "token_id": str(token_id)})
     return {"ok": True, "token_id": str(token_id), "cert_no": cert_no, "tx_hash": tx_hash}
 
@@ -901,12 +1092,13 @@ def list_certificates(owner: str):
 # 6. 生态勋章 / 骑行券兑换
 # ===========================================================================
 @router.post("/badges/exchange")
-def exchange_badge(req: BadgeExchangeReq):
+def exchange_badge(req: BadgeExchangeReq, user: dict = Depends(get_current_user)):
     """居民花费绿色能量兑换生态勋章 / 骑行券（能量转入管理员国库，实现能量回收闭环）。
 
     与「联盟角色发放」的区别：兑换消耗居民自己的绿色能量（cost_energy），
     铸造（mint）由管理员合约账户执行，普通居民不能自铸。
     """
+    req.wallet = assert_actor_wallet(user, req.wallet)  # 兑换者身份从 JWT 解析
     with get_conn() as conn:
         bt = _get_badge_type(conn, type_id=req.type_id, badge_type=req.badge_type)
         if not bt:
@@ -964,7 +1156,7 @@ def exchange_badge(req: BadgeExchangeReq):
              ADMIN_ALIAS, eb_addr, tx_hash, now()),
         )
         conn.execute("UPDATE eco_badge_types SET minted = minted + 1 WHERE id=?", (bt_id,))
-    _track("eco_badge_exchange", target=badge_name, ref_id=str(token_id), wallet=req.wallet,
+    _track(EventType.ECO_BADGE_EXCHANGE, target=badge_name, ref_id=str(token_id), wallet=req.wallet,
            extra={"badge_type": req.badge_type, "type_id": req.type_id, "cost": cost})
     return {"ok": True, "badge_type": req.badge_type, "type_id": bt_id, "tx_hash": tx_hash}
 
@@ -992,13 +1184,14 @@ def list_badge_types():
 
 
 @router.post("/badges/types/add")
-def add_badge_type(req: BadgeTypeAddReq):
+def add_badge_type(req: BadgeTypeAddReq, user: dict = Depends(get_current_user)):
     """联盟角色新增勋章 / 骑行券类型定义（ERC1155）。
 
     权限（与实训业务模型一致）：
     - badge 勋章：管理员 + 任意联盟节点均可新增（需先在绿色低碳联盟链选定角色）；
     - voucher 骑行券：仅共享单车公司（bike）可维护（EcoBadge 合约固定 VOUCHER_ID=2，仅允许一份）。
     """
+    req.wallet = assert_actor_wallet(user, req.wallet)  # 操作者身份从 JWT 解析
     if req.badge_type not in ("badge", "voucher"):
         raise HTTPException(400, "badge_type 必须是 badge 或 voucher")
     if req.cost_energy <= 0:
@@ -1009,8 +1202,8 @@ def add_badge_type(req: BadgeTypeAddReq):
     role = _selected_role(req.wallet)
     if not role:
         raise HTTPException(403, "操作者未选择联盟角色：请先在「绿色低碳联盟链」页面选择角色后再新增")
-    if req.badge_type == "voucher" and role["key"] != "bike":
-        raise HTTPException(403, "骑行券仅共享单车公司（bike）可新增，请切换到「共享单车」角色")
+    if req.badge_type == "voucher":
+        ensure_bike_for_voucher(role["key"], action="add")
 
     with get_conn() as conn:
         if req.badge_type == "voucher":
@@ -1045,13 +1238,13 @@ def add_badge_type(req: BadgeTypeAddReq):
             (req.badge_type, req.name, req.icon, req.image_url, req.cost_energy,
              req.supply, role["key"], token_id, req.desc, now()),
         )
-    _track("badge_type_add", target=req.badge_type, wallet=req.wallet or "",
+    _track(EventType.BADGE_TYPE_ADD, target=req.badge_type, wallet=req.wallet or "",
            extra={"type_id": cur.lastrowid, "issuer_role": role["key"]})
     return {"ok": True, "id": cur.lastrowid, "token_id": token_id, "badge_type": req.badge_type}
 
 
 @router.post("/badges/mint")
-def mint_badge(req: BadgeMintReq):
+def mint_badge(req: BadgeMintReq, user: dict = Depends(get_current_user)):
     """联盟角色铸造发放勋章 / 骑行券给居民（ERC1155 mint，链上 FROM = 联盟角色钱包）。
 
     与「居民兑换」的区别（业务闭环的两条链路）：
@@ -1063,19 +1256,14 @@ def mint_badge(req: BadgeMintReq):
     role = _find_role(req.role_key)
     if not role:
         raise HTTPException(400, f"未知角色: {req.role_key}")
+    req.wallet = assert_actor_wallet(user, req.wallet)  # 操作者身份从 JWT 解析
     if not req.wallet:
         raise HTTPException(400, "操作者钱包 wallet 必填")
     if req.quantity <= 0:
         raise HTTPException(400, "铸造数量必须大于 0")
 
     # 权限：操作者当前选中角色必须与声明一致（普通居民无铸造能力）
-    sel = _selected_role(req.wallet)
-    if not sel or sel["key"] != role["key"]:
-        raise HTTPException(
-            403,
-            f"铸造权限不足：操作者当前角色为「{sel['name'] if sel else '未选择'}」，"
-            f"与声明的「{role['name']}」不一致。请先在「绿色低碳联盟链」切换对应联盟角色",
-        )
+    ensure_minter_role(role, _selected_role(req.wallet))
     if not req.to_wallet:
         raise HTTPException(400, "接收者钱包 to_wallet 必填")
 
@@ -1083,8 +1271,15 @@ def mint_badge(req: BadgeMintReq):
         bt = _get_badge_type(conn, type_id=req.type_id)
     if not bt:
         raise HTTPException(400, f"未知勋章类型 type_id={req.type_id}")
-    if bt["badge_type"] == "voucher" and role["key"] != "bike":
-        raise HTTPException(403, "骑行券仅共享单车公司（bike）可发放")
+    # 权限矩阵校验：骑行券仅 bike；生态勋章需角色具备 can_issue_badge 权限位（如管理员无铸造权）
+    if bt["badge_type"] == "voucher":
+        ensure_bike_for_voucher(role["key"], action="mint")
+    elif not role.get("can_issue_badge"):
+        raise HTTPException(
+            403,
+            f"角色【{role['name']}】不具备勋章铸造权限位：can_issue_badge，"
+            f"请切换到具备铸造权的联盟业务角色",
+        )
     remaining = int(bt["supply"]) - int(bt["minted"])
     if int(req.quantity) > remaining:
         raise HTTPException(
@@ -1120,7 +1315,7 @@ def mint_badge(req: BadgeMintReq):
             "UPDATE eco_badge_types SET minted = minted + ? WHERE id=?",
             (int(req.quantity), bt["id"]),
         )
-    _track("badge_mint", target=bt["badge_type"], wallet=req.wallet or "",
+    _track(EventType.BADGE_MINT, target=bt["badge_type"], wallet=req.wallet or "",
            extra={"type_id": bt["id"], "to": req.to_wallet, "qty": req.quantity,
                   "issued_by": issuer_wallet})
     return {"ok": True, "badge_type": bt["badge_type"], "type_id": bt["id"],
@@ -1131,8 +1326,9 @@ def mint_badge(req: BadgeMintReq):
 # 7. 操作错误/行为记录（供实训报告做打分与错误分析）
 # ===========================================================================
 @router.post("/errors/record")
-def record_error(req: OpErrorRecordReq):
+def record_error(req: OpErrorRecordReq, user: dict = Depends(get_current_user)):
     """前端在操作成功/失败时都可写入审计记录，level=success/info/warn/error。"""
+    req.wallet = assert_actor_wallet(user, req.wallet)  # 审计归属以登录身份为准
     if req.level not in ("info", "success", "warn", "error"):
         raise HTTPException(400, "level 非法")
     if req.module not in ("role", "energy", "tree", "certificate", "badge", "contract", "other"):
@@ -1233,8 +1429,9 @@ class MarketListReq(BaseModel):
 
 
 @router.post("/market/list")
-def market_list(req: MarketListReq):
+def market_list(req: MarketListReq, user: dict = Depends(get_current_user)):
     """挂牌绿色资产。校验资产归属 → 写入 eco_market_listings。"""
+    req.seller = assert_actor_wallet(user, req.seller, "seller")  # 卖家身份从 JWT 解析
     if req.asset_type not in ("certificate", "badge", "voucher"):
         raise HTTPException(400, "asset_type 必须是 certificate/badge/voucher")
     if req.price_energy <= 0:
@@ -1249,8 +1446,7 @@ def market_list(req: MarketListReq):
             ).fetchone()
         if not row:
             raise HTTPException(404, "证书不存在")
-        if row["owner"] != req.seller:
-            raise HTTPException(403, "只能挂自己的资产")
+        ensure_asset_owner(row["owner"], req.seller)
         asset_name = f"植树证书 · {row['species_name']}"
         token_id = row["token_id"]
         contract_addr = row["contract_address"]
@@ -1263,8 +1459,7 @@ def market_list(req: MarketListReq):
             ).fetchone()
         if not row:
             raise HTTPException(404, "资产不存在")
-        if row["owner"] != req.seller:
-            raise HTTPException(403, "只能挂自己的资产")
+        ensure_asset_owner(row["owner"], req.seller)
         asset_name = row["name"]
         token_id = str(row["token_id"])
         contract_addr = row["contract_address"]
@@ -1290,6 +1485,25 @@ def market_list(req: MarketListReq):
     return {"ok": True, "listing_id": listing_id, "asset_name": asset_name, "price": req.price_energy}
 
 
+def _listing_image(conn, listing: dict) -> str:
+    """回填挂牌卡片图片：证书→树种图；勋章/骑行券→类型图（缺失返回空串，前端降级为图标）。"""
+    try:
+        if listing.get("asset_type") == "certificate":
+            row = conn.execute(
+                "SELECT ts.image_url FROM eco_certificates c "
+                "JOIN eco_tree_species ts ON ts.name = c.species_name WHERE c.id=?",
+                (listing.get("asset_id"),),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT image_url FROM eco_badge_types WHERE token_id=CAST(? AS INTEGER)",
+                (listing.get("token_id"),),
+            ).fetchone()
+        return (row["image_url"] or "") if row else ""
+    except Exception:
+        return ""
+
+
 @router.get("/market/items")
 def market_items(asset_type: str = "", seller: str = ""):
     """查询市场在售绿色资产。可选按类型/卖家过滤。"""
@@ -1304,6 +1518,23 @@ def market_items(asset_type: str = "", seller: str = ""):
     sql += " ORDER BY created_at DESC"
     with get_conn() as conn:
         rows = conn.execute(sql, params).fetchall()
+        items = []
+        for r in rows:
+            d = dict(r)
+            d["image_url"] = _listing_image(conn, d)
+            items.append(d)
+    return {"items": items}
+
+
+@router.get("/market/trades")
+def market_trades(limit: int = 100):
+    """绿色资产市场已成交记录（status='sold'，权威数据源）：市场页交易时间线据此展示，
+    跨钱包/浏览器可见，不依赖浏览器本地缓存。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM eco_market_listings WHERE status='sold' ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
     return {"items": [dict(r) for r in rows]}
 
 
@@ -1313,8 +1544,9 @@ class MarketBuyReq(BaseModel):
 
 
 @router.post("/market/buy")
-def market_buy(req: MarketBuyReq):
+def market_buy(req: MarketBuyReq, user: dict = Depends(get_current_user)):
     """购买绿色资产：GreenEnergy 转账(买方→卖方) + NFT 转移(卖方→买方)。"""
+    req.buyer = assert_actor_wallet(user, req.buyer, "buyer")  # 买家身份从 JWT 解析
     with get_conn() as conn:
         listing = conn.execute(
             "SELECT * FROM eco_market_listings WHERE id=? AND status='active'",
@@ -1334,6 +1566,8 @@ def market_buy(req: MarketBuyReq):
     ge_addr, ge_abi = _find_contract("GreenEnergy")
     if not ge_addr:
         raise HTTPException(400, "GreenEnergy 合约未部署")
+    # 余额口径：先同步账本→链上，再以链上 balanceOf 为唯一事实源校验购买力
+    _sync_chain_balance(buyer)
     bal_r = c.call_contract(ge_addr, "balanceOf", [c.resolve_account(buyer)], buyer, ge_abi)
     if not bal_r.get("ok"):
         raise HTTPException(400, "余额查询失败")
@@ -1386,10 +1620,10 @@ def market_buy(req: MarketBuyReq):
 
 
 @router.post("/market/cancel")
-def market_cancel(payload: dict):
+def market_cancel(payload: dict, user: dict = Depends(get_current_user)):
     """取消挂牌（仅卖家本人）。"""
     listing_id = payload.get("listing_id")
-    seller = payload.get("seller")
+    seller = assert_actor_wallet(user, payload.get("seller"), "seller")  # 卖家身份从 JWT 解析
     with get_conn() as conn:
         row = conn.execute(
             "SELECT seller, status FROM eco_market_listings WHERE id=?",
@@ -1410,6 +1644,95 @@ def _load_abi(address: str):
     with get_conn() as conn:
         r = conn.execute("SELECT abi FROM deployed_contracts WHERE address=?", (address,)).fetchone()
     return json.loads(r["abi"]) if r else []
+
+
+# ===========================================================================
+# 8. 监管审计视角（全链只读聚合，无副作用）
+# ===========================================================================
+@router.get("/audit/overview")
+def audit_overview(user: dict = Depends(get_current_user)):
+    """以「监管审计方」身份聚合全链只读指标。
+
+    - 当前块高：get_chain_client().block_number()，链不可用时返回 null（不抛错、不降级发交易）
+    - 异常调用明细：contract_calls 中 status=0 / reverted / failed 等非 success 的最近若干条
+    - 各角色发放总量对比：eco_energy_records 按 role_key 聚合（含零发放角色，便于横向对比）
+
+    严格只读：不写任何表、不发起任何链上交易。
+    """
+    # 1. 当前块高（链不可用 / 未初始化时静默降级；mock 空链返回 -1，规整为 null）
+    height = None
+    try:
+        height = int(get_chain_client().block_number())
+    except Exception:
+        height = None
+    if height is not None and height < 0:
+        height = None
+    with get_conn() as conn:
+        calls_total = conn.execute("SELECT COUNT(*) FROM contract_calls").fetchone()[0] or 0
+        calls_ok = conn.execute(
+            "SELECT COUNT(*) FROM contract_calls WHERE lower(COALESCE(status,'')) IN ('success','1')",
+        ).fetchone()[0] or 0
+        abn_rows = conn.execute(
+            "SELECT id, contract_address, method, caller, tx_hash, block_number, status, result, created_at "
+            "FROM contract_calls WHERE lower(COALESCE(status,'')) NOT IN ('success','1') "
+            "ORDER BY id DESC LIMIT 20",
+        ).fetchall()
+        abn_count = conn.execute(
+            "SELECT COUNT(*) FROM contract_calls WHERE lower(COALESCE(status,'')) NOT IN ('success','1')",
+        ).fetchone()[0] or 0
+        tx_total = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] or 0
+        er_rows = conn.execute(
+            "SELECT role_key, COUNT(*) AS issue_count, COALESCE(SUM(points),0) AS total_points, "
+            "MAX(created_at) AS last_issued_at FROM eco_energy_records GROUP BY role_key",
+        ).fetchall()
+    er_map = {r["role_key"]: dict(r) for r in er_rows}
+    role_items: list = []
+    seen: set = set()
+    # 六个联盟角色固定输出（含零发放），保证对比口径稳定
+    for r in ROLES:
+        seen.add(r["key"])
+        agg = er_map.get(r["key"]) or {}
+        role_items.append({
+            "role_key": r["key"], "role_name": r["name"], "icon": r["icon"], "color": r["color"],
+            "issue_count": int(agg.get("issue_count") or 0),
+            "total_points": int(agg.get("total_points") or 0),
+            "last_issued_at": agg.get("last_issued_at") or "",
+        })
+    # 历史遗留 role_key（如 delivery）不在 ROLES 中时也如实展示，审计口径不丢数据
+    for rk, agg in er_map.items():
+        if rk in seen:
+            continue
+        role_items.append({
+            "role_key": rk, "role_name": rk, "icon": "🌿", "color": "#7b8aab",
+            "issue_count": int(agg.get("issue_count") or 0),
+            "total_points": int(agg.get("total_points") or 0),
+            "last_issued_at": agg.get("last_issued_at") or "",
+        })
+    rate = round(int(calls_ok) * 100.0 / int(calls_total), 1) if calls_total else 100.0
+    # 截断超长 result / 错误详情，避免审计列表被大文本撑爆
+    abn_items = []
+    for r in abn_rows:
+        d = dict(r)
+        if d.get("result") and len(str(d["result"])) > 160:
+            d["result"] = str(d["result"])[:160] + "…"
+        abn_items.append(d)
+    return {
+        "generated_at": now(),
+        "block_height": height,
+        "calls": {
+            "total": int(calls_total),
+            "success": int(calls_ok),
+            "failed": int(calls_total) - int(calls_ok),
+            "success_rate": rate,
+        },
+        "transactions_total": int(tx_total),
+        "abnormal_calls": {"count": int(abn_count), "items": abn_items},
+        "role_energy": {
+            "items": role_items,
+            "total_points": sum(i["total_points"] for i in role_items),
+            "total_issue_count": sum(i["issue_count"] for i in role_items),
+        },
+    }
 
 
 # ===========================================================================

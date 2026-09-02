@@ -1,11 +1,24 @@
 """云桌面 WebSocket 终端后端。
 
-提供伪终端执行能力：mock 模式下解析预设命令返回教学输出，
-evm/fisco 模式下尝试真实 docker 命令或本地 subprocess 执行。
+提供伪终端执行能力：所有终端命令均在 VirtualFileSystem 沙箱内模拟执行。
+
+==================== 安全整改说明（消除 RCE 漏洞） ====================
+历史版本在非 mock 模式下将客户端任意命令直接以 `subprocess.run(cmd, shell=True)`
+在服务器上执行且无认证，构成远程代码执行（RCE）漏洞，现已整改：
+1. 删除 shell=True 真实执行分支：所有模式（含 evm/fisco 非 mock）的终端命令
+   一律走 `_sandbox_exec`（VirtualFileSystem 沙箱）处理。
+2. 不再存在把用户输入透传给 subprocess 的代码路径。如确需真实执行（如查看真实
+   docker 容器），必须以环境变量 CLOUD_REAL_EXEC_ENABLED=1 显式开启（默认关闭），
+   且命令须通过白名单（仅 docker / docker-compose 的 ps、logs 等只读教学子命令），
+   输入经 shlex 分词后以 shell=False 执行，禁止 shell 解析与管道注入。
+3. WebSocket 协议消息形态保持不变，前端无感知。
+=======================================================================
 """
 from __future__ import annotations
 
 import asyncio
+import os
+import shlex
 import subprocess
 import time
 import random
@@ -607,16 +620,44 @@ def _sandbox_exec(cmd: str, session_id: str = "default") -> str:
     return _execute_shell_command(cmd, fs, session_id)
 
 
-def _real_exec(cmd: str) -> str:
-    """在非沙盒模式下真实执行命令。
+# -------------------- 真实执行开关（默认关闭，安全整改） --------------------
+# 仅当环境变量 CLOUD_REAL_EXEC_ENABLED 显式设置为 1/true/yes/on 时才允许
+# 白名单内的真实命令执行；默认一律走沙箱。
+_REAL_EXEC_ENABLED = os.environ.get("CLOUD_REAL_EXEC_ENABLED", "").strip().lower() in (
+    "1", "true", "yes", "on",
+)
 
-    优先尝试 docker 相关命令（如 docker ps / docker logs），
-    其他命令在 deploy 目录执行（如 docker-compose）。
+# 白名单：仅允许教学相关的只读命令（禁止一切写入/删除/执行类命令）
+_ALLOWED_REAL_BINARIES = {"docker", "docker-compose"}
+_ALLOWED_REAL_SUBCOMMANDS = {"ps", "logs", "images", "version", "inspect", "config"}
+# shell 元字符：出现即拒绝，杜绝管道 / 命令链 / 重定向 / 命令替换注入
+_DANGEROUS_CHARS = re.compile(r"[;&|`$<>\\\n\r]")
+
+
+def _try_real_exec(cmd: str) -> Optional[str]:
+    """白名单真实执行（仅当 CLOUD_REAL_EXEC_ENABLED 显式开启时由调用方触发）。
+
+    通过白名单校验则真实执行并返回输出；否则返回 None，由调用方回退沙箱。
+    安全措施：
+    - 拒绝包含任何 shell 元字符（; & | ` $ < > \\ 换行）的输入；
+    - shlex 分词后，首 token 必须是白名单命令（docker / docker-compose），
+      次 token 必须是只读教学子命令（ps / logs / images / version / inspect / config）；
+    - subprocess 以 shell=False 执行（列表参数），绝不交由 shell 解析。
     """
+    if not cmd or _DANGEROUS_CHARS.search(cmd):
+        return None
+    try:
+        argv = shlex.split(cmd)
+    except ValueError:
+        return None
+    if not argv or argv[0] not in _ALLOWED_REAL_BINARIES:
+        return None
+    if len(argv) < 2 or argv[1] not in _ALLOWED_REAL_SUBCOMMANDS:
+        return None
     try:
         cwd = str(DEPLOY_DIR) if DEPLOY_DIR.exists() else None
         r = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, timeout=15,
+            argv, shell=False, capture_output=True, text=True, timeout=15,
             cwd=cwd,
         )
         out = (r.stdout or "") + (r.stderr or "")
@@ -690,10 +731,14 @@ async def terminal(ws: WebSocket):
     try:
         while True:
             cmd = await ws.receive_text()
-            if settings.is_mock:
+            # 安全整改：所有模式一律默认走沙箱（VirtualFileSystem）。
+            # 仅当环境变量 CLOUD_REAL_EXEC_ENABLED 显式开启且命令通过白名单时，
+            # 才允许真实执行；否则回退沙箱，消息形态保持不变。
+            out: Optional[str] = None
+            if _REAL_EXEC_ENABLED:
+                out = await asyncio.to_thread(_try_real_exec, cmd)
+            if out is None:
                 out = _sandbox_exec(cmd, session_id)
-            else:
-                out = await asyncio.to_thread(_real_exec, cmd)
             await ws.send_text(out + "\n" + fs.get_prompt() + " ")
     except WebSocketDisconnect:
         # 清理会话

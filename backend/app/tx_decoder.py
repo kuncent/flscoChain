@@ -4,14 +4,68 @@
 - 真实编译输出 ABI + 字节码
 - 真实编译错误/警告解析
 - 自动识别 ERC20/721/1155 标准
+
+任务 #20 性能底座：
+- 编译迁入 ThreadPoolExecutor（验证结论：solcx.compile_source 内部通过
+  subprocess 调用外部 solc 二进制，不依赖调用进程的 GIL/CPU，输入输出均为
+  可直接传递的 str/dict，ThreadPoolExecutor 即可安全并发，无需进程池 pickle）；
+- 产物缓存：键 = sha256(source) + solc 版本，落盘 storage/compile_cache/{key}.json，
+  命中直接返回（不再调 solcx），仅缓存编译成功（ok=True）的产物；
+- 启动预装常用 solc 版本（默认 ["0.4.25", "0.8.20"]，可用 SOLC_PREINSTALL
+  环境变量覆盖，逗号分隔），在后台线程执行不阻塞导入；下载失败显式记录并
+  在后续编译需要该版本时 raise（修复旧实现"安装失败也标记为已安装"的静默吞错）。
 """
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 import re
-from typing import Any, Dict, List, Optional, Tuple
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Dict, List, Optional
 
-# solc 版本缓存：已安装版本
+from .config import settings
+
+# solc 版本缓存：已安装版本（内存缓存，避免重复查询磁盘）
 _installed_versions: set = set()
+# 编译结果内存缓存（热结果免磁盘 IO；磁盘缓存为主，内存缓存为辅）
+_result_cache: Dict[str, Dict[str, Any]] = {}
+_result_cache_lock = threading.Lock()
+
+# 预装失败记录（不静默：编译需要对应版本时会显式 raise，并附本次记录）
+_preinstall_errors: Dict[str, str] = {}
+
+# 常用 solc 预装版本：0.4.25（FISCO-BCOS 兼容默认）+ 0.8.20（现代教学常用）
+DEFAULT_SOLC_VERSIONS = ["0.4.25", "0.8.20"]
+
+
+def _preinstall_versions() -> List[str]:
+    """读取预装版本列表（SOLC_PREINSTALL 环境变量可覆盖默认值）。"""
+    raw = os.getenv("SOLC_PREINSTALL", "").strip()
+    if raw:
+        return [v.strip() for v in raw.split(",") if v.strip()]
+    return list(DEFAULT_SOLC_VERSIONS)
+
+
+def _preinstall_worker() -> None:
+    """后台预装常用 solc 版本；失败显式记录（不静默），不抛出线程。"""
+    for version in _preinstall_versions():
+        try:
+            _ensure_solc(version)
+            print(f"[tx_decoder] solc {version} 预装就绪")
+        except Exception as e:
+            _preinstall_errors[version] = str(e)
+            print(f"[tx_decoder] solc {version} 预装失败（编译需要该版本时将显式报错）: {e}")
+
+
+# 模块导入即创建预装线程（启动延后到模块末尾，确保 _ensure_solc 已定义）
+_preinstall_thread = threading.Thread(
+    target=_preinstall_worker, name="solc-preinstall", daemon=True
+)
+
+# 编译执行池：solc 本体是外部子进程，线程池即可并发驱动多份编译
+_compile_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="solc-compile")
 
 
 def _detect_solc_version(source: str) -> str:
@@ -22,27 +76,73 @@ def _detect_solc_version(source: str) -> str:
     return "0.4.25"  # FISCO-BCOS 默认兼容版本
 
 
-def _ensure_solc(version: str):
-    """确保指定版本 solc 已安装。"""
+def _ensure_solc(version: str) -> None:
+    """确保指定版本 solc 已安装；安装失败显式 raise（不静默吞错）。"""
+    if version in _installed_versions:
+        return
     import solcx
-    if version not in _installed_versions:
-        try:
-            solcx.install_solc(version)
+    # 已在磁盘上（此前安装过）：直接标记，避免重复下载
+    try:
+        installed = {str(v) for v in solcx.get_installed_solc_versions()}
+        if version in installed:
             _installed_versions.add(version)
-        except Exception:
-            # 已安装则跳过
-            _installed_versions.add(version)
+            return
+    except Exception:
+        pass  # 版本探测失败不阻塞，继续走安装路径
+    try:
+        solcx.install_solc(version)
+        _installed_versions.add(version)
+    except Exception as e:
+        # 修复旧实现 bug：旧版在异常分支也把版本加入 _installed_versions，
+        # 导致后续报出"找不到 solc 二进制"之类隐晦错误。现在显式抛出、
+        # 由 compile_source 转为明确错误信息返回给调用方。
+        raise RuntimeError(f"solc {version} 安装失败: {e}") from e
 
 
-def compile_source(source: str) -> Dict[str, Any]:
-    """编译 Solidity 源码，返回 {abi, bytecode, errors, standard, name}。
+def _cache_key(source: str, version: str) -> str:
+    """编译产物缓存键：sha256(source) + solc 版本。"""
+    digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+    return f"{digest}-{version}"
 
-    errors 为列表，每个元素为字符串，以 'error:' 或 'warning:' 开头。
-    """
+
+def _cache_path(key: str):
+    return settings.compile_cache_dir / f"{key}.json"
+
+
+def _load_disk_cache(key: str) -> Optional[Dict[str, Any]]:
+    """从磁盘读取编译产物缓存；损坏/缺失返回 None。"""
+    path = _cache_path(key)
+    if not path.exists():
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict) and data.get("ok"):
+            return data
+    except Exception:
+        pass  # 缓存损坏按未命中处理，重新编译并覆写
+    return None
+
+
+def _save_disk_cache(key: str, result: Dict[str, Any]) -> None:
+    """原子写入编译产物缓存（tmp + rename，避免半写状态）。"""
+    try:
+        path = _cache_path(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            json.dump(result, f, ensure_ascii=False)
+        os.replace(tmp, path)
+    except Exception as e:
+        # 缓存写失败不影响编译结果返回（日志降级）
+        print(f"[tx_decoder] 编译缓存写入失败（降级）: {e}")
+
+
+def _compile_uncached(source: str, version: str) -> Dict[str, Any]:
+    """执行真实编译（无缓存路径），返回结构与旧版 compile_source 完全一致。"""
     errors: List[str] = []
     try:
         import solcx
-        version = _detect_solc_version(source)
         _ensure_solc(version)
         out = solcx.compile_source(
             source,
@@ -73,6 +173,42 @@ def compile_source(source: str) -> Dict[str, Any]:
         if not errors:
             errors.append(f"error: {msg}")
         return {"ok": False, "errors": errors, "abi": [], "bytecode": "", "standard": None, "name": None}
+
+
+def compile_source(source: str) -> Dict[str, Any]:
+    """编译 Solidity 源码，返回 {abi, bytecode, errors, standard, name}。
+
+    errors 为列表，每个元素为字符串，以 'error:' 或 'warning:' 开头。
+
+    任务 #20：编译在 ThreadPoolExecutor 中执行（不阻塞调用线程），
+    产物按 sha256(source)+solc 版本缓存（内存 + 磁盘），命中直接返回。
+    返回结构与旧版完全一致，调用方无感知。
+    """
+    version = _detect_solc_version(source)
+    key = _cache_key(source, version)
+
+    # 1) 内存缓存命中
+    with _result_cache_lock:
+        cached = _result_cache.get(key)
+    if cached is not None:
+        return dict(cached)
+
+    # 2) 磁盘缓存命中（回填内存缓存）
+    cached = _load_disk_cache(key)
+    if cached is not None:
+        with _result_cache_lock:
+            _result_cache[key] = cached
+        return dict(cached)
+
+    # 3) 未命中：线程池执行真实编译（solc 为外部子进程，线程池即可并发）
+    result = _compile_pool.submit(_compile_uncached, source, version).result()
+
+    # 4) 成功结果写缓存（失败结果不缓存：便于环境修复后重试）
+    if result.get("ok"):
+        with _result_cache_lock:
+            _result_cache[key] = result
+        _save_disk_cache(key, result)
+    return result
 
 
 # ERC 标准特征：事件签名 + 必需方法
@@ -157,3 +293,8 @@ def identify_standard_by_logs(logs: List[Dict]) -> Optional[str]:
         # 需要 ABI 区分；暂归 ERC20（含 721，浏览器按合约 standard 字段精确标注）
         return "ERC20"
     return None
+
+
+# 在模块末尾启动预装线程（后台 daemon，不阻塞导入与请求处理）：
+# 必须等 _ensure_solc 定义完成后再启动，否则线程抢跑会 NameError。
+_preinstall_thread.start()

@@ -312,6 +312,11 @@
           <div class="kpi-val">{{ eco.tree_species ?? 0 }}<em>种</em></div>
           <div class="kpi-rule">管理员上架 ≥2 种才可拿 G-1 满 8 分</div>
         </div>
+        <div class="kpi kpi-g">
+          <div class="kpi-label">市场流通（闭环）</div>
+          <div class="kpi-val">{{ (eco.market||{}).trades ?? 0 }}<em>笔成交</em></div>
+          <div class="kpi-rule">挂牌 {{ (eco.market||{}).listings ?? 0 }} 次 · 绿色成交同时计入 C 项 NFT 交易</div>
+        </div>
       </div>
 
       <div class="eco-tips mt16">
@@ -883,7 +888,7 @@ $err-c: #ff4d4f;
   .ec-status { font-size: 12.5px; color: $dq-text-2; }
   .ec-addr { font-size: 12px; color: rgba(0, 230, 195, 0.8); }
 }
-.eco-kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;
+.eco-kpis { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px;
   .kpi {
     border: 1px solid $dq-bord; border-radius: 10px; padding: 12px 12px; position: relative;
     overflow: hidden; background: rgba(255, 255, 255, 0.03);
@@ -894,6 +899,7 @@ $err-c: #ff4d4f;
     &.kpi-d::before { background: #ffb300; }
     &.kpi-e::before { background: #e14dff; }
     &.kpi-f::before { background: #ff7a45; }
+    &.kpi-g::before { background: #13c2c2; }
     .kpi-label { font-size: 11.5px; color: $dq-text-2; }
     .kpi-val { font-size: 20px; font-weight: 800; margin-top: 4px;
       em { font-size: 11.5px; color: $dq-text-2; font-style: normal; margin-left: 2px; font-weight: 500; }

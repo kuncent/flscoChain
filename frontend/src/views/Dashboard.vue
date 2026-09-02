@@ -241,7 +241,7 @@
             </div>
           </div>
           <div class="path-progress-tag">
-            <span class="dq-mono">{{ learnedCount }}</span> / <span class="dq-mono">10</span>
+            <span class="dq-mono">{{ learnedCount }}</span> / <span class="dq-mono">{{ pathSteps.length }}</span>
           </div>
         </div>
         <!-- 垂直时间轴 -->
@@ -274,6 +274,9 @@
                   <span class="dq-tag lvl {{ LEVEL_TAG[p.level].cls }}">{{ LEVEL_TAG[p.level].label }}</span>
                   <span class="dq-tag eta-tag">⏱ {{ p.eta }}</span>
                   <span class="dq-tag" :class="p.tagClass" v-if="p.tag">{{ p.tag }}</span>
+                  <!-- 服务端核验徽标：绿=可核验项全部通过；灰=展示服务端进度 -->
+                  <span v-if="p.verified" class="dq-tag srv-verify ok"><el-icon><CircleCheckFilled /></el-icon> 服务端已核验</span>
+                  <span v-else-if="srvHint(p)" class="dq-tag srv-verify">◐ {{ srvHint(p) }}</span>
                 </div>
                 <span class="tlb-badge" v-if="i === currentStepIndex && !isStepDone(p)">
                   <el-icon><VideoPlay /></el-icon> 进行中
@@ -352,7 +355,7 @@
               class="todo-item"
               v-for="(t, i) in todos"
               :key="i"
-              :class="{ done: t.done, 'l5-item': l4Done }"
+              :class="{ done: t.done, 'l5-item': l4Done, locked: t.source === 'verified' }"
               @click="l4Done ? toggleTodo(t) : (t.done || $router.push(t.to))"
             >
               <div class="ti-check" :class="{ 'l5-check': l4Done }">
@@ -362,7 +365,11 @@
               <div class="ti-info">
                 <div class="ti-title">{{ t.title }}</div>
                 <div class="ti-desc">{{ t.desc }}</div>
-                <div class="ti-hint dq-mono">{{ t.hint }}</div>
+                <div class="ti-hint dq-mono">
+                  {{ t.hint }}
+                  <span v-if="t.source === 'verified'" class="mt-src ok">· 服务端验收</span>
+                  <span v-else-if="t.source === 'self-claimed'" class="mt-src local">· 本地打卡</span>
+                </div>
               </div>
               <div class="ti-badge">
                 <span class="dq-tag" :class="t.klass">{{ t.label }}</span>
@@ -416,6 +423,21 @@
           </div>
         </div>
 
+        <!-- 成就概览（服务端按真实行为数据自动核验发放；点击进入成就中心） -->
+        <div class="dq-card achv-card">
+          <div class="card-head">
+            <span class="title-icon">🏆</span>
+            <div>
+              <div class="ct-title">成就概览</div>
+              <div class="ct-sub">学习成就自动核验发放 · 挑战任务</div>
+            </div>
+            <el-button size="small" link class="achv-more" @click="$router.push('/achievements')">
+              成就中心 <el-icon><Right /></el-icon>
+            </el-button>
+          </div>
+          <AchievementBadge :key="achvKey" :wallet="app.currentWallet" />
+        </div>
+
       </div>
     </div>
   </div>
@@ -426,16 +448,22 @@ import { ref, computed, onActivated, watch, reactive, onMounted, onUnmounted } f
 import { useRoute, useRouter } from 'vue-router'
 import { Check, Right, Monitor, Files, Wallet, Guide, VideoPlay, CircleCheckFilled, Lock, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { chainApi, explorerApi, authApi } from '@/api'
+// 任务 #21：SSE 推送触发刷新（与既有拉取逻辑叠加，不替换）
+import { onBusEvent } from '@/api/events'
+import { chainApi, explorerApi, authApi, missionsApi, learningApi } from '@/api'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import CountUp from '@/components/CountUp.vue'
+import AchievementBadge from '@/components/AchievementBadge.vue'
 
 const app = useAppStore()
 const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 const overview = ref<any>({})
+
+/* 成就概览：切钱包时强制重建 AchievementBadge（其内部自拉数据，用 key 触发重新加载） */
+const achvKey = ref(0)
 
 /* 平台实训进度看板（教师=班级 / 学生=个人+排名 / 管理员=全校） */
 const platformData = ref<any>(null)
@@ -510,8 +538,15 @@ type PathStep = {
   accept: string[];
   eta: string;
   extraDone?: () => boolean;
+  /* 服务端核验（GET /api/learning/path）：progress 含 tutorial_progress /
+     achievements / checks；verified=可自动核验项全部通过 */
+  progress?: any;
+  verified?: boolean;
 }
-const pathSteps: PathStep[] = [
+/* ---------- 学习路径：单一事实源改为后端 /api/learning/path ----------
+   以下内置常量仅作后端不可达时的降级 fallback（不白屏）；
+   文案与后端 app/learning/paths.py STAGE_PATH 逐字一致。 */
+const FALLBACK_PATH_STEPS: PathStep[] = [
   { to: '/dashboard', icon: 'DataBoard', level: 'P1',
     title: '总览 · 绿色低碳联盟链项目', desc: '了解项目全貌：6 个联盟成员、3 份智能合约、能量发放→兑换闭环',
     keywords: ['项目全貌', '6 角色联盟', '3 合约体系'], tag: '起点', tagClass: '',
@@ -527,7 +562,6 @@ const pathSteps: PathStep[] = [
     goal: '亲手搭建一条联盟链并部署绿色能量代币合约',
     kpoints:['4 节点 PBFT 共识：3f+1 容错', 'build_chain.sh 一键生成节点配置', 'GreenEnergy 构造函数：initialSupply=1000000', 'deploy → name/balanceOf/transfer 验证'],
     accept: ['完成 10/10 步骤', '成功部署 GreenEnergy 合约', '调用 name() 返回 GreenEnergy', '完成 6 角色发能量链路验证'],
-    extraDone: () => isCloudAllDone.value,
   },
   { to: '/ide', icon: 'EditPen', level: 'P2',
     title: '开发业务合约 · PlantCertificate + EcoBadge', desc: '从内置模板起步：查看 GreenEnergy/PlantCertificate/EcoBadge 源码 → Solc 编译 → 部署',
@@ -595,6 +629,42 @@ const pathSteps: PathStep[] = [
   },
 ]
 
+/* 当前渲染的路径清单：优先服务端 /api/learning/path，失败时保持 fallback */
+const pathSteps = ref<PathStep[]>(FALLBACK_PATH_STEPS)
+
+/* 把服务端 stage 映射为前端 PathStep（缺失字段兑底，避免模板渲染异常） */
+function shapeStage(s: any): PathStep {
+  const level: PathStep['level'] = LEVEL_TAG[s?.level] ? s.level : 'P1'
+  return {
+    to: String(s?.to || ''),
+    icon: String(s?.icon || 'Guide'),
+    level,
+    title: String(s?.title || ''),
+    desc: String(s?.desc || ''),
+    keywords: Array.isArray(s?.keywords) ? s.keywords : [],
+    tag: s?.tag || undefined,
+    tagClass: s?.tagClass || undefined,
+    eta: String(s?.eta || ''),
+    goal: String(s?.goal || ''),
+    kpoints: Array.isArray(s?.kpoints) ? s.kpoints : [],
+    accept: Array.isArray(s?.accept) ? s.accept : [],
+    progress: s?.progress || undefined,
+    verified: !!s?.verified,
+  }
+}
+
+/* 拉取学习路径 + 服务端核验状态；失败 / 空态时保留内置 fallback（不白屏） */
+async function loadLearningPath() {
+  try {
+    const res: any = await learningApi.getLearningPath()
+    const stages: any[] = Array.isArray(res?.stages) ? res.stages : []
+    if (!stages.length) return
+    pathSteps.value = stages.map(shapeStage)
+  } catch {
+    /* 后端不可用 → 降级 fallback（文案与后端同源），不白屏 */
+  }
+}
+
 /* ---------- 持久化存储键（注意：必须与 CloudDesktop / NftMarket 保持完全一致） ---------- */
 const VISIT_KEY = 'learn_visited_v1'
 const CLOUD_STEP_KEY = 'cloud_done_v1'        // 与 CloudDesktop.vue 第 124 行 DONE_KEY 保持一致
@@ -653,7 +723,9 @@ async function loadCloudSteps() {
   }
   // 服务端持久化完成步骤（chain_tutorial_progress 表）—— 换设备可续学
   try {
-    const wallet = app.currentWallet || '0xlearner'
+    // 读键口径与 loadMicroTaskVerify 保持一致：优先 currentWallet（与后端写键一致），
+    // 登录用户 ID 仅作降级兜底；两处不一致会导致服务端进度合并不上
+    const wallet = app.currentWallet || auth.user?.userId || '0xlearner'
     const p = await chainApi.progress(wallet)
     if (p && Array.isArray(p.steps)) {
       p.steps.forEach((s: { step: number; done?: boolean }) => { if (s.done) localSet.add(s.step) })
@@ -666,6 +738,11 @@ async function loadCloudSteps() {
   try {
     localStorage.setItem(CLOUD_STEP_KEY, JSON.stringify(cloudDoneSteps.value))
   } catch { /* quota ignore */ }
+}
+
+/* 各步骤额外完成条件（本地数据核验，与原 extraDone 字段等价；API 数据不含函数） */
+const EXTRA_DONE: Record<string, () => boolean> = {
+  '/cloud': () => isCloudAllDone.value,
 }
 
 function loadCompleted(): Record<string, boolean> {
@@ -703,10 +780,13 @@ async function refreshCompleted() {
     await loadCloudSteps()
     loadNftCount()
     loadPlatformProgress()  // 登录后展示平台整体实训进度（教师=班级 / 学生=个人+排名）
+    loadMicroTaskVerify()   // L5 微任务服务端自动验收（未进入 L5 阶段时内部直接跳过）
+    await loadLearningPath()  // 学习路径单一事实源（失败时保留内置 fallback）
     let changed = false
-    for (const s of pathSteps) {
+    for (const s of pathSteps.value) {
       let ok = !!visited[s.to]
-      if (s.extraDone) ok = ok && s.extraDone()
+      const extra = EXTRA_DONE[s.to]
+      if (extra) ok = ok && extra()
       if (ok && !completed[s.to]) {
         completed[s.to] = true
         changed = true
@@ -750,21 +830,32 @@ onMounted(async () => {
   }
 })
 
-/* 单步是否完成（独立判断，不要求前缀连续） */
-function isStepDone(s: typeof pathSteps[0]): boolean {
+/* 单步是否完成（独立判断，不要求前缀连续；额外条件走 EXTRA_DONE 映射） */
+function isStepDone(s: PathStep): boolean {
   let ok = !!visited[s.to]
-  if (s.extraDone) ok = ok && s.extraDone()
+  const extra = EXTRA_DONE[s.to]
+  if (extra) ok = ok && extra()
   return ok
 }
+/* 服务端核验/进度徽标文案（progress 空时返回空串不展示） */
+function srvHint(p: PathStep): string {
+  const pr: any = p.progress
+  if (!pr) return ''
+  const tp = pr.tutorial_progress
+  if (tp && tp.total) return `教程 ${tp.done}/${tp.total}`
+  const ac = pr.achievements
+  if (ac && ac.total) return `成就 ${(ac.achieved || []).length}/${ac.total}`
+  return ''
+}
 /* 已完成总数（独立计数，不受其他步骤影响） */
-const learnedCount = computed(() => pathSteps.filter((s) => isStepDone(s)).length)
+const learnedCount = computed(() => pathSteps.value.filter((s) => isStepDone(s)).length)
 /* 当前推荐步骤 = 第一个未完成的 */
 const currentStepIndex = computed(() => {
-  const idx = pathSteps.findIndex((s) => !isStepDone(s))
-  return idx === -1 ? pathSteps.length : idx
+  const idx = pathSteps.value.findIndex((s) => !isStepDone(s))
+  return idx === -1 ? pathSteps.value.length : idx
 })
-const learnPercent = computed(() => Math.round((learnedCount.value / pathSteps.length) * 100))
-const remainingSteps = computed(() => Math.max(0, pathSteps.length - learnedCount.value))
+const learnPercent = computed(() => Math.round((learnedCount.value / pathSteps.value.length) * 100))
+const remainingSteps = computed(() => Math.max(0, pathSteps.value.length - learnedCount.value))
 
 /* ---------- 今日任务（自适应：根据当前阶段推荐 或 展示 L5 高级实战 10 微任务） ---------- */
 /* 高级实战 10 微任务：把 45 分钟的大场景拆成 10 个可交付的小步骤（每步 3~5 分钟） */
@@ -784,12 +875,12 @@ const L5_MICRO_TASKS: MicroTask[] = [
   // Phase 2：能量发放（5 种真实场景）
   { phase: 'L5-2', to: '/eco', key: 'eco_t3',
     title: 'T3 · 地铁集团发放 · 通勤 10 公里',
-    desc: '切到「地铁」角色 → 向学习者钱包发放绿色能量（metro 场景）',
+    desc: '切到「地铁」角色 → 向本人钱包发放绿色能量（metro 场景）',
     label: '3 分钟', klass: 'lvl-l5-2',
     hint: '场景体验：≥1 种发放（F 项起步 3 分）' },
   { phase: 'L5-2', to: '/eco', key: 'eco_t4',
     title: 'T4 · 公交公司发放 · 换乘 2 次',
-    desc: '切到「公交」角色 → 向学习者钱包发放绿色能量（bus 场景）',
+    desc: '切到「公交」角色 → 向本人钱包发放绿色能量（bus 场景）',
     label: '3 分钟', klass: 'lvl-l5-2',
     hint: '目标：≥2 种不同角色（F 项 6 分）' },
   { phase: 'L5-2', to: '/eco', key: 'eco_t5',
@@ -810,7 +901,7 @@ const L5_MICRO_TASKS: MicroTask[] = [
   // Phase 3：资产兑换（3 种 NFT）
   { phase: 'L5-3', to: '/eco', key: 'eco_t8',
     title: 'T8 · 兑换植树证书（2+ 树种）',
-    desc: '切换回学习者 → 用积攒的能量兑换「植树证书」NFT',
+    desc: '切换回「我的钱包」（普通用户） → 用积攒的能量兑换「植树证书」NFT',
     label: '5 分钟', klass: 'lvl-l5-3',
     hint: 'G 项 8 分：≥2 种树种 8 分 / 1 种 4 分' },
   { phase: 'L5-3', to: '/eco', key: 'eco_t9',
@@ -843,6 +934,29 @@ const l5Done = reactive<Record<string, boolean>>(loadL5Done())
 const l4Done = computed(() => {
   return !!visited['/cloud'] && isCloudAllDone.value
 })
+
+/* 服务端自动验收状态（GET /api/missions/curriculum，按钱包查平台真实业务数据）。
+   打勾优先以服务端验收为准（verified=true 直接算完成）；
+   localStorage 打卡保留为降级并集（服务端不可达 / 未达标时，本地 self-claimed 也算完成）。 */
+const serverVerify = ref<Record<string, { verified: boolean; progress: string }>>({})
+async function loadMicroTaskVerify() {
+  if (!l4Done.value) return
+  try {
+    // 读键口径与 loadCloudSteps 保持一致：优先 currentWallet（与后端写键一致）
+    const wallet = app.currentWallet || auth.user?.userId || '0xlearner'
+    const res: any = await missionsApi.curriculum(wallet)
+    const data = res?.items ? res : (res?.data ?? {})
+    const map: Record<string, { verified: boolean; progress: string }> = {}
+    if (Array.isArray(data.items)) {
+      data.items.forEach((it: any) => {
+        if (it?.key) map[it.key] = { verified: !!it.verify?.verified, progress: String(it.verify?.progress || '') }
+      })
+    }
+    serverVerify.value = map
+  } catch {
+    /* 服务端不可用 / 未登录 → 全部降级为本地打卡（self-claimed） */
+  }
+}
 
 const basicTodos = computed(() => {
   const cloudDone = !!visited['/cloud'] && isCloudAllDone.value
@@ -886,16 +1000,30 @@ const basicTodos = computed(() => {
 /* 最终 todos 列表（自适应阶段） */
 const todos = computed(() => {
   if (l4Done.value) {
-    return L5_MICRO_TASKS.map((t) => ({
-      title: t.title, desc: t.desc, label: t.label, klass: t.klass,
-      done: !!l5Done[t.key], to: t.to, hint: t.hint,
-      key: t.key,
-    }))
+    return L5_MICRO_TASKS.map((t) => {
+      // 服务端验收优先（verified）；localStorage 打卡为降级并集（self-claimed）
+      const verified = !!serverVerify.value[t.key]?.verified
+      const done = verified || !!l5Done[t.key]
+      return {
+        title: t.title, desc: t.desc, label: t.label, klass: t.klass,
+        done, to: t.to, hint: t.hint,
+        key: t.key,
+        source: done ? (verified ? 'verified' : 'self-claimed') : '',
+      }
+    })
   }
-  return basicTodos.value
+  // 基础搭建任务无服务端验收，来源标注为空
+  return basicTodos.value.map((b) => ({ ...b, source: '' }))
 })
-/* 点击 L5 任务可以打勾（由老师抽查或学生自证完成，localStorage 持久化） */
+/* 点击 L5 任务可以打勾（由老师抽查或学生自证完成，localStorage 持久化；
+   服务端验收为准：打卡后顺手刷新自动验收，链上数据已达标则自动升级为「服务端验收」） */
 function toggleTodo(t: any) {
+  // 服务端已验收（verified）的任务不可取消：done = verified || local，
+  // 点取消只会删本地打卡、界面状态不变，会让学生误以为取消成功
+  if (t.done && t.source === 'verified') {
+    ElMessage.info('已由服务端验收，不可取消')
+    return
+  }
   if (t.done) {
     delete l5Done[t.key]
   } else if (l4Done.value && t.key) {
@@ -904,6 +1032,7 @@ function toggleTodo(t: any) {
   try {
     localStorage.setItem(STORAGE_L5_KEY, JSON.stringify(Object.keys(l5Done)))
   } catch { /* noop */ }
+  loadMicroTaskVerify()
 }
 const todoDoneCount = computed(() => todos.value.filter((t) => t.done).length)
 const todoPercent = computed(() => Math.round((todoDoneCount.value / todos.value.length) * 100))
@@ -933,9 +1062,32 @@ onActivated(async () => {
   refreshCompleted()
 })
 
-// 钱包切换时刷新实训进度（角色/钱包联动）
+/* ---------- 任务 #21/#25：SSE 推送触发刷新 ----------
+ * 交易确认 / 合约部署成功 → 重拉概览（保留既有 onActivated 拉取，纯叠加）。
+ * 任务 #25：加 400ms 防抖——课堂场景多端同时发交易时，同一事件类型的高频推送
+ * 合并为一次请求，避免刷新放大；两类事件共用同一防抖函数（都是重拉 overview）。 */
+function debounceFn(fn: () => void, ms: number) {
+  let t: ReturnType<typeof setTimeout> | null = null
+  const w = () => {
+    if (t) clearTimeout(t)
+    t = setTimeout(() => { t = null; fn() }, ms)
+  }
+  ;(w as any).cancel = () => { if (t) { clearTimeout(t); t = null } }
+  return w as typeof w & { cancel: () => void }
+}
+const debouncedLoadOverview = debounceFn(() => { loadOverview() }, 400)
+const offPushTx = onBusEvent('tx_confirmed', () => { debouncedLoadOverview() })
+const offPushDeploy = onBusEvent('deployed', () => { debouncedLoadOverview() })
+onUnmounted(() => {
+  offPushTx()
+  offPushDeploy()
+  debouncedLoadOverview.cancel()  // 组件卸载时丢弃挂起的延迟刷新，防泄漏回调
+})
+
+// 钱包切换时刷新实训进度（角色/钱包联动）+ 重新加载成就概览（响应式钱包）
 watch(() => app.currentWallet, () => {
   refreshCompleted()
+  achvKey.value++
 })
 </script>
 
@@ -1399,6 +1551,11 @@ watch(() => app.currentWallet, () => {
     border-color: rgba(45,212,191,0.18);
     .ti-title { color: var(--dq-text-dim); text-decoration: line-through; }
   }
+  /* 服务端已验收（verified）：锁定不可取消，视觉置灰 */
+  &.locked {
+    cursor: not-allowed;
+    opacity: 0.72;
+  }
 }
 .ti-check {
   width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px;
@@ -1422,6 +1579,16 @@ watch(() => app.currentWallet, () => {
   font-size: 10.5px;
   color: var(--dq-primary);
   opacity: 0.9;
+}
+/* 微任务完成来源标注：服务端验收（绿）/ 本地打卡（橙） */
+.mt-src {
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  &.ok { color: var(--dq-success); background: rgba(45,212,191,0.1); border: 1px solid rgba(45,212,191,0.25); }
+  &.local { color: #f5a623; background: rgba(245,166,35,0.12); border: 1px solid rgba(245,166,35,0.28); }
 }
 
 /* 快速入口 */
@@ -1465,6 +1632,16 @@ watch(() => app.currentWallet, () => {
   color: var(--dq-text-dim);
   border-color: rgba(123,138,171,0.25);
   font-weight: 500;
+}
+/* 服务端核验徽标：绿=verified；灰=服务端进度（教程 n/m / 成就 x/y） */
+.dq-tag.srv-verify {
+  background: rgba(255,255,255,0.04);
+  color: var(--dq-text-dim);
+  border-color: rgba(123,138,171,0.25);
+  font-weight: 500;
+  display: inline-flex; align-items: center; gap: 3px;
+  .el-icon { font-size: 12px; }
+  &.ok { background: rgba(45,212,191,0.10); color: var(--dq-success); border-color: rgba(45,212,191,0.28); }
 }
 /* 学习三步法：目标 / 锚点 / 验收 */
 .tlb-learn-block {
@@ -1548,6 +1725,22 @@ watch(() => app.currentWallet, () => {
   padding: 8px 10px !important;
   &:hover { background: rgba(236,72,153,0.04); border-color: rgba(236,72,153,0.20); }
   &.done .ti-title { color: var(--dq-text-dim); }
+  /* 服务端已验收：覆盖 L5 粉色 hover，保持锁定置灰观感 */
+  &.locked,
+  &.locked:hover {
+    cursor: not-allowed;
+    opacity: 0.72;
+    background: rgba(45,212,191,0.035);
+    border-color: rgba(45,212,191,0.18);
+    .ti-check.l5-check,
+    .ti-check.l5-check:hover {
+      cursor: not-allowed;
+      .tic-box {
+        border-color: rgba(45,212,191,0.25) !important;
+        background: transparent;
+      }
+    }
+  }
 }
 .ti-check.l5-check {
   cursor: pointer;
@@ -1605,6 +1798,36 @@ watch(() => app.currentWallet, () => {
 .tf-p.p1 { background: rgba(251,191,36,0.08); color: #fbbf24; border-color: rgba(251,191,36,0.25); }
 .tf-p.p2 { background: rgba(34,197,94,0.08);  color: #4ade80; border-color: rgba(34,197,94,0.25); }
 .tf-p.p3 { background: rgba(236,72,153,0.08); color: #f472b6; border-color: rgba(236,72,153,0.28); }
+
+/* 成就概览卡片：抹平组件自带的卡片底色，融入侧栏卡片 */
+.achv-card {
+  .achv-more { margin-left: auto; color: var(--dq-primary); font-weight: 600; }
+  :deep(.achievement-badge) {
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+  }
+  :deep(.stats-overview) {
+    padding: 10px;
+    gap: 12px;
+    margin-bottom: 12px;
+    .stat-value { font-size: 18px; }
+  }
+  :deep(.achievement-grid) {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  :deep(.achievement-card) {
+    flex-direction: row;
+    align-items: center;
+    padding: 10px;
+    gap: 10px;
+    .achievement-icon { width: 36px; height: 36px; .icon-text { font-size: 18px; } }
+    .achievement-status { position: static; }
+    .achievement-desc { -webkit-line-clamp: 1; margin-bottom: 4px; }
+  }
+}
 
 /* 响应式小屏降级 */
 @media (max-width: 1280px) {

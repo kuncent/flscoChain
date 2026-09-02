@@ -128,11 +128,13 @@ import { ElMessage } from 'element-plus'
 import { Refresh, Document } from '@element-plus/icons-vue'
 import { gradesApi } from '@/api'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import * as echarts from 'echarts'
 
 const app = useAppStore()
-// 使用 store 中的钱包地址，保证角色/钱包切换时联动刷新
-const wallet = computed(() => app.currentWallet)
+const auth = useAuthStore()
+// 用 userId 作为学习行为追踪标识（不随角色钱包切换变化），确保成绩按用户隔离
+const wallet = computed(() => auth.user?.userId || app.currentWallet || '0xlearner')
 const loading = ref(false)
 const grades = ref<any[]>([])
 const trainingNow = ref<number | null>(null)
@@ -231,8 +233,8 @@ onMounted(() => {
   loadData()
 })
 
-// 钱包切换时自动刷新成绩（角色/钱包联动）
-watch(() => app.currentWallet, (newWallet) => {
+// 用户身份变化时自动刷新成绩
+watch(wallet, (newWallet) => {
   if (newWallet) {
     loadData()
   } else {

@@ -14,6 +14,7 @@ import json
 import uuid
 from datetime import datetime
 
+from . import keystore as ks
 from .chain_client import get_chain_client, RealEvmChainClient, MockChainClient
 from .config import settings
 from .db import get_conn, now
@@ -121,10 +122,11 @@ def _add_tree(name: str, required_energy: int, description: str):
 
 
 def _exchange_certificate(wallet: str, species_id: int, species_name: str, cost: int):
-    """兑换植树证书（ERC721）。"""
+    """兑换植树证书（ERC721）。失败时打印原因，便于发现能量不足等矛盾。"""
     ge_addr, ge_abi = _find_contract("GreenEnergy")
     pc_addr, pc_abi = _find_contract("PlantCertificate")
     if not ge_addr or not pc_addr:
+        print("[seed] 证书兑换跳过：GreenEnergy/PlantCertificate 合约未就绪")
         return
     c = get_chain_client()
     admin_addr = c.resolve_account(ADMIN_WALLET)
@@ -132,6 +134,7 @@ def _exchange_certificate(wallet: str, species_id: int, species_name: str, cost:
     # 1. 扣能量（wallet → admin）
     r_t = c.call_contract(ge_addr, "transfer", [admin_addr, cost], wallet, ge_abi)
     if not r_t.get("ok"):
+        print(f"[seed] 证书兑换失败（能量扣除）: {r_t.get('error')}")
         return
 
     # 2. 铸造证书
@@ -153,20 +156,23 @@ def _exchange_certificate(wallet: str, species_id: int, species_name: str, cost:
             (str(token_id), species_id, species_name, wallet, cost,
              pc_addr, r_m.get("tx_hash", ""), cert_no, now()),
         )
+    print(f"[seed] 植树证书铸造成功: {cert_no}（{species_name}，消耗 {cost} 能量）")
 
 
 def _exchange_badge(wallet: str, badge_type: str, token_id: int, name: str, cost: int):
-    """兑换生态勋章 / 骑行券（ERC1155）。"""
+    """兑换生态勋章 / 骑行券（ERC1155）。失败时打印原因。"""
     ge_addr, ge_abi = _find_contract("GreenEnergy")
     eb_addr, eb_abi = _find_contract("EcoBadge")
     if not ge_addr or not eb_addr:
+        print("[seed] 勋章兑换跳过：GreenEnergy/EcoBadge 合约未就绪")
         return
     c = get_chain_client()
     admin_addr = c.resolve_account(ADMIN_WALLET)
 
-    # 1. 扣能量
+    # 1. 扣能量（余额不足会导致失败，播种前必须先足额发放）
     r_t = c.call_contract(ge_addr, "transfer", [admin_addr, cost], wallet, ge_abi)
     if not r_t.get("ok"):
+        print(f"[seed] 勋章兑换失败（能量扣除）: {r_t.get('error')}")
         return
 
     # 2. 铸造勋章
@@ -187,8 +193,51 @@ def _exchange_badge(wallet: str, badge_type: str, token_id: int, name: str, cost
         )
 
 
+def seed_student_wallets() -> None:
+    """为 user_info 中已有学生逐一发放专属钱包别名 stu:{user_id}（任务 #19，幂等）。
+
+    保留 / 调整说明：
+      - 仅在密钥库层面 provision（随机私钥加密落盘），不写 user_info、
+        不动链上数据；user_info.wallet 的回填由登录自动写入与
+        scripts/migrate_wallets.py 负责，职责单一；
+      - 不改变现有演示数据对 0xlearner 的注入：种子能量 / 证书 / 勋章仍
+        发给 0xlearner（教师演示流兼容）；新学生的行为数据走各自钱包；
+      - 与链模式无关（不触碰链节点），放在 seed_init_data 开头执行，
+        避免被"已有合约 / 已有业务数据"的提前 return 跳过；
+      - 幂等：已发放的学生钱包直接跳过，可重复执行。
+    """
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                "SELECT user_id FROM user_info "
+                "WHERE role_id=4 AND TRIM(COALESCE(user_id,''))<>''"
+            ).fetchall()
+    except Exception as e:
+        print(f"[seed] 学生钱包播种跳过（user_info 不可用）: {e}")
+        return
+    if not rows:
+        return
+    created = 0
+    for r in rows:
+        uid = (r["user_id"] or "").strip()
+        if not uid:
+            continue
+        try:
+            if ks.get_student_wallet(uid):
+                continue  # 已发放，幂等跳过（轻量检查，不解密私钥）
+            ks.provision_student_wallet(uid)
+            created += 1
+        except Exception as e:
+            print(f"[seed] 学生钱包发放失败（{uid}）: {e}")
+    print(f"[seed] 学生钱包播种: 共 {len(rows)} 名学生，本次新建 {created} 个专属钱包")
+
+
 def seed_init_data() -> None:
     """启动时自动播种实训基础数据。仅在链为空（无合约）时执行。"""
+    # 学生钱包（一人一钱包）播种：仅本地密钥库操作，与链模式无关，幂等；
+    # 不影响下方 0xlearner 演示数据注入逻辑
+    seed_student_wallets()
+
     c = get_chain_client()
     # 仅对进程内链（evm / 沙盒）自动播种，避免误操作真实 FISCO 节点
     if not isinstance(c, (RealEvmChainClient, MockChainClient)):
@@ -240,7 +289,14 @@ def seed_init_data() -> None:
     _issue_energy(LEARNER_WALLET, "takeout", "外卖平台", "绿色外卖(无需餐具)", 10)
     _issue_energy(LEARNER_WALLET, "recycling", "回收公司", "可回收物回收", 100)
 
+    # 2.2.1 余额一致性修复：先足额发放再兑换。
+    # 旧逻辑仅发 195 点却兑换 1500 能量证书 + 10 能量勋章，链上转账必然失败；
+    # 此处由管理员补足差额（1600 - 195 = 1405），确保种子证书/勋章真实铸造成功。
+    _issue_energy(LEARNER_WALLET, "admin", "管理员", "种子启动资金补足", 1405)
+    # 累计 1600 点 ≥ 证书 1500 + 勋章 10 = 1510，兑换后剩余 90 点
+
     # 2.3 兑换 1 份植树证书 + 1 个生态勋章（内置资产，绿色资产市场初始非空）
+    # 先兑证书（大额 1500）再兑勋章（10），余额已足额（1600），链上转账真实执行
     if tree1:
         _exchange_certificate(LEARNER_WALLET, tree1, "银杏树", 1500)
     if tree2:

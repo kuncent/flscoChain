@@ -25,6 +25,13 @@ from .config import settings
 
 _lock = threading.Lock()
 
+# 任务 #20：线程级连接缓存（连接复用，避免每次 get_conn 新建/关闭的开销）。
+# 注意与全局锁 _lock 共存：写路径仍由调用方/ init_db 等走 _lock 串行化；
+# 读路径直接复用线程内连接（SELECT 无长事务，WAL 下读到最新已提交状态）。
+# 缓存键绑定 db_path：测试（conftest monkeypatch settings.db_path 指向临时库）
+# 或运行期改库路径时自动切换并关闭旧连接，不产生跨库串数据。
+_local = threading.local()
+
 
 # 多租户字段模板（CREATE TABLE 末尾统一追加，保持结构一致）
 _TENANT_COLS = """
@@ -34,15 +41,87 @@ _TENANT_COLS = """
 """
 
 
+def scope_where(alias: str, user_id: str | None = None,
+                tenant_id: str | None = None) -> tuple[str, list]:
+    """构造多租户 scope 过滤片段，返回 (WHERE 条件片段, 参数列表)。
+
+    用法（贴合现有手写 SQL 拼接风格，最小侵入，不重写既有查询）：
+        cond, sp = scope_where("learning_events", user_id=uid)
+        sql += (" AND " + cond) if cond else ""
+        params = params + sp
+
+    语义（兼容优先：不允许新增过滤导致历史数据"丢失"）：
+      - user_id / tenant_id 传 None（或空串）→ 返回 ('', [])，
+        等价于不过滤，与既有行为完全一致（空值通配）；
+      - 非 None → `{alias}.user_id = ?` OR `COALESCE({alias}.user_id,'') = ''`，
+        即命中「已归属本用户的行」+「尚未登记归属的旧行」：
+          * 业务表 _TENANT_COLS 为 NOT NULL DEFAULT ''，旧行 user_id=''；
+          * chain_tutorial_progress 等表历史行可能为 NULL；
+        COALESCE 把两种"未登记"状态一并放行，旧行永远查得到；
+        后续写入路径补填 user_id 后，隔离随之自动收紧，无需再改查询。
+
+    注意：调用方需确认目标表确实拥有对应列（业务表均带 _TENANT_COLS；
+    student_grades 等历史表由 init_db 在线迁移补齐，见下方迁移块）。
+    """
+    conds: list[str] = []
+    params: list = []
+    if user_id:
+        conds.append(f"({alias}.user_id = ? OR COALESCE({alias}.user_id, '') = '')")
+        params.append(user_id)
+    if tenant_id:
+        conds.append(f"({alias}.tenant_id = ? OR COALESCE({alias}.tenant_id, '') = '')")
+        params.append(tenant_id)
+    return " AND ".join(conds), params
+
+
+def _tune_conn(conn: sqlite3.Connection) -> None:
+    """SQLite 连接级/库级调优（任务 #20），幂等：
+
+    - journal_mode=WAL  ：库级持久属性，重复设置无害（返回当前模式）；
+                          写不阻塞读，多线程并发读写性能大幅提升；
+    - busy_timeout=5000 ：连接级，写冲突时最多等 5s 而非立即报 SQLITE_BUSY；
+    - synchronous=NORMAL：连接级，WAL 推荐搭配（性能与安全平衡，掉电最多丢最后一个事务）。
+    """
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.Error:
+        # 个别文件系统/内存库可能不支持 WAL，保持默认 journal 模式继续工作
+        pass
+    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA synchronous=NORMAL")
+
+
 @contextmanager
 def get_conn() -> Iterator[sqlite3.Connection]:
-    conn = sqlite3.connect(str(settings.db_path), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
+    """获取 SQLite 连接（线程内复用）。
+
+    行为与旧实现完全兼容：`with get_conn() as conn:` 使用后自动 commit；
+    差异仅在：连接不再每次关闭，而是缓存在线程内复用（直到 db_path 变化）。
+    异常路径追加 rollback，防止复用连接把未提交的脏状态带进后续调用。
+    """
+    conn: sqlite3.Connection | None = getattr(_local, "conn", None)
+    conn_path: str | None = getattr(_local, "conn_path", None)
+    want_path = str(settings.db_path)
+    if conn is None or conn_path != want_path:
+        if conn is not None:
+            try:
+                conn.close()
+            except sqlite3.Error:
+                pass
+        conn = sqlite3.connect(want_path, check_same_thread=False, timeout=5.0)
+        conn.row_factory = sqlite3.Row
+        _tune_conn(conn)
+        _local.conn = conn
+        _local.conn_path = want_path
     try:
         yield conn
         conn.commit()
-    finally:
-        conn.close()
+    except BaseException:
+        try:
+            conn.rollback()
+        except sqlite3.Error:
+            pass
+        raise
 
 
 def init_db() -> None:
@@ -112,6 +191,13 @@ def init_db() -> None:
             size INTEGER DEFAULT 0,
             """ + _TENANT_COLS + """
         )""")
+        # === 任务 #20：blocks 在线迁移加 class_id ===
+        # 注意：blocks 以 number 为主键，仅全局/默认链实例（class_id=''）写入；
+        # 班级级链实例各有独立块号空间，写同表必然主键冲突，故班级实例
+        # 只持久化 transactions（hash 全局唯一，无冲突），块数据仍驻留内存。
+        _blk_cols = {row["name"] for row in c.execute("PRAGMA table_info(blocks)")}
+        if "class_id" not in _blk_cols:
+            c.execute("ALTER TABLE blocks ADD COLUMN class_id TEXT NOT NULL DEFAULT ''")
         c.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
             hash TEXT PRIMARY KEY,
@@ -128,6 +214,24 @@ def init_db() -> None:
             parsed_args TEXT,
             """ + _TENANT_COLS + """
         )""")
+        # === 任务 #20：交易持久化索引在线迁移 ===
+        # class_id 列：班级级链空间（chain_client.get_chain_client(class_id) 写入）。
+        # 历史行 DEFAULT ''（全局/默认链实例交易），不影响既有查询。
+        _tx_cols = {row["name"] for row in c.execute("PRAGMA table_info(transactions)")}
+        if "class_id" not in _tx_cols:
+            c.execute("ALTER TABLE transactions ADD COLUMN class_id TEXT NOT NULL DEFAULT ''")
+        # 旧库的 transactions 可能建于多租户改造之前（无 _TENANT_COLS 三列），
+        # 下方索引依赖 tenant_id/user_id，先在线补齐再建索引
+        # （迁移范本同 student_grades；ADD COLUMN 不支持 IF NOT EXISTS，需先查 PRAGMA）。
+        for _tx_col in ("tenant_id", "user_id", "session_id"):
+            if _tx_col not in _tx_cols:
+                c.execute(f"ALTER TABLE transactions ADD COLUMN {_tx_col} TEXT NOT NULL DEFAULT ''")
+        # 复合索引（地址/租户维度的分页扫描，配合 ORDER BY timestamp DESC）。
+        # 注：任务要求的 (wallet, created_at) / (tenant_id, user_id, created_at)
+        # 在 transactions 表中对应 (from_addr, timestamp) 与 (tenant_id, user_id, timestamp)。
+        c.execute("CREATE INDEX IF NOT EXISTS idx_tx_from_ts ON transactions(from_addr, timestamp)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_tx_to_ts ON transactions(to_addr, timestamp)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_tx_tenant_user_ts ON transactions(tenant_id, user_id, timestamp)")
         # NFT
         c.execute("""
         CREATE TABLE IF NOT EXISTS nfts (
@@ -140,10 +244,15 @@ def init_db() -> None:
             image_url TEXT,
             meta_url TEXT,
             price TEXT,
+            amount INTEGER NOT NULL DEFAULT 1,   -- 发行数量：ERC721 恒为 1，ERC1155 可多份（半同质化特性）
             owner TEXT NOT NULL,
             created_at TEXT NOT NULL,
             """ + _TENANT_COLS + """
         )""")
+        # nfts 在线迁移：amount 为 ERC1155 发行数量（ERC721 恒为 1），旧库无此列时补默认 1。
+        _nft_cols = {row["name"] for row in c.execute("PRAGMA table_info(nfts)")}
+        if "amount" not in _nft_cols:
+            c.execute("ALTER TABLE nfts ADD COLUMN amount INTEGER NOT NULL DEFAULT 1")
         c.execute("""
         CREATE TABLE IF NOT EXISTS nft_trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -261,6 +370,16 @@ def init_db() -> None:
         # wallet 索引必须在列存在之后才能创建
         c.execute("CREATE INDEX IF NOT EXISTS idx_student_grades_wallet ON student_grades(wallet)")
 
+        # === student_grades 多租户增量列（在线迁移，范本同上方 _GRADE_COLS） ===
+        # 该表历史建表无租户三列（以 class_id/school_id + wallet 承担归属）。
+        # 按 _TENANT_COLS 口径补齐 user_id/tenant_id/session_id，供 grades.py
+        # 的按钱包读统计（/my）叠加 db.scope_where 过滤；旧行 DEFAULT ''
+        # （未登记归属），scope 兼容语义下仍可查到，既有行为不变。
+        _g_existing = {row["name"] for row in c.execute("PRAGMA table_info(student_grades)")}
+        for _g_col in ("user_id", "tenant_id", "session_id"):
+            if _g_col not in _g_existing:
+                c.execute(f"ALTER TABLE student_grades ADD COLUMN {_g_col} TEXT NOT NULL DEFAULT ''")
+
         # ==================== 方向四：成就系统 ====================
         # 成就定义表
         c.execute("""
@@ -319,6 +438,122 @@ def init_db() -> None:
             UNIQUE(wallet, challenge_id)
         )""")
         c.execute("CREATE INDEX IF NOT EXISTS idx_user_challenges_wallet ON user_challenges(wallet)")
+
+        # ==================== 任务 #21：五级任务验证流水线 + 事件通知 ====================
+        # task_runs：验证流水线运行台账（成功/失败均落一行，失败 status='failed'）。
+        # stage_results 存五级结果 JSON：[{stage, ok, detail, latency_ms, skipped?}, ...]。
+        # 注：本表自带 user_id/tenant_id/class_id（任务书口径），不再追加 _TENANT_COLS
+        # （避免重名列），仅补 session_id 与其他表隔离口径保持一致。
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS task_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            wallet TEXT NOT NULL DEFAULT '',
+            user_id TEXT NOT NULL DEFAULT '',
+            tenant_id TEXT NOT NULL DEFAULT '',
+            class_id TEXT NOT NULL DEFAULT '',
+            task_type TEXT NOT NULL DEFAULT '',   -- compile | deploy | energy_issue | tutorial_command
+            task_ref TEXT NOT NULL DEFAULT '',    -- 关联引用（run_id / proof_no / stepN 等）
+            stage_results TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL DEFAULT '',      -- success | failed
+            latency_ms REAL NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            session_id TEXT NOT NULL DEFAULT ''
+        )""")
+        # 在线迁移补列（范本同 student_grades：ADD COLUMN 不支持 IF NOT EXISTS，先查 PRAGMA）：
+        # 旧库若已有早期版本的 task_runs（列漂移），补齐后不丢历史行。
+        _tr_cols = {row["name"] for row in c.execute("PRAGMA table_info(task_runs)")}
+        for _tr_col, _tr_decl in (
+            ("task_ref", "TEXT NOT NULL DEFAULT ''"),
+            ("session_id", "TEXT NOT NULL DEFAULT ''"),
+        ):
+            if _tr_col not in _tr_cols:
+                c.execute(f"ALTER TABLE task_runs ADD COLUMN {_tr_col} {_tr_decl}")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_task_runs_wallet_time ON task_runs(wallet, created_at)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_task_runs_type ON task_runs(task_type)")
+
+        # notifications：events_bus 事件镜像（publish 时写入，失败容错），
+        # 供 /api/notify/history 分页补看（SSE 断线期间的事件不丢）。
+        # user_id='' 表示广播事件（全员可见）；非空为定向事件（仅本人可见）。
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL DEFAULT '',
+            tenant_id TEXT NOT NULL DEFAULT '',
+            class_id TEXT NOT NULL DEFAULT '',
+            event_type TEXT NOT NULL DEFAULT '',  -- tx_confirmed / deployed / compiled / energy_issued / tutorial_step_done / sandbox_*
+            payload TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            session_id TEXT NOT NULL DEFAULT ''
+        )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user_time ON notifications(user_id, created_at)")
+
+        # ==================== 任务 #22：运营沙盘（ops 三表） ====================
+        # ops_scenarios：教师配置的场景（目标 TPS / 故障脚本类型 / 持续时长）。
+        # ops_rounds   ：每轮演练台账（启停时间 + 结束时 KPI 汇总 result）。
+        # ops_kpis     ：KPI 样本（MTTD/MTTR/处置率/成功率）+ 处置动作流水（metric='action'，
+        #                时间戳口径落 value，供 MTTD/MTTR 计算）。
+        # 均带 _TENANT_COLS，class_id 列承担班级隔离（与任务书口径一致）。
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS ops_scenarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL DEFAULT '',
+            class_id TEXT NOT NULL DEFAULT '',
+            scenario_type TEXT NOT NULL DEFAULT '',   -- node_down | consensus_stall | replay_attack | gas_spike
+            config TEXT NOT NULL DEFAULT '{}',        -- JSON：target_tps / duration_s / quota / fault 参数
+            status TEXT NOT NULL DEFAULT 'ready',     -- ready | used
+            created_by TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            """ + _TENANT_COLS + """
+        )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ops_scenarios_class ON ops_scenarios(class_id)")
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS ops_rounds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scenario_id INTEGER NOT NULL,
+            class_id TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'running',   -- running | stopped
+            started_at TEXT NOT NULL,
+            finished_at TEXT NOT NULL DEFAULT '',
+            result TEXT NOT NULL DEFAULT '{}',        -- JSON：轮次结束时的 KPI 汇总 + 停止方式
+            """ + _TENANT_COLS + """
+        )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ops_rounds_class_status ON ops_rounds(class_id, status)")
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS ops_kpis (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            round_id INTEGER NOT NULL,
+            class_id TEXT NOT NULL DEFAULT '',
+            metric TEXT NOT NULL DEFAULT '',          -- mttd_seconds | mttr_seconds | handle_rate | success_rate | action
+            value REAL NOT NULL DEFAULT 0,
+            detail TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            """ + _TENANT_COLS + """
+        )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ops_kpis_round ON ops_kpis(round_id)")
+
+        # === 任务 #22 热修：租户三列在线迁移（修复真实库 /api/explorer/overview 500） ===
+        # 早期建库早于 _TENANT_COLS 引入，CREATE TABLE IF NOT EXISTS 不会给已存在的表
+        # 补列；而 tenant.scope_filter 生成的条件引用 {表}.user_id，旧库缺列即报
+        # sqlite3.OperationalError: no such column（explorer/monitor/ide 全线 500）。
+        # 对 scope_filter 会触及的业务表全量核对：PRAGMA table_info 检测 +
+        # ALTER ADD 补列（幂等容错，与 student_grades 迁移同范式），旧行 DEFAULT ''
+        # （未登记归属），在 scope_where 的「空值通配」语义下仍可查到，既有行为不变。
+        # 放在所有 CREATE 之后，保证首次初始化与旧库重入都一次性补齐。
+        _SCOPE_TABLES = (
+            "deployed_contracts", "contract_calls", "transactions",
+            "projects", "project_files",
+            "blocks", "nfts", "nft_trades",
+            "tokens", "wallet_balances", "wallet_transfers",
+            "learning_events", "achievements", "user_achievements",
+            "challenges", "user_challenges",
+        )
+        for _st in _SCOPE_TABLES:
+            _st_cols = {row["name"] for row in c.execute(f"PRAGMA table_info({_st})")}
+            if not _st_cols:
+                continue  # 表不存在：跳过（容错）
+            for _st_col in ("tenant_id", "user_id", "session_id"):
+                if _st_col not in _st_cols:
+                    c.execute(f"ALTER TABLE {_st} ADD COLUMN {_st_col} TEXT NOT NULL DEFAULT ''")
 
 
 def now() -> str:

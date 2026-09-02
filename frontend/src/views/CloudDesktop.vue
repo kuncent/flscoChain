@@ -1,5 +1,32 @@
 <template>
   <div class="cloud dq-enter-up">
+    <!-- 组织-节点-角色矩阵（rolematrix 端点驱动；接口异常时整块隐藏） -->
+    <div class="dq-card matrix-card" v-if="roleMatrix">
+      <div class="dq-card-title">
+        <el-icon><Connection /></el-icon>
+        组织 - 节点 - 角色矩阵
+        <span class="dq-tag info" style="margin-left:auto">{{ matrixRoleCount }} 联盟角色 · {{ matrixNodeCount }} 共识节点</span>
+      </div>
+      <div class="matrix-grid">
+        <div class="mx-node" v-for="(orgs, node) in roleMatrix.nodes" :key="node">
+          <div class="mx-node-id">{{ node }}</div>
+          <div class="mx-orgs">
+            <span class="mx-org" v-for="(o, oi) in orgs" :key="oi">{{ o }}</span>
+          </div>
+        </div>
+      </div>
+      <div class="mx-roles">
+        <div class="mx-role" v-for="r in roleMatrix.roles" :key="r.key" :title="r.desc">
+          <span class="mr-icon">{{ r.icon }}</span>
+          <span class="mr-name">{{ r.name }}</span>
+          <span class="mr-wallet">{{ r.wallet }}</span>
+          <span class="mr-tags">
+            <span class="mr-tag" v-for="(t, ti) in permTags(r)" :key="ti">{{ t }}</span>
+          </span>
+        </div>
+      </div>
+    </div>
+
     <!-- 左侧：步骤导航 + 进度 -->
     <div class="left">
       <div class="dq-card steps-card">
@@ -89,6 +116,18 @@
         </div>
         <p class="desc">{{ cur.desc }}</p>
 
+        <!-- 角色视角 + 商业流程定位（TUTORIAL 可选字段，缺失时整块隐藏） -->
+        <div class="step-perspective" v-if="cur.role_focus || cur.biz_note">
+          <div class="sp-item" v-if="cur.role_focus">
+            <span class="sp-label">👤 主导角色</span>
+            <span class="sp-value">{{ cur.role_focus }}</span>
+          </div>
+          <div class="sp-item" v-if="cur.biz_note">
+            <span class="sp-label">💼 商业定位</span>
+            <span class="sp-value">{{ cur.biz_note }}</span>
+          </div>
+        </div>
+
         <!-- 原理讲解 -->
         <div class="dq-principle" v-if="cur.principle">
           <div class="dp-label">◆ 原理讲解</div>
@@ -149,48 +188,8 @@
       </div>
     </div>
 
-    <!-- 右侧：监控面板 + 云桌面终端 -->
+    <!-- 右侧：云桌面终端 -->
     <div class="right-panel">
-      <!-- 实时监控面板 -->
-      <div class="dq-card monitor-card">
-        <div class="dq-card-title">
-          <el-icon><Monitor /></el-icon>
-          实时监控
-          <span class="monitor-status" :class="nodeStatusClass">
-            <span class="status-dot"></span>
-            {{ nodeStatusText }}
-          </span>
-        </div>
-        <div class="monitor-grid">
-          <div class="monitor-item">
-            <div class="mi-label">区块高度</div>
-            <div class="mi-value">#{{ chainHeight }}</div>
-          </div>
-          <div class="monitor-item">
-            <div class="mi-label">共识节点</div>
-            <div class="mi-value">4/4</div>
-          </div>
-          <div class="monitor-item">
-            <div class="mi-label">出块速度</div>
-            <div class="mi-value">~3s</div>
-          </div>
-          <div class="monitor-item">
-            <div class="mi-label">交易数</div>
-            <div class="mi-value">{{ txCount }}</div>
-          </div>
-        </div>
-        <div class="node-list">
-          <div class="node-item" v-for="node in nodes" :key="node.id">
-            <span class="node-id">{{ node.id }}</span>
-            <span class="node-role">{{ node.role }}</span>
-            <span class="node-status" :class="node.status">
-              <span class="dot"></span>
-              {{ node.status === 'running' ? '运行中' : '已停止' }}
-            </span>
-          </div>
-        </div>
-      </div>
-
       <!-- 云桌面终端 + 文件浏览器 + 编辑器（标签页切换） -->
       <div class="dq-card terminal-card">
         <div class="dq-card-title">
@@ -336,6 +335,8 @@ import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import 'xterm/css/xterm.css'
 import { chainApi } from '@/api'
+// 任务 #21：教程进度改事件驱动（SSE 推送）
+import { onBusEvent } from '@/api/events'
 import { useAppStore } from '@/stores/app'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { safeGet, safeSet, fmtDuration } from '@/utils/storage'
@@ -343,6 +344,28 @@ import * as monaco from 'monaco-editor'
 
 const app = useAppStore()
 const steps = ref<any[]>([])
+
+/* ---------- 组织-节点-角色矩阵（GET /chain/tutorial/rolematrix） ---------- */
+const roleMatrix = ref<any>(null)
+const matrixNodeCount = computed(() => Object.keys(roleMatrix.value?.nodes || {}).length)
+const matrixRoleCount = computed(() => (roleMatrix.value?.roles || []).length)
+async function loadRoleMatrix() {
+  try {
+    roleMatrix.value = await chainApi.roleMatrix()
+  } catch {
+    roleMatrix.value = null  // 矩阵拉取失败不阻塞教程主流程
+  }
+}
+/** 角色权限位 → 可读标签（rolematrix 字段缺失时返回空数组容错） */
+function permTags(r: any): string[] {
+  const tags: string[] = []
+  const perm = r?.perm || {}
+  if (perm.can_manage_trees) tags.push('管理树种')
+  if (perm.can_issue_badge) tags.push('发勋章')
+  if (perm.can_issue_voucher) tags.push('发骑行券')
+  if (r?.energy_rule?.points) tags.push(`发能量 +${r.energy_rule.points}/次`)
+  return tags
+}
 const active = ref(0)
 const loading = ref(false)
 const termRef = ref<HTMLElement>()
@@ -652,30 +675,31 @@ watch(activeTab, (tab) => {
   }
 })
 
-/* ---------- 监控面板数据 ---------- */
-const txCount = ref(0)
-const nodes = ref([
-  { id: 'node0', role: '管理员+地铁', status: 'running' },
-  { id: 'node1', role: '公交+单车', status: 'running' },
-  { id: 'node2', role: '外卖+回收', status: 'running' },
-  { id: 'node3', role: '热备/监管', status: 'running' },
-])
-const nodeStatusClass = computed(() => {
-  const allRunning = nodes.value.every(n => n.status === 'running')
-  return allRunning ? 'status-ok' : 'status-warn'
-})
-const nodeStatusText = computed(() => {
-  const running = nodes.value.filter(n => n.status === 'running').length
-  return running === 4 ? '全部在线' : `${running}/4 在线`
-})
+/* ---------- 教程进度事件同步（防抖：同一事件高频触发合并为一次） ----------
+ * 刷新策略：事件驱动（tutorial_step_done 推送），服务端拉取进度合并到本地。 */
 
-// 定时更新交易数（模拟）
-let txTimer: any = null
-function startTxTimer() {
-  if (txTimer) clearInterval(txTimer)
-  txTimer = setInterval(() => {
-    txCount.value += Math.floor(Math.random() * 3)
-  }, 5000)
+/* 事件驱动刷新的 400ms 防抖（简单闭包定时器，无新依赖；同一事件类型高频触发合并为一次） */
+function debounce(fn: () => void, ms: number) {
+  let t: ReturnType<typeof setTimeout> | null = null
+  const wrapped = () => {
+    if (t) clearTimeout(t)
+    t = setTimeout(() => { t = null; fn() }, ms)
+  }
+  ;(wrapped as any).cancel = () => { if (t) { clearTimeout(t); t = null } }
+  return wrapped as typeof wrapped & { cancel: () => void }
+}
+const debouncedSyncProgress = debounce(() => { syncProgressFromServer() }, 400)
+
+/* ---------- SSE 事件订阅 ---------- */
+/* SSE 订阅句柄（onMounted 建，onBeforeUnmount 清理） */
+let offPushStep: (() => void) | null = null
+function startPushSubscriptions() {
+  if (offPushStep) return
+  // 教程步骤完成 → 从服务端同步搭链进度（防抖：同一事件高频触发合并为一次刷新）
+  offPushStep = onBusEvent('tutorial_step_done', () => { debouncedSyncProgress() })
+}
+function stopPushSubscriptions() {
+  offPushStep?.(); offPushStep = null
 }
 
 /* ---------- 持久化键 ---------- */
@@ -873,7 +897,7 @@ const KNOWLEDGE: Record<number, string[]> = {
   10: [
     'name() / balanceOf() 是 view 函数，本地执行不消耗 Gas 不上链',
     'mint() / transfer() 是状态变更函数，广播交易、消耗 Gas、产生 Transfer 事件日志',
-    '6 角色发放链路已打通：🚇地铁→alice+50；📦外卖→learner+10；♻️回收→learner+100',
+    `6 角色发放链路已打通：🚇地铁→${app.currentWallet || '0xlearner'}+50；📦外卖→${app.currentWallet || '0xlearner'}+10；♻️回收→${app.currentWallet || '0xlearner'}+100（接收方 = 「我的钱包」普通用户）`,
     'Step 10 完成 → 进入绿色低碳联盟链（/eco）即可体验完整 6 角色运营闭环：发放→累积→兑换→挂牌→购买→下架',
   ],
 }
@@ -1257,6 +1281,7 @@ onMounted(async () => {
   const wallet = app.currentWallet || '0xlearner'
   const r: any = await chainApi.tutorial(wallet)
   steps.value = r.steps
+  loadRoleMatrix()
   // 服务端进度 → 合并到本地（换浏览器也能续学）
   await syncProgressFromServer()
   // 如果 localStorage 里有未完成的 timer，防止其永远挂着
@@ -1265,8 +1290,8 @@ onMounted(async () => {
   await nextTick()
   initTerm()
   window.addEventListener('resize', onResize)
-  // 启动交易数定时器
-  startTxTimer()
+  // SSE 事件订阅（教程进度同步）
+  startPushSubscriptions()
 })
 
 onActivated(() => {
@@ -1299,12 +1324,77 @@ onBeforeUnmount(() => {
   term?.dispose()
   destroyEditor()
   window.removeEventListener('resize', onResize)
-  if (txTimer) clearInterval(txTimer)
+  stopPushSubscriptions()
+  // 清理挂起的防抖定时器（防组件卸载后回调泄漏）
+  debouncedSyncProgress.cancel()
 })
 </script>
 
 <style scoped lang="scss">
 .cloud { display: grid; grid-template-columns: 450px 1fr; gap: 14px; height: calc(100vh - 110px); }
+
+/* ---------- 组织-节点-角色矩阵 ---------- */
+.matrix-card {
+  grid-column: 1 / -1;
+  padding: 14px 18px;
+
+  .matrix-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px; margin-top: 10px;
+  }
+  .mx-node {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 8px;
+    background: rgba(0,230,195,0.04);
+    border: 1px solid var(--dq-border);
+    transition: all .2s;
+    &:hover { border-color: rgba(0,230,195,0.35); transform: translateY(-2px); }
+    .mx-node-id {
+      font-family: var(--dq-mono); font-size: 13px; font-weight: 700;
+      color: var(--dq-primary); min-width: 52px;
+    }
+    .mx-orgs { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .mx-org { font-size: 12px; color: var(--dq-text-dim); line-height: 1.5; }
+  }
+  .mx-roles {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 8px; margin-top: 10px;
+  }
+  .mx-role {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 8px 10px; border-radius: 8px;
+    background: rgba(255,255,255,0.02);
+    border: 1px dashed var(--dq-border);
+    .mr-icon { font-size: 15px; }
+    .mr-name { font-size: 12px; font-weight: 600; color: var(--dq-text); }
+    .mr-wallet {
+      font-family: var(--dq-mono); font-size: 11px;
+      color: var(--dq-primary); background: rgba(0,230,195,0.08);
+      padding: 1px 6px; border-radius: 4px;
+    }
+    .mr-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+    .mr-tag {
+      font-size: 10px; color: var(--dq-text-dim);
+      background: rgba(77,141,255,0.08); border: 1px solid rgba(77,141,255,0.25);
+      padding: 1px 6px; border-radius: 3px;
+    }
+  }
+}
+
+/* ---------- 步骤角色视角 / 商业定位 ---------- */
+.step-perspective {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  margin: 0 0 12px;
+  .sp-item {
+    display: flex; align-items: flex-start; gap: 8px;
+    flex: 1; min-width: 240px;
+    padding: 8px 12px; border-radius: 8px;
+    background: linear-gradient(135deg, rgba(0,230,195,0.06), rgba(77,141,255,0.04));
+    border: 1px solid rgba(0,230,195,0.18);
+    .sp-label { font-size: 11px; color: var(--dq-primary); font-weight: 700; white-space: nowrap; margin-top: 1px; }
+    .sp-value { font-size: 12.5px; color: var(--dq-text-dim); line-height: 1.6; word-break: break-word; }
+  }
+}
 .left { display: flex; flex-direction: column; gap: 14px; overflow-y: auto; min-width: 0; padding-right: 4px; }
 .steps-card { flex-shrink: 0; min-width: 0; }
 
@@ -1317,169 +1407,9 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-/* ---------- 监控面板 ---------- */
-.monitor-card {
-  flex-shrink: 0;
-  padding: 16px;
-  background: linear-gradient(135deg, rgba(0, 230, 195, 0.05), rgba(77, 141, 255, 0.03));
-  border: 1px solid rgba(0, 230, 195, 0.2);
-}
-
-.monitor-card .dq-card-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 16px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--dq-text);
-}
-
-.monitor-status {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 4px 10px;
-  border-radius: 12px;
-  background: rgba(0, 230, 195, 0.1);
-  color: var(--dq-primary);
-}
-
-.monitor-status.status-ok .status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #00e6c3;
-  box-shadow: 0 0 8px rgba(0, 230, 195, 0.6);
-  animation: pulse 2s ease-in-out infinite;
-}
-
-.monitor-status.status-warn {
-  background: rgba(255, 207, 77, 0.1);
-  color: var(--dq-warn);
-}
-
-.monitor-status.status-warn .status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #ffcf4d;
-  box-shadow: 0 0 8px rgba(255, 207, 77, 0.6);
-}
-
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
-}
-
-.monitor-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.monitor-item {
-  text-align: center;
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--dq-border);
-  border-radius: 8px;
-  transition: all 0.3s;
-}
-
-.monitor-item:hover {
-  background: rgba(0, 230, 195, 0.05);
-  border-color: rgba(0, 230, 195, 0.3);
-  transform: translateY(-2px);
-}
-
-.mi-label {
-  font-size: 11px;
-  color: var(--dq-text-dim);
-  margin-bottom: 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.mi-value {
-  font-size: 20px;
-  font-weight: 700;
-  font-family: var(--dq-mono);
-  background: var(--dq-grad-primary);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.node-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.node-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--dq-border);
-  border-radius: 6px;
-  transition: all 0.2s;
-}
-
-.node-item:hover {
-  background: rgba(0, 230, 195, 0.03);
-  border-color: rgba(0, 230, 195, 0.2);
-}
-
-.node-id {
-  font-family: var(--dq-mono);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--dq-primary);
-  min-width: 60px;
-}
-
-.node-role {
-  flex: 1;
-  font-size: 12px;
-  color: var(--dq-text-dim);
-}
-
-.node-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 10px;
-}
-
-.node-status.running {
-  background: rgba(0, 230, 195, 0.1);
-  color: var(--dq-primary);
-}
-
-.node-status.stopped {
-  background: rgba(255, 107, 107, 0.1);
-  color: var(--dq-danger);
-}
-
-.node-status .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.node-status.running .dot {
-  box-shadow: 0 0 6px rgba(0, 230, 195, 0.6);
-  animation: pulse 2s ease-in-out infinite;
 }
 
 /* ---------- 终端卡片 ---------- */

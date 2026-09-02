@@ -73,13 +73,10 @@ const title = computed(() =>
   props.roleName ? `发放绿色能量 · ${props.roleName}业务凭证` : '发放绿色能量 · 业务凭证',
 )
 
-/** 必填业务字段（进站口 / 出站口 / 订单号 / 重量 …） */
-const proofFields = computed(() => {
-  const fields = (props.rule?.proof_fields || []) as any[]
-  // 过滤：业务单号字段若已在表单中，不额外重复渲染
-  const pf = props.rule?.proof_no_field
-  return fields.filter((f) => f.key !== pf)
-})
+/** 必填业务字段（进站口 / 出站口 / 订单号 / 重量 …）。
+ * 注意：不可过滤业务单号字段——共享单车/外卖/回收的单号字段（order_id / order_no）
+ * 就在 proof_fields 内，过滤后下方 showProofNo 又为 false，单号输入框会整个丢失 */
+const proofFields = computed(() => (props.rule?.proof_fields || []) as any[])
 
 const showProofNo = computed(() => {
   if (!props.rule?.proof_no_field) return false

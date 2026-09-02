@@ -39,6 +39,8 @@ backend/storage/uploads/
 backend/app/storage/db/*.db
 backend/app/storage/db/*.sqlite*
 backend/storage/db/*.sqlite*
+# 钱包加密密钥库（含加密私钥，严禁入库）
+backend/app/storage/keystore.json
 backend/chain.sqlite3
 backend/*.sqlite3
 *.sqlite3
@@ -67,3 +69,10 @@ scripts/bug_*.ndjson
 scripts/bug_*.manifest.json
 *.manifest.json
 *.ndjson
+_*.diff
+
+# 生成的 PPT/手册产物（体积大，不入库，由 docs/generate-*.js 重新生成）
+docs/output/
+
+# 合约编译缓存（运行时产物）
+backend/app/storage/compile_cache/

@@ -5,13 +5,22 @@ import json
 import time
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from ..chain_client import get_chain_client
 from ..db import get_conn
 from ..tx_decoder import decode_input_data, identify_standard_by_logs
+from ..tenant import request_uid, scope_filter
 
 router = APIRouter(prefix="/api/explorer", tags=["explorer"])
+
+
+# 任务 #18 逐端点鉴权口径（optional 语义，详见各端点 docstring）：
+#   - 查 DB 业务表（deployed_contracts / contract_calls，带 _TENANT_COLS）的端点：
+#     登录 → 本人归属行 + 未登记旧行；未登录 → 仅未登记旧行（公共演示数据），
+#     明确归属他人的私有行不可见（tenant.scope_filter 统一构造）；
+#   - 纯链客户端数据（区块 / 交易 / 地址 / Gas / 性能）：保持公开 —— 联盟链
+#     浏览器语义即全链公共视图，无 per-学生 归属。
 
 
 def _load_contract_abi_map():
@@ -46,12 +55,19 @@ def _enrich_tx(tx) -> dict:
 
 
 @router.get("/overview")
-def overview():
+def overview(request: Request):
+    """总览：链上块高 / 交易公共；合约统计部分按租户 scope 过滤（optional）。"""
     c = get_chain_client()
     height = c.block_number()
     txs = c.list_txs(1000)
+    cond, sp = scope_filter("deployed_contracts", request_uid(request))
     with get_conn() as conn:
-        contracts = conn.execute("SELECT COUNT(*) AS n, standard FROM deployed_contracts GROUP BY standard").fetchall()
+        contracts = conn.execute(
+            "SELECT COUNT(*) AS n, standard FROM deployed_contracts"
+            + (" WHERE " + cond if cond else "")
+            + " GROUP BY standard",
+            sp,
+        ).fetchall()
     contract_count = sum(r["n"] for r in contracts)
     std_breakdown = {r["standard"] or "自定义": r["n"] for r in contracts}
     # 近 7 日趋势
@@ -112,20 +128,35 @@ def get_tx(tx_hash: str):
 
 
 @router.get("/contracts")
-def list_contracts():
+def list_contracts(request: Request):
+    """已部署合约列表：optional 鉴权 + 租户 scope 过滤（见文件头口径）。"""
+    cond, sp = scope_filter("deployed_contracts", request_uid(request))
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT address,name,standard,deployer,tx_hash,created_at FROM deployed_contracts ORDER BY created_at DESC"
+            "SELECT address,name,standard,deployer,tx_hash,created_at FROM deployed_contracts"
+            + (" WHERE " + cond if cond else "")
+            + " ORDER BY created_at DESC",
+            sp,
         ).fetchall()
     return {"items": [dict(r) for r in rows]}
 
 
 @router.get("/contracts/{address}")
-def get_contract(address: str):
+def get_contract(address: str, request: Request):
+    """合约详情（含调用记录）：optional 鉴权，主行与 calls 同租户 scope 过滤。"""
+    cond, sp = scope_filter("deployed_contracts", request_uid(request))
+    cond_c, sp_c = scope_filter("contract_calls", request_uid(request))
     with get_conn() as conn:
-        r = conn.execute("SELECT * FROM deployed_contracts WHERE address=?", (address,)).fetchone()
+        r = conn.execute(
+            "SELECT * FROM deployed_contracts WHERE address=?"
+            + (" AND " + cond if cond else ""),
+            (address, *sp),
+        ).fetchone()
         calls = conn.execute(
-            "SELECT * FROM contract_calls WHERE contract_address=? ORDER BY id DESC LIMIT 50", (address,)
+            "SELECT * FROM contract_calls WHERE contract_address=?"
+            + (" AND " + cond_c if cond_c else "")
+            + " ORDER BY id DESC LIMIT 50",
+            (address, *sp_c),
         ).fetchall()
     if not r:
         raise HTTPException(404, "contract not found")
@@ -207,14 +238,20 @@ def gas_trend(hours: int = 24):
 
 # ==================== 方向二：代币经济分析 ====================
 @router.get("/token/economics")
-def token_economics():
-    """代币经济模型分析 - 流通量、持有者分布、交易趋势。"""
+def token_economics(request: Request):
+    """代币经济模型分析 - 流通量、持有者分布、交易趋势。
+
+    ERC20 合约清单按租户 scope 过滤（optional）；链上事件统计公共。
+    """
     c = get_chain_client()
 
-    # 获取所有已部署的 ERC20 合约
+    # 获取所有已部署的 ERC20 合约（scope 过滤：登录=本人+旧行，未登录=仅旧行）
+    cond, sp = scope_filter("deployed_contracts", request_uid(request))
     with get_conn() as conn:
         erc20s = conn.execute(
             "SELECT address, name, standard FROM deployed_contracts WHERE standard='ERC20'"
+            + (" AND " + cond if cond else ""),
+            sp,
         ).fetchall()
 
     economics = []
@@ -271,15 +308,24 @@ def token_economics():
 
 # ==================== 方向二：数据一致性校验 ====================
 @router.get("/data/consistency")
-def data_consistency():
-    """数据一致性校验 - 链上数据与链下数据对比。"""
+def data_consistency(request: Request):
+    """数据一致性校验 - 链上数据与链下数据对比。
+
+    校验对象（deployed_contracts 清单）按租户 scope 过滤（optional），
+    学生仅校验自己可见的合约；块高连续性等链级校验公共。
+    """
     c = get_chain_client()
 
     issues = []
 
-    # 1. 检查已部署合约的代码是否存在
+    # 1. 检查已部署合约的代码是否存在（scope 过滤）
+    cond, sp = scope_filter("deployed_contracts", request_uid(request))
     with get_conn() as conn:
-        contracts = conn.execute("SELECT address, name FROM deployed_contracts").fetchall()
+        contracts = conn.execute(
+            "SELECT address, name FROM deployed_contracts"
+            + (" WHERE " + cond if cond else ""),
+            sp,
+        ).fetchall()
 
     for contract in contracts:
         addr = contract["address"]
