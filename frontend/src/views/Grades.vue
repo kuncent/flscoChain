@@ -114,7 +114,7 @@
           <template #default="{ row }">
             <div class="cp-progress">
               <el-progress :percentage="Number(row.progress_pct) || 0" :stroke-width="8"
-                           :color="progColor(Number(row.progress_pct) || 0)" :show-text="false" />
+                           :color="levelColor(Number(row.progress_pct) || 0)" :show-text="false" />
               <span class="cp-steps">{{ row.done_steps }}/{{ row.total_steps }}</span>
             </div>
           </template>
@@ -164,7 +164,7 @@
         </el-table-column>
         <el-table-column label="实训草稿分" width="110" align="center">
           <template #default="{ row }">
-            <span class="score-cell training" :class="scoreClass(row.training_score)">{{ fmtScore(row.training_score) }}</span>
+            <span class="score-cell training" :class="levelClass(row.training_score)">{{ fmtScore(row.training_score) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="目标行" width="130">
@@ -229,7 +229,7 @@
           <template #default="{ row }">
             <el-popover trigger="hover" placement="bottom" :width="320" popper-class="training-pop">
               <template #reference>
-                <span class="score-cell training" :class="scoreClass(row.training_score)">
+                <span class="score-cell training" :class="levelClass(row.training_score)">
                   {{ fmtScore(row.training_score) }}
                   <el-icon class="cell-info"><InfoFilled /></el-icon>
                 </span>
@@ -242,7 +242,7 @@
                   <span class="tp-name">{{ d.name }}</span>
                   <span class="tp-score">{{ d.score }} <small>× {{ d.weight }}</small></span>
                 </div>
-                <el-progress :percentage="d.score" :stroke-width="6" :color="progColor(d.score)" :show-text="false" />
+                <el-progress :percentage="d.score" :stroke-width="6" :color="levelColor(d.score)" :show-text="false" />
                 <div class="tp-metrics">
                   <span v-for="(v, k) in d.metrics" :key="k" class="tp-metric">
                     <span class="mk">{{ metricLabel(String(k)) }}</span><span class="mv">{{ v }}</span>
@@ -256,13 +256,13 @@
         <!-- 教师评分 -->
         <el-table-column label="教师评分" width="100" align="center">
           <template #default="{ row }">
-            <span class="score-cell manual" :class="scoreClass(row.score)">{{ fmtScore(row.score) }}</span>
+            <span class="score-cell manual" :class="levelClass(row.score)">{{ fmtScore(row.score) }}</span>
           </template>
         </el-table-column>
         <!-- 综合成绩（高亮主列）-->
         <el-table-column label="综合成绩" width="120" align="center">
           <template #default="{ row }">
-            <span class="score-cell final" :class="scoreClass(row.final_score)">{{ fmtScore(row.final_score) }}</span>
+            <span class="score-cell final" :class="levelClass(row.final_score)">{{ fmtScore(row.final_score) }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="class_id" label="班级 ID" width="100">
@@ -357,6 +357,8 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'elem
 import { Plus, Refresh, Search, InfoFilled } from '@element-plus/icons-vue'
 import { gradesApi, chainApi, authApi } from '@/api'
 import { fmtDateTime } from '@/utils/time'
+// 分数等级六档（与后端 app/score_levels.py 同源），本页不再自己写 90/80/60 阈值
+import { levelClass, levelColor } from '@/utils/score'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -740,18 +742,9 @@ async function onRefreshTraining() {
 }
 
 /* ---------- 工具 ---------- */
-function scoreClass(s: number) {
-  if (s >= 90) return 'excellent'
-  if (s >= 80) return 'good'
-  if (s >= 60) return 'pass'
-  return 'fail'
-}
-function progColor(s: number) {
-  if (s >= 90) return '#2dd4bf'
-  if (s >= 80) return '#00e6c3'
-  if (s >= 60) return '#4d8dff'
-  return '#ff5470'
-}
+// 等级 / 色阶均走 @/utils/score（六档：卓越/优秀/良好/合格/待完善/未完成），
+// 与报告页同一口径；旧版本页写 90/80/60 三档、报告页写 90/75/60/40，
+// 同一个 65 分在两个页面显示成不同等级。
 function fmtScore(s: any): string {
   if (s === null || s === undefined) return '—'
   return Number(s).toFixed(1)
@@ -913,10 +906,13 @@ onMounted(async () => {
     background: rgba(45,212,191,0.12); border: 1px solid rgba(45,212,191,0.3);
     box-shadow: 0 0 8px rgba(45,212,191,0.08);
   }
-  &.excellent { color: var(--dq-success); }
-  &.good      { color: var(--dq-primary); }
-  &.pass      { color: var(--dq-info); }
-  &.fail      { color: var(--dq-error); }
+  /* 六档等级色（类名 = utils/score.ts 的 level key，两套不得各写一份） */
+  &.lv-supreme    { color: var(--dq-primary); }
+  &.lv-excellent  { color: var(--dq-success); }
+  &.lv-good       { color: var(--dq-info); }
+  &.lv-pass       { color: var(--dq-warn); }
+  &.lv-improving  { color: #ff9500; }
+  &.lv-unfinished { color: var(--dq-error); }
   .cell-info { font-size: 11px; opacity: 0.6; }
 }
 

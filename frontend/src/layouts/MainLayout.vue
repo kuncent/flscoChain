@@ -75,7 +75,7 @@
             <span class="menu-group-icon achv">🏆</span>
             <span class="menu-group-label">成就中心</span>
           </template>
-          <el-menu-item v-for="r in groupAchievements" :key="r.path" :index="r.path">
+          <el-menu-item v-for="r in achvItems" :key="r.path" :index="r.path">
             <el-icon><component :is="r.icon" /></el-icon>
             <span>{{ r.title }}</span>
             <span class="menu-tag" v-if="r.tag">{{ r.tag }}</span>
@@ -321,6 +321,10 @@ const groupEco: RouteItem[] = [
 ]
 const groupAchievements: RouteItem[] = [
   { path: '/achievements', title: '成就墙 · 挑战任务', icon: 'Medal', tag: '积分' },
+  /* 「我的成绩」（/my-grades）此前只注册了路由、没有任何入口，学生要看到
+     “教师是否已评 / 综合分”只能手敲 URL——而它正是评分闭环的学生侧终点。
+     归到成就中心组，靠 canManageGrades 只对学生展示（教师 / 管理员走「学生成绩」）。 */
+  { path: '/my-grades', title: '我的成绩', icon: 'Trophy', tag: '学生' },
 ]
 
 /* 教学管理分组：教师 / 管理员可见（在 template 中按 auth.canManageGrades 控制显示） */
@@ -340,6 +344,7 @@ const groupMap: Record<string, string> = {
   '/nft': '联盟治理与运营',
   '/monitor': '链上验证',
   '/achievements': '成就激励',
+  '/my-grades': '成就激励',
   '/report': '实训交付',
   '/grades': '教学管理',
 }
@@ -355,6 +360,7 @@ const tagMap: Record<string, string> = {
   '/monitor': '阶段 4 · 调用监听',
   '/explorer': '阶段 4 · 链上查询',
   '/achievements': '成就 · 积分与挑战',
+  '/my-grades': '成绩 · 我的实训与综合分',
   '/report': '交付 · 生成报告',
   '/grades': '教学 · 学生成绩管理',
 }
@@ -363,6 +369,7 @@ const progressMap: Record<string, number> = {
   '/ide': 34, '/contracts': 42, '/interfaces': 52,
   '/eco': 70, '/wallet': 78, '/nft': 85,
   '/monitor': 92, '/explorer': 96, '/grades': 88, '/report': 100, '/achievements': 98,
+  '/my-grades': 99,
 }
 
 /* 侧边栏「整体学习进度」：原来直接按路由取 progressMap 里的写死常量，
@@ -387,6 +394,11 @@ const defaultOpen = ['g-learn', 'g-contract', 'g-explorer', 'g-practice', 'g-eco
 
 const reportItem: RouteItem = { path: '/report', title: '生成实训报告', icon: 'Document', tag: '交付' }
 const menus = [...groupLearn, ...groupContract, ...groupExplorer, ...groupPractice, ...groupEco, ...groupAchievements, ...groupTeach, reportItem]
+
+/* 成就中心组的可见项：「我的成绩」仅学生可见（面包屑 / 进度的兼容映射仍走 menus，
+   所以教师直接访问 /my-grades 时顶栏也不会空着） */
+const achvItems = computed(() =>
+  auth.canManageGrades ? groupAchievements.filter((r) => r.path !== '/my-grades') : groupAchievements)
 
 const currentTitle = computed(() => {
   const m = menus.find((x) => route.path.startsWith(x.path))

@@ -17,8 +17,11 @@ from fastapi import APIRouter, Depends, Query
 
 from ..db import get_conn
 from ..learning.events import EventType
+# T2 角色体验多样性：与报告 E 项共用唯一口径实现（不得在本文件另写一段 SQL）
+from ..learning.role_diversity import KNOWN_ROLE_KEYS, experienced_roles
 from ..missions_data import MISSIONS
 from ..security import (
+    PRIVILEGED_ROLES,
     assert_actor_wallet,
     get_current_user,
     lower_wallet_in,
@@ -43,6 +46,8 @@ _ROLE_NORM_SQL = (
 ROLE_DIVERSITY_NEED = {"eco_t4": 2, "eco_t5": 3, "eco_t6": 4, "eco_t7": 5}
 # T4~T7 同时要求对应场景角色至少发放过一次（与任务文案「切到 XX 角色」对应）
 ROLE_SCENE_OF = {"eco_t4": "bus", "eco_t5": "bike", "eco_t6": "takeout", "eco_t7": "recycling"}
+# T2 目标角色数 = 权威角色集大小（与报告 E 项同一个 len(ROLES)，不写死 6）
+ROLE_TARGET = len(KNOWN_ROLE_KEYS)
 
 
 def _scalar(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> int:
@@ -81,11 +86,20 @@ def _issue_stats(
     return n, distinct
 
 
-def _verify_task(conn: sqlite3.Connection, key: str, wallet: str, h: str, lc: list[str]) -> dict:
+def _verify_task(
+    conn: sqlite3.Connection,
+    key: str,
+    wallet: str,
+    h: str,
+    lc: list[str],
+    cands: list[str] | None = None,
+    uid: str | None = None,
+) -> dict:
     """按任务 key 查询平台真实业务数据，返回 {verified: bool, progress: str}。
 
     所有按钱包的查询统一走候选集（h=占位符片段，lc=小写候选参数），
     兼容写路径演示钱包 0xlearner / 埋点 JWT wallet（userId）双轨口径。
+    cands / uid 专供 T2 复用报告 E 项的 `experienced_roles()`（双认人口径）。
     """
     if key == "eco_t1":
         holders = ",".join("?" * len(SYSTEM_CONTRACTS))
@@ -97,17 +111,12 @@ def _verify_task(conn: sqlite3.Connection, key: str, wallet: str, h: str, lc: li
         )
         return {"verified": n >= len(SYSTEM_CONTRACTS), "progress": f"{n}/3 份系统合约已部署激活"}
     if key == "eco_t2":
-        # COUNT(DISTINCT target) 做别名归一（delivery→takeout、recycle→recycling），
-        # 避免历史别名虚增已体验角色计数
-        n = _scalar(
-            conn,
-            "SELECT COUNT(DISTINCT CASE WHEN lower(target) IN ('delivery','takeout') THEN 'takeout' "
-            "WHEN lower(target) IN ('recycle','recycling') THEN 'recycling' "
-            "ELSE lower(target) END) FROM learning_events "
-            f"WHERE event_type='{EventType.ECO_ROLE_SWITCH}' AND lower(wallet) IN ({h})",
-            lc,
-        )
-        return {"verified": n >= 6, "progress": f"已切换体验 {n}/6 个联盟角色"}
+        # 口径与报告 E 项完全一致（learning.role_diversity 唯一实现）：
+        # 旧版只规 learning_events.target 且仅按钱包单口径筛，导致真机上
+        #「报告 E 项 6/6 满分、任务 T2 却 5/6 未达标」——同一学生同一批行为
+        # 被两套 SQL 判成不同结果，学生无法理解、教师也无法申诉。
+        n = experienced_roles(conn, cands or lc, user_id=uid)["count"]
+        return {"verified": n >= ROLE_TARGET, "progress": f"已切换体验 {n}/{ROLE_TARGET} 个联盟角色"}
     if key == "eco_t3":
         n, _d = _issue_stats(conn, h, lc, "metro")
         return {"verified": n >= 1, "progress": f"地铁角色已向本钱包发放 {n} 次能量"}
@@ -171,8 +180,13 @@ def missions_curriculum(
             conn, w, user.get("wallet") or user.get("user_id") or ""
         )
         h, lc = lower_wallet_in(cands)
+        # 认人身份与报告取同一口径：特权角色（教师/管理员）不按 user_id 扩并集，
+        # 保持“按钱包单口径”的全局视图（与 report._scope_uid 一致）
+        uid = None if int(user.get("role_id") or 0) in PRIVILEGED_ROLES else (
+            (user.get("user_id") or "").strip() or None
+        )
         for m in MISSIONS:
-            v = _verify_task(conn, m["key"], w, h, lc)
+            v = _verify_task(conn, m["key"], w, h, lc, cands=cands, uid=uid)
             if v["verified"]:
                 verified_count += 1
             items.append({

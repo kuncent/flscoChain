@@ -9,7 +9,7 @@
           <span class="dq-live"><span class="dot"></span>{{ wallet ? '已连接' : '未连接' }}</span>
         </div>
         <div class="hero-sub">
-          钱包地址：<b>{{ wallet || '未连接' }}</b>
+          钱包地址：<b>{{ displayWallet || '未连接' }}</b>
           · 系统自动采集你的链上活动，按 4 维加权计算实训成绩
         </div>
         <div class="hero-sub hero-flow">
@@ -188,6 +188,10 @@ const wallets = useWalletStore()
 // userId 缺失时回落**本人真实链上地址**，不再回落 0xlearner 这个公共演示别名
 // （否则同一浏览器换账号登录会看到彼此的成绩）
 const wallet = computed(() => auth.user?.userId || wallets.myAddress || app.currentWallet || '')
+/* 顶栏与本页的取数键故意用 userId（它稳定、不随切换角色钱包变化，且后端按
+   钱包候选集并集取数），但把内部 UUID 顶在「钱包地址」标签下会误导学生：
+   他拿这串字符去区块链浏览器 / 钱包里找不到任何东西。展示一律用真实 0x 地址。 */
+const displayWallet = computed(() => auth.user?.wallet || wallets.myAddress || '')
 const loading = ref(false)
 const grades = ref<any[]>([])
 const trainingNow = ref<number | null>(null)

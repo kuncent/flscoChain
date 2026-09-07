@@ -28,8 +28,8 @@
   I-1 合约源码阅读/编译/保存  ≥3 次内置模板源码查看  +2；至少 1 次 solc 真实编译成功 +1（合计上限 3）
   I-2 接口调试使用 ≥1 次    +2
 
-【等级】
-  未完成 (<60) / 合格 (60~69) / 良好 (70~79) / 优秀 (80~89) / 卓越 (≥90)
+【等级】六档（唯一来源 app/score_levels.py，前端与 Markdown 共用）
+  卓越 (≥90) / 优秀 (80~89) / 良好 (70~79) / 合格 (60~69) / 待完善 (40~59) / 未完成 (<40)
 """
 from __future__ import annotations
 
@@ -54,10 +54,16 @@ from ..security import (
 )
 # 学习行为埋点统一收口至 learning.events（EventType 常量 + track 唯一写入实现）
 from ..learning.events import EventType, track as _track
-# 角色 key 归一化 + 权威角色集（E 项多样性不得自己写一套角色名单）
-from ..learning.alliance_roles import ROLES, normalize_role_key
+# 联盟角色体验多样性唯一口径（E 项不得自己写角色名单 / SQL，与微任务 eco_t2 共用）
+from ..learning.role_diversity import KNOWN_ROLE_KEYS, experienced_roles
+# 分数等级六档唯一来源（本文件不得再写 if/elif 阈值）
+from ..score_levels import SCORE_LEVELS, level_of
 
 router = APIRouter(prefix="/api/report", tags=["report"])
+
+# E 项「体验全部角色」的目标数 = 权威角色集大小（admin + 5 个业务节点）。
+# 写死 6 会在角色集变更时出现「做满全部角色也只有 5/6」的满不了分死角。
+ROLE_TARGET = len(KNOWN_ROLE_KEYS)
 
 logger = logging.getLogger(__name__)
 
@@ -195,48 +201,16 @@ def _load_eco_brief(
             _sc_le, _sc_le_p = scope_where("learning_events", user_id=user_id)
 
             # ===== 角色：曾体验过多少种不同的联盟角色（E 项基础）======
-            # 修 E 项结构性拿不到分：旧口径读 eco_role_selections，但该表有
-            # UNIQUE(wallet)，只存「当前选中的那一个」角色（且点「切回普通用户」
-            # 会 DELETE 该行），于是 COUNT(DISTINCT role_key) 上限恒为 1 → 学生把 6
-            # 个角色全切换一遍也只能拿 2/10（若最后一步是切回普通用户则直接 0）。
-            # 历史口径改用行为埋点 learning_events.eco_role_switch（与成就
-            # role_all_six / 微任务 eco_t2 / 实训路径核验同一权威源），旧别名经
-            # normalize_role_key 归一、按已知角色集过滤（防脏埋点虚增），并与当前
-            # 选择取并集，兼容埋点上线前的存量数据。
-            _known_roles = {r["key"] for r in ROLES}
-            ev_parts: list[str] = ["event_type=?", "COALESCE(target, '') <> ''"]
-            ev_params: list[Any] = [EventType.ECO_ROLE_SWITCH]
-            # 认人双口径：learning_events.wallet 存的是**当时操作的钱包**（学生点角色
-            # 卡即切到机构钱包，全班共用同一个值），只按本人钱包筛会漏掉“以节点身份
-            # 体验”那一段；新埋点另落 user_id（登录账号），两口径取并集。
-            owner_parts: list[str] = []
-            if filtered:
-                owner_parts.append(_in("wallet"))
-            _by_uid = bool(user_id) and _has_col(conn, "learning_events", "user_id")
-            if _by_uid and filtered:
-                owner_parts.append("lower(COALESCE(user_id, '')) = ?")
-            if owner_parts:
-                ev_parts.append("(" + " OR ".join(owner_parts) + ")")
-                if filtered:
-                    ev_params += list(in_p)
-                if _by_uid and filtered:
-                    ev_params.append(str(user_id).lower())
-            if _sc_le:
-                ev_parts.append(_sc_le)
-                ev_params += list(_sc_le_p)
-            ev_rows = conn.execute(
-                "SELECT target, wallet FROM learning_events WHERE " + " AND ".join(ev_parts),
-                ev_params,
-            ).fetchall()
-            role_keys = {normalize_role_key(r["target"]) for r in ev_rows} & _known_roles
-            role_switches = len(ev_rows)                       # 真实切换动作次数（含切回普通用户）
-            role_wallets = len({str(r["wallet"] or "").lower() for r in ev_rows if r["wallet"]})
-            for _r in conn.execute(
-                "SELECT DISTINCT role_key FROM eco_role_selections" + wallet_filter,
-                wallet_params,
-            ).fetchall():
-                role_keys.add(normalize_role_key(_r["role_key"]))
-            distinct_roles = len(role_keys & _known_roles)     # 「resident」不在 ROLES 内，自然被过滤
+            # 口径唯一实现：app/learning/role_diversity.py（微任务 eco_t2 / 学习路径均调同一函数）。
+            # 旧版在本文件与 missions.py 各写一段 SQL，一度导致真机上「E 项 6/6 满分、
+            # T2 却 5/6 未达标」的分裂读数；learning_events 主源 + 钱包/user_id 双认人
+            # 口径 + eco_role_selections 存量补集 + 归一后 ∩ ROLES 的四步全部沉到函数里。
+            _rd = experienced_roles(
+                conn, candidates, user_id=user_id, apply_scope=bool(_sc_le),
+            )
+            role_switches = _rd["switches"]                    # 真实切换动作次数（含切回普通用户）
+            role_wallets = _rd["wallets"]
+            distinct_roles = _rd["count"]                      # E 项：体验过多少 UNIQUE 角色
 
             # ===== 能量发放：次数、总点数、不同 role_key 发放的角色数（F项核心）======
             row = conn.execute(
@@ -587,9 +561,15 @@ def _suggestions(
     else:
         missing_std = [std for std in ("ERC20", "ERC721", "ERC1155") if (std_breakdown.get(std) or 0) == 0]
         if missing_std:
-            gain_remain = min(10, 3 if "ERC20" in missing_std else 0
-                              + 3 if "ERC721" in missing_std else 0
-                              + 4 if "ERC1155" in missing_std else 0)
+            # 逐项显式求和：旧写法 `3 if x else 0 + 3 if y else 0` 因三元与 `+` 的优先级
+            # 结合成 `3 if x else (0 + 3 if y else 0)`，缺 1 种协议时会算出偏大的建议分。
+            _std_full = {"ERC20": 3, "ERC721": 3, "ERC1155": 4}
+            _awarded = sum(v for k, v in _std_full.items() if (std_breakdown.get(k) or 0) >= 1)
+            a_current = min(20, 10 + _awarded)          # 进入本分支必有 ≥1 份合约（首份 +10）
+            gain_remain = min(
+                sum(_std_full.get(std, 0) for std in missing_std),
+                max(0, 20 - a_current),                 # A 项合计封顶 20
+            )
             sgs.append({
                 "priority": 2, "level": "warn", "category": "A 合约部署",
                 "title": f"缺少 {missing_std} 协议的合约体验（A 项协议分布加分未拿满）",
@@ -628,31 +608,40 @@ def _suggestions(
     dc_done = prog.get("done_count") or 0
     dc_total = prog.get("total_steps") or 10
     dc_fail = prog.get("failed_count") or 0
+    # 建议里的 gain 一律写「封顶后的真实可得分」：D = 步骤分 + 探索加分，合计封顶 10。
+    # 写理论上限会诱导学生刷失败换 0 分，直接损害评分可信度。
+    d_base = 10 if dc_done >= 10 else (6 if dc_done >= 5 else 2 if dc_done >= 1 else 0)
+    explore_now = min(3, dc_fail)
+    d_current = min(10, d_base + explore_now)
+    d_remain = max(0, 10 - d_current)
     if dc_done < dc_total:
-        step_gain = 0 if dc_done >= 10 else (6 if dc_done >= 5 else 2 if dc_done >= 1 else 0)
-        next_gain = 10 - step_gain
         sgs.append({
             "priority": 1, "level": "error", "category": "D 搭链教程",
-            "title": f"搭链教程进度 {dc_done}/{dc_total}（必修 10 分当前约 {step_gain}/10）",
-            "action": f"进入『云桌面·搭链教程』，按顺序执行剩余 {dc_total - dc_done} 步；遇到错误不用怕，保留失败记录会获得 D 项额外的「探索型学生」+1~3 加分。",
-            "gain": f"+D +{next_gain}（再加探索 ≤+3）",
+            "title": f"搭链教程进度 {dc_done}/{dc_total}（D 项当前 {d_current}/10）",
+            "action": f"进入『云桌面·搭链教程』，按顺序执行剩余 {dc_total - dc_done} 步；遇到错误不用怕，"
+                      f"保留失败记录可另获「探索型学生」加分（+1~3，D 项合计封顶 10）。",
+            "gain": f"+D 最多 +{d_remain}（含探索加分，D 封顶 10）",
             "knowledge": "PBFT 共识 / 4 节点落盘 / 证书签发 / 节点启动 / SDK 接入"
         })
-    if dc_fail == 0 and dc_done >= 3:
+    # 探索加分只有在「D 加满仍够不到 10」时才有价值：教程已 10/10 的学生 D 已封顶，
+    # 再刻意制造失败收益恒为 0（旧版无条件建议，且文案「≤10+3=13 不超 D 项 full 值 10」自相矛盾）。
+    explore_remain = min(3 - explore_now, max(0, 10 - d_base - explore_now))
+    if dc_fail == 0 and dc_done >= 3 and explore_remain > 0:
         sgs.append({"priority": 5, "level": "info", "category": "D 搭链探索",
-                    "title": "尚未触发任何搭链失败场景（未拿到探索加分 ≤+3）",
-                    "action": "可以故意在第 4 步改个端口/错误路径触发一次失败，体验 PBFT 节点异常诊断；失败 1 次 +1、失败 2 次 +2、≥3 次 +3（D 项合计 ≤10+3=13 不超 D 项 full 值 10，额外分纳入 I 项建议说明）。",
-                    "gain": "探索 ≤+3（计入 D 项质量分）",
+                    "title": f"尚未触发任何搭链失败场景（探索加分 0/3，D 项当前 {d_current}/10）",
+                    "action": f"失败 1 次 +1、2 次 +2、≥3 次 +3，D 项合计封顶 10 —— 你当前最多可再 +{explore_remain} 分。"
+                              f"优先把剩余 {dc_total - dc_done} 步做完（那才是大头），探索失败只作为诊断练习顺带完成。",
+                    "gain": f"+D ≤+{explore_remain}（计入 D 项质量分，封顶 10）",
                     "knowledge": "共识失败 / 证书过期 / 端口冲突 / 节点宕机等生产事故 80% 的根因"})
 
     # ================= E. 角色与节点体验（10分，多样性）建议 =================
     dr = eco.get("distinct_roles") or 0
-    if dr < 6:
+    if dr < ROLE_TARGET:
         sgs.append({
             "priority": 2, "level": "warn", "category": "E 角色体验",
-            "title": f"仅体验了 {dr}/6 种联盟链节点角色（E 项多样性 10 分需体验至少 4 种拿 8 分，6 种 10 分）",
+            "title": f"仅体验了 {dr}/{ROLE_TARGET} 种联盟链节点角色（E 项多样性 10 分需体验至少 4 种拿 8 分，{ROLE_TARGET} 种 10 分）",
             "action": "依次切换：管理员 / 地铁 / 公交 / 共享单车 / 外卖平台 / 回收公司。至少 4 种即可拿 8 分；体验满 6 种 +10 分。",
-            "gain": f"+E +{max(0, 10 - (10 if dr >= 6 else 8 if dr >= 4 else 5 if dr >= 2 else 2 if dr >= 1 else 0))}",
+            "gain": f"+E +{max(0, 10 - (10 if dr >= ROLE_TARGET else 8 if dr >= 4 else 5 if dr >= 2 else 2 if dr >= 1 else 0))}",
             "knowledge": "联盟链 PBFT 共识：2f+1 个节点共同签名才能最终确认（f=容错节点数）"
         })
 
@@ -914,7 +903,7 @@ def _calc_score(
 
     # ====== E 角色与节点体验 10 ======
     dr = int(eco.get("distinct_roles") or 0)
-    if dr >= 6:
+    if dr >= ROLE_TARGET:
         e = 10
     elif dr >= 4:
         e = 8
@@ -927,7 +916,7 @@ def _calc_score(
     breakdown.append({
         "id": "E", "section": "高级实战", "name": "角色与节点体验",
         "full": 10, "score": e,
-        "rule": f"6/6 角色→10；≥4→8；≥2→5；≥1→2（实际体验 {dr}/6）",
+        "rule": f"{ROLE_TARGET}/{ROLE_TARGET} 角色→10；≥4→8；≥2→5；≥1→2（实际体验 {dr}/{ROLE_TARGET}）",
     })
 
     # ====== F 能量发放多样性 10 ======
@@ -1015,17 +1004,8 @@ def _calc_score(
         })
     final = max(0, total_before - penalty_total)
 
-    # 等级
-    if final >= 90:
-        level = "优秀 🏆"
-    elif final >= 75:
-        level = "良好 🥈"
-    elif final >= 60:
-        level = "合格 ✅"
-    elif final >= 40:
-        level = "待完善 🚧"
-    else:
-        level = "未完成 ❌"
+    # 等级：唯一来源 app/score_levels.py（六档），报告页 / Markdown / 前端色阶同源
+    lvl = level_of(final)
 
     base_score = a + b + c + d_with_bonus  # A~D
     eco_score = e + f + g + h              # E~H
@@ -1037,7 +1017,13 @@ def _calc_score(
         "penalty": penalty_total,
         "error_penalty": err_penalty,
         "warn_penalty": warn_penalty,
-        "level": level,
+        "level": lvl["badge"],
+        "level_key": lvl["key"],
+        "level_color": lvl["color"],
+        "level_scale": [
+            {"min": x["min"], "key": x["key"], "badge": x["badge"], "color": x["color"]}
+            for x in SCORE_LEVELS
+        ],
         "breakdown": breakdown,
         "base_score": base_score,    # A~D 满分 55
         "base_full": 55,
@@ -1780,11 +1766,14 @@ def _render_markdown(d: dict[str, Any]) -> str:
     # 十二、实训结论
     lines.append("## 十二、实训结论")
     lines.append("")
-    if score.get("total", 0) >= 90:
-        lines.append("- 🏆 实训完成度极高，扎实掌握了合约开发、ERC 标准、链上交易与高级联合治理场景。")
-    elif score.get("total", 0) >= 75:
+    total = score.get("total", 0) or 0
+    if total >= 90:
+        lines.append(f"- 🏆 **{score.get('level', '卓越 🏆')}**：实训完成度极高，扎实掌握了合约开发、ERC 标准、链上交易与高级联合治理场景。")
+    elif total >= 80:
+        lines.append("- 🥇 实训完成度优秀，主链路完整，建议补齐剩余多样性细节冲满分。")
+    elif total >= 70:
         lines.append("- 🥈 实训完成度良好，基础模块掌握扎实，建议进一步完善高级实战场景体验。")
-    elif score.get("total", 0) >= 60:
+    elif total >= 60:
         lines.append("- ✅ 实训合格，建议补做高级实战的能量发放与资产兑换环节。")
     else:
         lines.append("- 🚧 实训尚未完成，请按学习路径 L1→L9 依次推进：『云桌面·搭链教程』10 步 → 合约 IDE 部署 → 接口调试 → ERC20 钱包交易 → NFT 市场铸造交易 → 激活 3 份生态合约 → 6 角色 → 能量发放 → 资产兑换。")

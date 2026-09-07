@@ -465,6 +465,7 @@ import {
 } from '@element-plus/icons-vue'
 import { reportApi } from '@/api'
 import { fmtDateTime } from '@/utils/time'
+import { levelColor } from '@/utils/score'
 
 const router = useRouter()
 
@@ -478,7 +479,9 @@ type ScoreBreakdown = {
   quality?: any; detail?: any; behavior?: any;
 }
 type Score = {
-  total: number; level: string;
+  total: number; level: string; level_key?: string; level_color?: string;
+  /** 后端下发的六档档位表（与 app/score_levels.py 同源，前端不再自己写阈值） */
+  level_scale?: { min: number; key: string; badge: string; color: string }[];
   base_score?: number; base_full?: number;
   eco_score?: number; eco_full?: number;
   expand_score?: number; expand_full?: number;
@@ -662,14 +665,10 @@ const sgJumpLabel = (r: string) => ({
   '/interfaces': '接口调试', '/wallet': 'ERC20钱包', '/nft': 'NFT市场', '/eco': '绿色实战',
 } as Record<string,string>)[r] || '对应页面'
 
-const scoreColor = computed(() => {
-  const s = score.value.total
-  if (s >= 90) return '#00e6c3'
-  if (s >= 75) return '#409eff'
-  if (s >= 60) return '#ff9500'
-  if (s >= 40) return '#ffa940'
-  return '#ff4d4f'
-})
+// 等级色：直接用后端下发的 level_color（唯一来源 app/score_levels.py）；
+// 后端未升级时回落到 utils/score.ts（与后端逐字段对齐的镜像），
+// 不再在本页另写 90/75/60/40 一套阈值（旧版与成绩页 90/80/60 不一致）。
+const scoreColor = computed(() => score.value.level_color || levelColor(score.value.total))
 
 /* ========== 工具 ========== */
 const formatInt = (n: any) => (Number(n || 0)).toLocaleString('en-US')
