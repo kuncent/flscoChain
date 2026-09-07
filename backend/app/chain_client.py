@@ -60,6 +60,21 @@ FISCO_BLOCK_LIMIT_MARGIN = 500       # blockLimit = 当前块高 + 500（FISCO �
 _ALIAS_FUND_WEI = 1000 * 10**18
 
 
+def resolve_peer(client: "ChainClient", to_addr: str) -> str:
+    """把交易对手方写法解析为链上地址：真实地址透传，其余（含 0x 前缀的内置
+    别名）走该客户端的别名解析。空值原样返回（合约部署交易无收款方）。
+
+    判据必须是 `wallet_id.is_address`（0x + 40 位十六进制），而不是
+    `startswith("0x")`：密钥库的内置别名本身就带 0x 前缀
+    （`keystore.DEMO_ALIASES`：0xadmin / 0xlearner / 0xmetro …），按前缀判定会把
+    别名原样交给 web3 / FISCO 签名，抛「sending a str, it must be a hex string」，
+    表现为这类转账 100% 失败（运营沙盘 KPI「交易成功率」恒 0% 的真因）。
+    """
+    if not to_addr or wid.is_address(to_addr):
+        return to_addr
+    return client.resolve_account(to_addr)
+
+
 @dataclass
 class Block:
     number: int
@@ -824,7 +839,9 @@ class RealEvmChainClient(ChainClient):
     # ---------- 转账 ----------
     def send_tx(self, from_addr, to_addr, value, data=""):
         sender = self.resolve_account(from_addr)
-        recipient = self.resolve_account(to_addr) if to_addr and not to_addr.startswith("0x") else to_addr
+        # 收款方统一走 resolve_peer：0x 开头的内置别名（0xadmin 等）不是地址，
+        # 旧写法按 startswith("0x") 透传会让每笔转账报错（沙盘成功率恒 0% 真因）
+        recipient = resolve_peer(self, to_addr)
         val = int(value) if str(value).isdigit() else 0
         params = {
             "from": _canon(sender),
@@ -1527,7 +1544,8 @@ class FiscoRpcClient(ChainClient):
     def send_tx(self, from_addr, to_addr, value, data=""):
         with self._lock:
             sender = self.resolve_account(from_addr)
-            recipient = self.resolve_account(to_addr) if to_addr and not to_addr.startswith("0x") else to_addr
+            # 与 EVM 客户端同一判据（resolve_peer）：只有真实地址才直接透传
+            recipient = resolve_peer(self, to_addr)
             val = int(value) if str(value).isdigit() else 0
             try:
                 tx_hash, block_number, receipt = self._sign_and_send(sender, recipient, data or "0x", value=val)

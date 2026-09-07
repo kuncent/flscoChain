@@ -288,3 +288,43 @@ def test_teacher_token_without_class_falls_back_to_binding(client):
         if rid:
             assert client.post(f"/api/sandbox/rounds/{rid}/stop",
                                headers=_h(ghost)).status_code == 200
+
+
+# ===========================================================================
+# 合成负载的收款方判据（真机回归：沙盘 KPI「交易成功率」曾恒 0%）
+# ===========================================================================
+def test_resolve_peer_keeps_real_address_and_resolves_alias():
+    """0x 开头的内置别名不是地址：必须解析为真址，否则每笔合成转账直接报错。"""
+    from app import chain_client as cc
+    from app import keystore as ks
+    from app import wallet_id as wid
+
+    mapped = "0x" + "cd" * 20
+
+    class _Fake:
+        def resolve_account(self, alias):
+            return mapped
+
+    real = "0x" + "1a" * 20
+    assert cc.resolve_peer(_Fake(), real) == real, "真实地址须原样透传"
+    assert cc.resolve_peer(_Fake(), "") == "", "合约部署交易无收款方，不得去解析空值"
+    # 前提：密钥库内置别名按地址判据确实不成立（旧代码错就错在只看 0x 前缀）
+    assert not any(wid.is_address(a) for a in ks.DEMO_ALIASES)
+    for alias in ks.DEMO_ALIASES:
+        assert cc.resolve_peer(_Fake(), alias) == mapped, f"{alias} 须走别名解析"
+
+
+def test_sandbox_load_injection_counts_success(client):
+    """负载注入必须真正计入成功数（地址解析回退时只能记 0，成功率永远为空）。"""
+    sid = _mk_scenario(client, "node_down", target_tps=2.0, quota=5)
+    rid = _start(client, sid)["round_id"]
+    rt = sandbox.get_runtime(rid)
+    try:
+        deadline = time.time() + 8
+        while time.time() < deadline and rt.attempted < 2:
+            time.sleep(0.2)
+        assert rt.attempted >= 2, "负载线程未注入合成交易"
+        assert rt.succeeded == rt.attempted, (
+            f"合成交易失败 {rt.attempted - rt.succeeded} 笔：对手方地址解析回归")
+    finally:
+        _stop(client, rid)

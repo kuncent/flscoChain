@@ -121,6 +121,7 @@ class _RoundRuntime:
     attempted: int = 0                      # 合成交易尝试数
     succeeded: int = 0                      # 合成交易成功数
     finalized: bool = False                 # 结算幂等标志
+    load_err_logged: bool = False           # 合成负载首次失败是否已告警（避免刷屏）
 
 
 def live_round_ids() -> list[int]:
@@ -368,7 +369,14 @@ def _inject_one_tx(rt: _RoundRuntime) -> None:
         client.send_tx("0xlearner", "0xadmin", 1)
         rt.succeeded += 1
     except Exception as e:
-        logger.debug("[sandbox] 合成交易失败 round=%s: %s", rt.round_id, e)
+        # 首次失败必须可见：若合成交易全部报错，KPI「交易成功率」会静默显示 0%，
+        # 现场无法区分「链真的堵了」与「交易根本没发出去」，只记 debug 等于没记。
+        if rt.load_err_logged:
+            logger.debug("[sandbox] 合成交易失败 round=%s: %s", rt.round_id, e)
+        else:
+            rt.load_err_logged = True
+            logger.warning("[sandbox] 合成交易首次失败（后续同类仅记 debug）round=%s: %s",
+                           rt.round_id, e)
 
 
 def _round_actions(round_id: int) -> list:
