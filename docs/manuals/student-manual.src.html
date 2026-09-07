@@ -19,8 +19,8 @@
       <div><b>评分口径</b>报告九维 A~I（100 分）+ 成绩册四维（实训 60% / 教师 40%）</div>
     </div>
     <p class="small muted" style="margin-top:12mm">
-      本手册中的每一个分值、每一条按钮路径，均按平台当前实现核对；文中标注 <span class="tag tag--w">已知问题</span> 的部分，
-      对应《产品与逻辑问题建议清单》中的编号，供你判断"分数为什么和预期不一样"。
+      本手册中的每一个分值、每一条按钮路径，均按平台当前实现核对，并已用学生账号在真实环境逐项验证；
+      遇到"分数为什么和预期不一样"，先按第 12 章 FAQ 与附录 A 的交付前自检自查，再找老师核对。
     </p>
   </div>
 </section>
@@ -44,8 +44,8 @@
     <li><span class="no">04</span><span class="tt">阶段一 · 云桌面搭链 10 步</span><span class="pg">命令速查表 · 验收 · 探索加分</span></li>
     <li><span class="no">05</span><span class="tt">阶段二 · 合约 IDE / 合约管理 / 接口调试</span><span class="pg">A 项 · H 项 · I 项</span></li>
     <li><span class="no">06</span><span class="tt">阶段二 · ERC20 钱包与 NFT 市场</span><span class="pg">B 项 · C 项</span></li>
-    <li><span class="no">07</span><span class="tt">阶段三 · 绿色低碳联盟链实战</span><span class="pg">E 项 · F 项 · G 项</span></li>
-    <li><span class="no">08</span><span class="tt">阶段四 · 链上验证与证据留存</span><span class="pg">监听器 · 区块链浏览器</span></li>
+    <li><span class="no">07</span><span class="tt">阶段三 · 绿色低碳联盟链实战</span><span class="pg">E 项 · F 项 · G 项 · 10 微任务</span></li>
+    <li><span class="no">08</span><span class="tt">阶段四 · 链上验证与证据留存</span><span class="pg">监听器 · 浏览器 · 运营沙盘</span></li>
     <li><span class="no">09</span><span class="tt">生成并导出实训报告</span><span class="pg">九维评分表 · 扣分 · 等级</span></li>
     <li><span class="no">10</span><span class="tt">高分攻略与冲刺清单</span><span class="pg">性价比排序 · 失分点</span></li>
     <li><span class="no">11</span><span class="tt">成绩构成与教师评分闭环</span><span class="pg">60% + 40% 怎么算</span></li>
@@ -120,8 +120,8 @@
     平台按<b>当前操作钱包</b>记录行为。如果你在实训中途把顶栏钱包切到 <code>0xadmin</code> 或同学的钱包，
     之后产生的合约、能量、交易就<b>不再计入你自己的报告</b>。整份实训请<b>始终使用"我的钱包"</b>；
     需要联盟角色权限时，用"选择角色"而不是"切换钱包"。当前版本已把“你的数据”收口为<b>钱包候选集并集</b>
-    （真实地址 / 用户 ID / <code>stu:</code> 别名 / 学号，见 7.3 说明），不会再出现"做了不加分"；
-    但<b>换了钱包就换了一个业务主体</b>这件事依旧成立（建议清单 <b>P0-2</b> 的设计部分）。
+    （真实地址 / 用户 ID / <code>stu:</code> 别名 / 学号，见 7.3 说明）：旧版“做了不加分”的口径缺陷已不存在；<b>现在成立的只是设计边界</b>——换一个钱包就是换了一个业务主体，
+    所以<b>一整份实训请固定用同一个钱包做完</b>。
   </div>
   <div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>03 / 18</span></div>
 </section>
@@ -142,12 +142,12 @@
   <figure>
     <img src="../assets/screenshots/manual/S00-login.png" alt="登录页">
     <figcaption>图 2-1 登录页：账号 + 密码登录。面板里只有“<b>链模式</b>”一项来自后端真实探测；<b>块高、出块周期、沙盒 TPS 柱与底部区块条是前端装饰动画</b>
-    （块高用 <code>19,840,000 + 随机数</code> 起步后自行 +1），<b>不要用它判断链是否活着</b>，真实块高看登录后的侧边栏与区块链浏览器（建议清单 P2-12）。</figcaption>
+    （块高用 <code>19,840,000 + 随机数</code> 起步后自行 +1），<b>不要用它判断链是否活着</b>，真实块高看登录后的侧边栏与区块链浏览器。</figcaption>
   </figure>
 
   <div class="note note--bad">
     <span class="t">登录失败时，先看提示是哪一句</span>
-    当前版本已把三类失败分开（建议清单 <b>P1-4</b> 已修）：
+    当前版本已把三类失败分开：
     ① <b>「用户名或密码错误」等 SSO 原文</b> —— 是你的账号密码问题，用小写、无空格重新输入一次；
     ② <b>「SSO 登录接口 HTTP 4xx/5xx」</b> —— 统一身份认证服务返回异常，不是你的密码错；
     ③ <b>「无法连接 SSO 服务」</b> —— 后端与 SSO 之间的网络不通。
@@ -165,7 +165,7 @@
   <table>
     <thead><tr><th style="width:34mm">区域</th><th>作用</th><th style="width:52mm">实训中你要看它什么</th></tr></thead>
     <tbody>
-      <tr><td><b>左侧导航</b></td><td>按 4 阶段分组：链底层搭建 / 业务合约开发 / 联盟治理与运营 / 链上验证 / 成就中心，底部固定"生成实训报告"</td><td>实训顺序就是它的顺序</td></tr>
+      <tr><td><b>左侧导航</b></td><td>按 4 阶段分组：链底层搭建 / 业务合约开发 / 联盟治理与运营 / 链上验证 / 成就中心（组内有<b>成就墙 · 挑战任务</b>与<b>我的成绩</b>两项），底部固定"生成实训报告"</td><td>实训顺序就是它的顺序；<b>看综合分就走「成就中心 → 我的成绩」</b>，不用手输网址</td></tr>
       <tr><td><b>左下"当前链状态"</b></td><td>引擎（EVM / FISCO / 沙盒）、块高、<b>整体学习进度</b></td><td>块高在涨 = 链活着；这里的进度现在是<b>你的真实进度</b>（每 15 秒与切页时从后端拉一次），与总览页应一致</td></tr>
       <tr><td><b>顶栏中部</b></td><td>当前阶段提示、快捷键（<code>?</code>）、生成实训报告入口</td><td>随时可一键跳报告</td></tr>
       <tr><td><b>顶栏"当前操作钱包"</b></td><td>下拉可切换"我的钱包"或联盟角色钱包</td><td>整份实训保持"我的钱包"（见 1.3）</td></tr>
@@ -209,9 +209,11 @@
     </div>
     <div class="note note--tip" style="margin:0">
       <span class="t">九项全部可以拿满：实测 100 / 100</span>
-      本手册配套的一个真实学生账号（学号 <code>19898800030</code>）已把 A~I 九维全部做到满分：
-      <b>报告 100 分・等级“优秀 🏆”・零扣分</b>，四维实训 100、教师评分 88、综合成绩 <b>95.2</b>。
-      曾经堵死满分的两个口径（B 项链上交易恒 0、只有 1 个树种）已在本版本修好，
+      本手册配套的一个真实学生账号（学号 <code>19898800030</code>，姓名 赵佳正，班级 216）已把 A~I 九维全部做到满分：
+      <b>报告 100 分・等级「卓越 🏆」・零扣分</b>（基础 55/55 · 高级实战 40/40 · 综合拓展 5/5），
+      四维实训 100、教师评分 88、综合成绩 <b>95.2</b>，联盟运营微任务 <b>10/10 服务端验收通过</b>。
+      曾经堵死满分的 B 项口径（链上交易恒 0 分）已在本版本修好；G1 另有一个<b>环境前置</b> ——
+      目录里要真的有 ≥ 2 个在售树种（全新空库会自动播种 2 个，旧库需老师补上架），
       第 10 章给出按分值排序的最优拿分路径与实测轨迹。
     </div>
   </div>
@@ -356,7 +358,7 @@
     <span class="t">关于“真实执行”与“教学模拟”（哪些输出不是真上链）</span>
     <b>真实链 / 真实编译</b>：Step 6–7 的 <code>getAccountBalance</code>、Step 8–10 的 <code>call</code> / <code>deploy</code> / <code>getTransactionReceipt</code>。
     <b>教学模拟</b>（本地无 docker / FISCO 节点时降级展示观测要点）：Step 1–5 全部命令、Step 6 的 <code>cat</code> 规则表、Step 8 的节点脚本 / 证书 / 端口三条。响应会带 <code>source: real / simulated</code> 字段标真实来源。
-    这是平台已知的设计取舍（建议清单 <b>P2-11</b>），不影响步骤判定与 D 项得分，但写实训报告时应准确描述“哪一段仿真、哪一段真实上链”。
+    这是平台已知的设计取舍，不影响步骤判定与 D 项得分，但写实训报告时应准确描述“哪一段仿真、哪一段真实上链”。
   </div><h3><span class="num">4.3</span>D 项评分细则与"探索加分"</h3><div class="grid2">
     <div class="card">
       <h4>完成度得分</h4>
@@ -373,7 +375,7 @@
     <div class="card">
       <h4>失败探索加分（+1 ~ +3，D 项仍封顶 10）</h4>
       <p class="small">平台鼓励"试错式学习"：搭链过程中的失败尝试计入学习质量维度 —— 失败 1 次 +1、2 次 +2、≥3 次 +3。</p>
-      <p class="small muted">含义：一次都没失败过（0 次）时，报告会提示"缺少探索加分"；对 D 项尚未做满的同学，这是补分来源。</p>
+      <p class="small muted">要点：探索加分<b>只在 D 项加满 10 分之前有意义</b>。教程做到 10/10 时 D 已封顶，再刻意制造失败收益恒为 0，报告也不会再提示这一项；只有「进度 ≥ 3 步、一次都没失败过、且 D 距封顶还差分」时，报告页的「学习建议与提升路径」区才会出现 <b>D 搭链探索</b> 条目，并写明你当前真实可再得的分值。</p>
     </div>
   </div><div class="note note--tip">
     <span class="t">验收点：怎么确认这一步真的算完成了</span>
@@ -477,7 +479,7 @@
       <tr><td>0 笔</td><td class="c">0</td><td>从未发起过任何真实交易</td></tr>
     </tbody>
   </table><div class="note note--tip">
-    <span class="t">为什么这些交易真的算到你头上（P0-3 已修）</span>
+    <span class="t">为什么这些交易真的算到你头上</span>
     链上 <code>transactions</code> 表只存<b>真实 0x 地址</b>，而登录态里还有用户 ID、<code>stu:</code> 别名与学号。
     报告聚合现在按<b>钱包候选集取并集</b>，所以你用 <code>0x017f…d366</code> 发的那 19 笔能完整回到你名下（实测 B 项 15/15）。
     如果你发现 B 项仍为 0，先确认两件事：① 你记得的那些交易确实是<b>你本人登录</b>时发的（不是借了同学账号）；
@@ -581,7 +583,7 @@
     <span class="t">数据归属口径（已收口，不再是“做了不加分”）</span>
     报告不再拿单一钱包字符串去硬匹配，而是按你的<b>钱包候选集</b>取并集：
     <code>真实地址 / 用户 ID / stu: 别名 / 登录账号</code>（例：本报告 <code>identity.wallet_candidates</code> 就包了这 4 个写法）。
-    因此角色切换、能量发放、兑换、转账、NFT 铸造与成交都能正常回收到你名下（建议清单 P0-2 / P0-3 已修）。
+    因此角色切换、能量发放、兑换、转账、NFT 铸造与成交都能正常回收到你名下。
     <b>但仍然成立的一条</b>：行为按<b>操作人</b>归属。如果你拿同学的账号登录后操作，那部分数据会计到<b>同学</b>的报告里。
   </div>
   <div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>10 / 18</span></div>
@@ -618,7 +620,7 @@
     <li><b>兑换植树证书（第一份）</b>：选一个树种（如<b>银杏</b> 1000）→ 确认扣减 → 发起交易；成功后证书进入“我的证书”，<b>签发记录不可变</b>。</li>
     <li><b>兑换植树证书（第二份，G1 拿满 8 分的关键）</b>：选<b>另一个树种</b>（如<b>水杉</b> 1500）再换一份。
       <span class="tag tag--w">硬前置</span>目录下必须真的有 ≥ 2 个 active 树种。本环境由<b>教师在「联盟治理」视角上架了水杉</b>，
-      若你的页面只看到一个树种，请老师按教师手册 3.4 先上架（需先扮演联盟管理员，且“所需能量”不得低于 1000）。</li>
+      若你的页面只看到一个树种，请老师按教师手册 3.3 先上架（需先扮演联盟管理员，且“所需能量”不得低于 1000）。</li>
     <li><b>兑换生态勋章</b>：10 能量 / 枚 → ERC1155 铸造入账。</li>
     <li><b>兑换骑行券</b>：20 能量 / 张 → 由<b>共享单车节点</b>在链上签发（不是管理员代签）。</li>
     <li>可选加分动作：把兑换到的证书 / 勋章 / 骑行券<b>挂牌上市场</b>（回到 6.3）→ 同时补齐 C 项与部分 B 项。</li>
@@ -654,6 +656,68 @@
 </section>
 
 <section class="page">
+  <div class="hdr"><span>第 07 章 · 联盟运营微任务</span><span>CHAPTER 07 · MISSION BOARD</span></div>
+
+  <div class="kicker">CHAPTER 07 · BONUS</div>
+  <h2>任务中心：联盟运营 10 微任务（总览页 · 服务端自动验收）</h2>
+  <p class="lead">前面 7.1~7.6 的动作很多，平台把它们拆成 <b>10 个 3~5 分钟可交付的小任务</b>，放在<b>总览页右栏的任务卡</b>里。
+  它不另算分，但它是你“还剩哪一步没做”的实时清单 —— 因为<b>打勾不是你自己点的，是服务端查你的真实数据定的</b>。</p>
+
+  <h3><span class="num">7.7</span>它在哪、什么时候出现</h3>
+  <ul class="dash">
+    <li>入口：左侧导航第一页<b>总览</b>，右栏卡片标题会在两个模式间自动切换 ——
+      未搭完链时是「⛓️ 今日任务 · 基础搭建」，<b>云桌面 10 步全部完成后</b>变成「🌿 联盟运营 · 10 微任务」。</li>
+    <li>为什么你看不到它：这个卡片有<b>前置门槛</b>（必须访问过云桌面且 10 步已全完成）。只注册了账号、没打完教程，是看不到微任务的。
+      它也不是故障：先把 D 项的 10 步做完，卡片自己就会切过来。</li>
+    <li>卡底标着运营路线：<b>Phase1 系统激活 T1~T2 · Phase2 能量发放 T3~T7 · Phase3 资产兑换 T8~T10</b>，右上角是完成百分比。</li>
+    <li>刷新时机：回到总览页、切换到其他页再切回来都会重新跑一次自动验收；<b>做完一步就回来看一眼</b>，比“以为做了”可靠。</li>
+  </ul>
+
+  <h3><span class="num">7.8</span>10 张任务卡：做什么 · 靠什么判完成 · 值多少分</h3>
+  <p class="small muted">任务清单的权威源在服务端（<code>app/missions_data.py</code>，接口 <code>GET /api/missions/curriculum</code>）；
+  下表的“实测验收结果”列是账号 <code>19898800030</code> 的真实返回原文，不是示例文案。</p>
+  <table>
+    <thead><tr><th class="c" style="width:10mm">任务</th><th style="width:42mm">要做什么</th><th style="width:50mm">服务端靠什么判定（验收依据）</th><th>实测验收原文</th></tr></thead>
+    <tbody>
+      <tr><td class="c mono">T1</td><td>切到管理员，激活 3 份系统合约</td><td><code>deployed_contracts</code>：GreenEnergy / PlantCertificate / EcoBadge 三份齐</td><td class="small">“3/3 份系统合约已部署激活” → <b>H 5 分</b></td></tr>
+      <tr><td class="c mono">T2</td><td>6 个联盟角色各切换一次</td><td><code>learning_events</code>（<code>eco_role_switch</code>）：切换过全部 6 个角色</td><td class="small">“已切换体验 6/6 个联盟角色” → <b>E 10 分</b></td></tr>
+      <tr><td class="c mono">T3</td><td>地铁角色发放（通勤 ≥ 10 km）</td><td><code>eco_energy_records</code>：metro 向<b>你的钱包</b>发放 ≥ 1 次</td><td class="small">“地铁角色已向本钱包发放 2 次能量” → F 起步 3 分</td></tr>
+      <tr><td class="c mono">T4</td><td>公交角色发放（≥ 5 min）</td><td>bus 发放过 <b>且</b>累计 ≥ 2 种角色向你发放</td><td class="small">“bus 已发放 2 次 · 角色多样性 5/2 种” → F 6 分</td></tr>
+      <tr><td class="c mono">T5</td><td>单车角色发放（≥ 2 km）</td><td>bike 发放过 且 角色多样性 ≥ 3 种</td><td class="small">“bike 已发放 1 次 · 角色多样性 5/3 种” → <b>F 10 分满</b></td></tr>
+      <tr><td class="c mono">T6</td><td>外卖角色发放（勾选无需餐具）</td><td>takeout 发放过 且 多样性 ≥ 4 种</td><td class="small">“takeout 已发放 1 次 · 角色多样性 5/4 种” → G3 +3</td></tr>
+      <tr><td class="c mono">T7</td><td>回收角色发放（重量 ≥ 1 kg）</td><td>recycling 发放过 且 metro/bus/bike/takeout/recycling <b>5 种全齐</b></td><td class="small">“recycling 已发放 5 次 · 角色多样性 5/5 种”</td></tr>
+      <tr><td class="c mono">T8</td><td>兑换植树证书，且 ≥ 2 个树种</td><td><code>eco_certificates</code>：本钱包兑换过 ≥ 2 种不同树种</td><td class="small">“已兑换 2 种树种的植树证书（需 ≥ 2 种）” → <b>G1 8 分</b></td></tr>
+      <tr><td class="c mono">T9</td><td>勋章 + 骑行券各兑换 1 次</td><td><code>eco_badges</code>：badge 与 voucher 两类都持有</td><td class="small">“已兑换 2/2 类绿色资产（勋章 / 骑行券）” → <b>G2 4 分</b></td></tr>
+      <tr><td class="c mono">T10</td><td>生成并查看实训报告</td><td><code>learning_events</code>（<code>report_view</code>）：≥ 1 次</td><td class="small">“已生成 / 查看实训报告 35 次（需 ≥ 1 次）” → 交付动作</td></tr>
+    </tbody>
+  </table>
+
+  <div class="grid2">
+    <div class="note note--tip" style="margin:0">
+      <span class="t">打勾规则：服务端验收优先，本地打卡只是降级</span>
+      已被服务端验收的任务会显示为锁定态，行底标签写<b>「· 服务端验收」</b>，<b>再点会提示“已由服务端验收，不可取消”</b>；
+      反向也成立：自己手动打的勾标签是<b>「· 本地打卡」</b>，<b>服务端查不到数据就不算真完成</b>（一刷新就掉了）。
+      实测账号 <b>10/10 全部服务端验收通过</b>，十个目标全部靠真实业务数据驱动，不是“点出来的”。
+    </div>
+    <div class="note note--warn" style="margin:0">
+      <span class="t">先看懂“角色多样性 5/2 种”这个写法，再看它与报告 E 项的区别</span>
+      斜线前是你<b>当前已攒到的发放角色种数</b>，斜线后是<b>该任务要求的门槛</b>（所以 5/2 = 已有 5 种、只需 2 种，早就达标）。
+      两个口径不同且<b>都应当如此</b>：多样性数的是<b>有多少种角色向你的钱包发放过能量</b>（收方视角，5 个业务角色），
+      E 项数的是<b>你本人切换体验过多少个角色</b>（操作视角，含不发能量的管理员，共 6 个）。
+      实测账号就是 <b>5/5 发放多样性 + 6/6 角色体验</b>，两个数并存是正确的，不是矛盾。
+    </div>
+  </div>
+  <div class="note note--bad">
+    <span class="t">拿分次序建议：把 10 微任务当成九维分的“导航”用</span>
+    T1~T2 兑的是 H + E（15 分），T3~T7 兑的是 F + G3（13 分），T8~T9 兑的是 G1 + G2（12 分），T10 是交付。
+    也就是说：10 个微任务全绿，<b>你只拿到了报告 100 分里的 40 分（高级实战 40）</b>；
+    剩下的 A 20 / B 15 / C 10 / D 10 / I 5 分别属于合约部署、链上交易、资产成交、搭链教程与学习质量，
+    仍然要按第 04 → 06 章逐块补。具体优先级见第 10 章。
+  </div>
+  <div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>12 / 18</span></div>
+</section>
+
+<section class="page">
   <div class="hdr"><span>第 08 章 · 阶段四 链上验证</span><span>CHAPTER 08 · ON-CHAIN VERIFICATION</span></div>
 
   <div class="kicker">CHAPTER 08</div>
@@ -676,7 +740,7 @@
     监听器的“异常调用”统计的是<b>链上合约调用记录中 status ≠ success 的行</b>（reverted / 0 / failed），包括 <code>name</code> / <code>decimals</code> 等
     <b>只读查询</b>的失败；而报告的 <b>P 项只读「绿色低碳联盟链」页的操作审计日志</b>（见 9.3）。<b>两者是完全不互通的两套数</b>：
     实测某账号监听器里累计 <b>13 笔异常调用、成功率 31.6%</b>，而这些 reverted 全部来自<b>链重置后已作废的旧合约地址</b>，
-    同账号报告的 <b>P 项扣分仍为 0</b>（建议清单 P2-9 / P2-14）。
+    同账号报告的 <b>P 项扣分仍为 0</b>。
     所以：看到“异常调用”很高<b>不要慌</b>，先按 9.3 确认 P 项；真正的风险是在<b>失效地址上空转</b>（浪费点击且不产生任何分），
     处理办法见 5.3：“已失效”标记的合约直接跳过，去重新部署一份。
   </div>
@@ -696,13 +760,86 @@
   </ol>
   <figure>
     <img src="../assets/screenshots/manual/S07-explorer.png" alt="区块链浏览器">
-    <figcaption>图 8-2 区块链浏览器：区块 / 交易 / 地址三个视图。注意"平均 Gas 0"为当前已知展示问题（P3-15）。</figcaption>
+    <figcaption>图 8-2 区块链浏览器：区块 / 交易 / 地址三个视图。注意"平均 Gas 0"是当前已知的展示问题，不代表你的交易有问题。</figcaption>
   </figure><div class="note note--tip">
     <span class="t">验收点：一份合格的学生证据清单</span>
     至少留存：① 3 份合约部署哈希；② ≥ 10 笔交易哈希（或浏览器地址页截图）；③ 6 个角色各 1 次发放流水；④ 1 次证书 + 1 次勋章 + 1 次骑行券兑换记录；⑤ 1 次市场成交记录。
     有这五项，无论报告口径如何，你的实训完成度都可被交叉证明。
   </div>
   <div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>12 / 18</span></div>
+</section>
+
+<section class="page page--alt">
+  <div class="hdr"><span>第 08 章 · 运营沙盘</span><span>CHAPTER 08 · OPS SANDBOX</span></div>
+
+  <div class="kicker">CHAPTER 08 · BONUS</div>
+  <h2>运营沙盘：链上运维演练（在监听器页底部，不计入得分）</h2>
+  <p class="lead">沙盘是一条链真实运行时的“故障演习”：教师注入一个线上故障（节点宕机 / 共识停滞 / 凭证重放 / gas 飙升），
+  合成负载真的往链上打交易，你们比的是<b>多快定位、多快对症处置</b>。它考的是运维能力，<b>不进九维报告、也不进四维实训分</b>。</p>
+
+  <h3><span class="num">8.3</span>入口与前提：为什么你看到的是“待命”</h3>
+  <ul class="dash">
+    <li>位置：<b>调用监听器</b>页底部卡片「🛰️ 运营沙盘 · 链上运维演练」，与链上流水同一页——因为处置完本来就该回这里看链有没有恢复。</li>
+    <li>标题右侧是状态灯：<b>绿灯 = 「轮次 #N 进行中」</b>，灰灯 = 「待命」。</li>
+    <li>待命时学生会看到：<i>“当前无进行中的演练轮次，等待教师启动演练”</i>。<b>这不是故障，而是默认状态</b>：
+      场景必须由<b>教师 / 管理员</b>创建并启动（你没有「创建场景」按钮），所以开课前的沙盘空着是正常的。</li>
+    <li>轮次按<b>班级</b>隔离：你只看得见本班（实测账号与教师同属班级 216）的演练，也只看得到本班同学的处置流水。</li>
+  </ul>
+
+  <h3><span class="num">8.4</span>四种故障 × 对症动作：选错动作只计 MTTD、不推 MTTR</h3>
+  <table>
+    <thead><tr><th style="width:32mm">故障场景</th><th style="width:44mm">现象（你在页面上看到什么）</th><th>对症处置动作（命中才推进处置率 / 结算 MTTR）</th></tr></thead>
+    <tbody>
+      <tr><td>💥 <b>节点宕机</b> <code class="small">node_down</code></td><td>故障横幅指出哪个节点离线（node0~3），监控页与云桌面均可读取故障态</td><td><b>重启节点</b></td></tr>
+      <tr><td>⏸️ <b>共识停滞</b> <code class="small">consensus_stall</code></td><td>出块暂停标记，<b>负载生成器同步停止注入</b>（链面看不到新交易）</td><td><b>重启节点</b> 或 <b>修复重部署</b></td></tr>
+      <tr><td>🎭 <b>凭证重放攻击</b> <code class="small">replay_attack</code></td><td>能量流水里多出两条<b>相同单号、不同角色</b>的可疑记录，等审计方检出</td><td><b>重放审计</b></td></tr>
+      <tr><td>⛽ <b>gas 飙升</b> <code class="small">gas_spike</code></td><td>启动时一次性合成 1~40 笔（默认 12）小额转账抬高 gas 均值</td><td><b>修复重部署</b> 或 <b>交易限流</b></td></tr>
+    </tbody>
+  </table>
+  <p class="small muted">可选动作共四种：<b>重启节点 / 重放审计 / 修复重部署 / 交易限流</b>。
+  页面的「提交处置动作」下拉<b>默认已帮你选中当前场景的第一个对症动作</b>，下方一行蓝字会写明“对症动作：…”；
+  说明框≤ 200 字（建议写上你看了哪个指标、为什么选这个动作，教师抽查时看的就是这一列）。</p>
+
+  <h3><span class="num">8.5</span>记分板四项指标怎么读</h3>
+  <table>
+    <thead><tr><th style="width:26mm">指标</th><th style="width:52mm">服务端定义</th><th>你想拿好看的成绩，应当怎么做</th></tr></thead>
+    <tbody>
+      <tr><td><b>MTTD</b></td><td>故障注入（≈轮次启动）→ <b>首个</b>处置动作的秒数</td><td>开工就盯着横幅，先提交一个动作抢下 MTTD（哪怕动作不对症）</td></tr>
+      <tr><td><b>MTTR</b></td><td>故障注入 → 首个<b>对症</b>处置动作的秒数；未对症恢复记为 <code>—</code></td><td>看清“对症动作：”那一行再提交，选错只计 MTTD 不降 MTTR</td></tr>
+      <tr><td><b>处置率</b></td><td>已提交的<b>对症动作种类数 ÷ 该场景应有种类数</b> × 100</td><td>共识停滞与 gas 飙升有两个对症动作，<b>两个都交才能 100%</b></td></tr>
+      <tr><td><b>交易成功率</b></td><td>合成负载成功笔数 / 尝试笔数（指标名下方的小字直接写着「合成负载 <code>成功/尝试</code>」）</td><td>这一项<b>不由你的动作控制</b>：它只反映故障期间链的健康度（实测本环境 15~16/16 ≈ 100%），
+        看到它低于 100% 并不是你们做错了什么，而是链上确实有转账被拒（本版已修复一处让该指标恒为 0% 的地址解析缺陷）</td></tr>
+    </tbody>
+  </table>
+  <p class="small muted">记分板每 <b>10 秒</b>采样一次（服务端定时推 <code>sandbox_kpi</code> 事件），所以提交完不会立刻跳数，等一个周期。
+  右侧「处置流水」按 <code>+秒数 · 动作 · 操作人姓名 · 说明</code> 逐条列出全班动作，这是你查“谁抢先了”的唯一窗口。
+  需要特别说明：<b>处置动作只影响时间类指标</b>（MTTD / MTTR / 处置率），它不会真的重启节点、也不会改变负载注入速率 ——
+  它是一个“你在正确时间做了正确判断”的演习凭证。</p>
+
+  <div class="note note--ok">
+    <span class="t">实测样本：一轮完整演练的真实数据（班级 216，轮次 #3）</span>
+    教师以 <b>TPS 0.5 / 时长 40 秒 / 配额 30 笔</b>启动「节点宕机（node1）」→ 故障注入后 <b>3.03 秒</b>，学生账号提交“重启节点 + 重启 node1 并核验共识恢复”→
+    <b>MTTD 3.03s · MTTR 3.03s · 处置率 100% · 交易成功率 100%（16/16 笔合成交易）</b>；
+    40 秒时长自然到时，轮次自动结算为 <code>stopped</code>，场景状态从「待启动」变「已演练」，节点故障标记自动恢复。
+    这就是本手册推荐的完整路径：<b>建景 → 启动 → 处置 → 自然结束（或教师「⏹ 一键停止」）</b>。
+  </div>
+  <div class="grid2">
+    <div class="note note--bad" style="margin:0">
+      <span class="t">它不影响你的分，但会影响你看到的数</span>
+      成绩与报告都<b>不读</b>沙盘台账（<code>ops_scenarios / ops_rounds / ops_kpis</code>），所以演练做得好坏不会动你的九维分。
+      但合成负载是<b>真上链的小额转账</b>（发送方 <code>0xlearner</code> → 收款方 <code>0xadmin</code>，每笔 1），
+      所以监听器与区块链浏览器里会多出成批不属于任何同学的交易 —— <b>它们不计入你的 B 项</b>（B 项只按你的钱包候选集取数），
+      写实训心得时也不要把它当成“自己发了多少笔”。
+    </div>
+    <div class="note note--warn" style="margin:0">
+      <span class="t">安全边界：演练不会删改你的真实数据</span>
+      故障只是<b>内存标记</b>（宕机/停滞）与<b>可识别的合成数据</b>（重放记录带“重放注入”标记），
+      轮次结束一律自动恢复；不会真停链、不会删你的合约与能量。
+      唯一会落库的副作用：重放场景会往能量流水里插两条可疑记录，gas 飙升会合成一批转账，
+      所以<b>不建议在报告刚导出后立刻跑 gas 飙升轮次</b>，否则监听器截图会混入大量与实训无关的交易。
+    </div>
+  </div>
+  <div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>13 / 18</span></div>
 </section>
 
 <section class="page">
@@ -741,7 +878,7 @@
       <tr><td class="c"><b>A</b></td><td>合约开发</td><td class="c"><span class="score">20</span></td><td>部署 ≥1 份得 10；再按 ERC20 +3 / ERC721 +3 / ERC1155 +4 叠加</td></tr>
       <tr><td class="c"><b>B</b></td><td>链上活跃度</td><td class="c"><span class="score">15</span></td><td>真实交易 ≥10 笔拿满（阶梯：1 / 2 / 5 / 10 笔）</td></tr>
       <tr><td class="c"><b>C</b></td><td>资产生命周期</td><td class="c"><span class="score">10</span></td><td>铸造 ≥1 得 5 + 成交 ≥1 得 5</td></tr>
-      <tr><td class="c"><b>D</b></td><td>链搭建完成度</td><td class="c"><span class="score">10</span></td><td>云桌面 10/10 步；探索失败可 +1~3</td></tr>
+      <tr><td class="c"><b>D</b></td><td>链搭建完成度</td><td class="c"><span class="score">10</span></td><td>云桌面 10/10 步得 10；步骤分 + 探索加分<b>合计封顶 10</b>（不再有“10+3=13”的算法）</td></tr>
       <tr><td class="c"><b>E</b></td><td>联盟角色覆盖</td><td class="c"><span class="score">10</span></td><td>6/6 角色都用过</td></tr>
       <tr><td class="c"><b>F</b></td><td>治理深度</td><td class="c"><span class="score">10</span></td><td>≥ 3 种角色有实质操作</td></tr>
       <tr><td class="c"><b>G</b></td><td>绿色经济运营</td><td class="c"><span class="score">15</span></td><td>G1 证书 8 + G2 勋章&amp;骑行券 4 + G3 发放角色 3</td></tr>
@@ -761,31 +898,34 @@
       </table>
       <p class="small muted" style="margin-top:2mm"><b>只统计「绿色低碳联盟链」页的操作审计日志</b>：能量发放被拒、兑换余额不足、
       挂牌 / 购买失败、未选角色就操作、上架树种不合规等。合约 IDE 编译失败、接口调试 reverted、NFT 页 403
-      <b>都不在里面</b>（建议清单 P2-9 的口径已收口）。</p>
-      <p class="small muted" style="margin-top:1.5mm">日志按<b>操作者</b>归因（P1-26）：统计的是<b>你本人发起</b>的那些操作，
+      <b>都不在里面</b>（该口径已收口）。</p>
+      <p class="small muted" style="margin-top:1.5mm">日志按<b>操作者</b>归因：统计的是<b>你本人发起</b>的那些操作，
       别人以角色身份给你发能量时的失败不会扣到你头上。实测账号 21 条日志、error 0 / warn 0 → <b>扣分为 0</b>。</p>
     </div>
     <div class="card">
-      <h4>等级（服务端阈值，与页面显示一致）</h4>
+      <h4>等级（服务端阈值，与页面显示一致 · 六档）</h4>
       <table style="margin:0">
-        <thead><tr><th>总分</th><th class="c">等级</th></tr></thead>
+        <thead><tr><th>总分</th><th class="c">等级</th><th class="c" style="width:16mm">色值</th></tr></thead>
         <tbody>
-          <tr><td>≥ 90</td><td class="c"><b style="color:var(--primary)">优秀 🏆</b></td></tr>
-          <tr><td>≥ 75</td><td class="c"><b style="color:var(--info)">良好 🥈</b></td></tr>
-          <tr><td>≥ 60</td><td class="c"><b style="color:var(--warn)">合格 ✅</b></td></tr>
-          <tr><td>≥ 40</td><td class="c"><b style="color:var(--accent)">待完善 🚧</b></td></tr>
-          <tr><td>&lt; 40</td><td class="c"><b style="color:var(--error)">未完成 ❌</b></td></tr>
+          <tr><td>≥ 90</td><td class="c"><b style="color:var(--primary)">卓越 🏆</b></td><td class="c mono small">#00e6c3</td></tr>
+          <tr><td>80 – 89</td><td class="c"><b style="color:var(--success)">优秀 🥇</b></td><td class="c mono small">#2dd4bf</td></tr>
+          <tr><td>70 – 79</td><td class="c"><b style="color:var(--info)">良好 🥈</b></td><td class="c mono small">#4d8dff</td></tr>
+          <tr><td>60 – 69</td><td class="c"><b style="color:var(--warn)">合格 ✅</b></td><td class="c mono small">#ffcf4d</td></tr>
+          <tr><td>40 – 59</td><td class="c"><b style="color:#ff9500">待完善 🚧</b></td><td class="c mono small">#ff9500</td></tr>
+          <tr><td>&lt; 40</td><td class="c"><b style="color:var(--error)">未完成 ❌</b></td><td class="c mono small">#ff5470</td></tr>
         </tbody>
       </table>
-      <p class="small muted" style="margin-top:2mm">总分先按 A~I 相加，再减 P 项，最后 <code>max(0, …)</code>；所以<b>九维做满 100 且零扣分为“优秀 🏆”</b>。</p>
+      <p class="small muted" style="margin-top:2mm">总分先按 A~I 相加，再减 P 项，最后 <code>max(0, …)</code>；所以<b>九维做满 100 且零扣分即为最高档「卓越 🏆」</b>。
+      这六档由服务端 <code>app/score_levels.py</code> 单点定义，报告页、成绩页与 Markdown 报告<b>共用同一张表</b>
+      （本版本已统一，旧版「≥ 90 叫优秀」与「90 分给 🏆」两套说法并存的问题已消除）。</p>
     </div>
   </div><h3><span class="num">9.4</span>报告读数自检（三分钟）</h3>
   <table>
     <thead><tr><th style="width:44mm">看到的现象</th><th>结论与动作</th></tr></thead>
     <tbody>
-      <tr><td>B 项 = 0，但浏览器里能看到自己的交易</td><td>先确认那几笔交易确实是<b>你本人登录</b>时发起的；再刷新报告。当前版本按钱包候选集取并集（P0-3 已修），仍为 0 就带浏览器截图找老师</td></tr>
+      <tr><td>B 项 = 0，但浏览器里能看到自己的交易</td><td>先确认那几笔交易确实是<b>你本人登录</b>时发起的；再刷新报告。当前版本按钱包候选集取并集，仍为 0 就带浏览器截图找老师</td></tr>
       <tr><td>E / F / G / I 全为 0，而你确定做过</td><td>几乎都是<b>登录账号不是同一个</b>（数据按操作人归属）。到报告 JSON 的 <code>identity.wallet_candidates</code> 核对四个写法，看是不是你自己的</td></tr>
-      <tr><td>教程步骤显示「28/10 步」、合约数大得不合理</td><td>你看到的是<b>全局混合口径</b>（P1-6，教师 / 管理员不指定钱包时的默认视图）。学生登录自己的账号只会看到本人数据</td></tr>
+      <tr><td>教程步骤显示「28/10 步」、合约数大得不合理</td><td>你看到的是<b>全局混合口径</b>（教师 / 管理员不指定钱包时的默认视图）。学生登录自己的账号只会看到本人数据</td></tr>
       <tr><td>出现「P 操作错误扣分 −N」</td><td>到联盟页<b>操作日志 / 审计概览</b>按本人筛，定位 error 的原因（多为能量不足 / 未选角色 / 凭证未达阈值）。<b>error 行不会因后续成功而消失、也无法删除</b>，所以重点是停止重复同一个失败动作，而不是反复重试</td></tr>
       <tr><td>刚做完操作但分数没变</td><td>没点<b>刷新数据</b>。报告不会自动重算</td></tr>
       <tr><td>报告 100，「我的成绩」却是 95.2</td><td>正常（两套体系，见第 11 章）：综合分 = 实训分 × 60% + 教师分 × 40%</td></tr>
@@ -820,17 +960,17 @@
   </table>
 
   <div class="grid3">
-    <div class="card stat"><div class="lbl">实测可达</div><div class="big">100 分</div><p class="small">九维全满 + 零扣分，等级“优秀 🏆”。本版本已修掉曾经堵死满分的两个口径（B 项交易归属、G1 树种）。</p></div>
-    <div class="card stat"><div class="lbl">稳健目标</div><div class="big">≥ 75 分</div><p class="small">优先级 1、2 全做完就到“良好”，且不依赖能量与树种供给，适合时间紧张时保底。</p></div>
-    <div class="card stat"><div class="lbl">唯一硬前置</div><div class="big">2 个树种</div><p class="small">G1 的 8 分需要目录下真有 ≥ 2 个在售树种，只能由教师 / 管理员上架（见教师手册 3.4）。</p></div>
+    <div class="card stat"><div class="lbl">实测可达</div><div class="big">100 分</div><p class="small">九维全满 + 零扣分，等级「卓越 🏆」。本版本已修掉曾经堵死满分的 B 项交易归属口径。</p></div>
+    <div class="card stat"><div class="lbl">稳健目标</div><div class="big">≥ 70 分</div><p class="small">优先级 1、2 全做完就到「良好」，且不依赖能量与树种供给，适合时间紧张时保底。</p></div>
+    <div class="card stat"><div class="lbl">唯一硬前置</div><div class="big">2 个树种</div><p class="small">G1 的 8 分需要目录下真有 ≥ 2 个在售树种：空库首次启动会自动播种 2 个，<b>旧库常只剩 1 个</b>，需教师 / 管理员上架（见教师手册 3.3）。</p></div>
   </div>
 
-  
-  
+  <div class="note note--tip">
+    <span class="t">微任务与沙盘在这张清单里的位置</span>
+    上表只算<b>九维报告分</b>：第 07 章的 10 个微任务是这张清单的<b>服务端核对表</b>（全绿即 H / E / F / G 已被真实数据看到，本身不额外加分），
+    第 08 章的运营沙盘<b>既不进九维也不进四维</b>，属加练内容。操作路径分别见 7.7~7.8 与 8.3~8.5。
+  </div>
 
-  
-  
-  
   <h3><span class="num">10.1</span>一页纸时间表（建议 3 课时）</h3>
   <table>
     <thead><tr><th style="width:26mm">课时</th><th>内容</th><th style="width:30mm">阶段末自检</th></tr></thead>
@@ -864,10 +1004,10 @@
     <thead><tr><th style="width:30mm">体系</th><th style="width:42mm">在哪里看</th><th>算的是什么</th></tr></thead>
     <tbody>
       <tr><td><b>实训报告（九维 A~I）</b></td><td>生成实训报告</td><td><b>覆盖度</b>评分书：每一项只看你有没有做到那个门槛（≥1 份 / ≥10 笔 / 6 角色…），达到就给满分，再减 P 项扣分。它是你提交给老师的<b>作品</b></td></tr>
-      <tr><td><b>成绩册（四维实训分）</b></td><td>我的成绩</td><td><b>次数 × 系数</b>的过程分：链搭建 20% + 合约开发 30% + 链上验证 25% + 联盟治理 25%，每一维 100 分封顶，加权得到“实训分”，再与教师评分按 60/40 合成综合分</td></tr>
+      <tr><td><b>成绩册（四维实训分）</b></td><td>我的成绩（侧边栏<b>成就中心 → 我的成绩</b>）</td><td><b>次数 × 系数</b>的过程分：链搭建 20% + 合约开发 30% + 链上验证 25% + 联盟治理 25%，每一维 100 分封顶，加权得到“实训分”，再与教师评分按 60/40 合成综合分</td></tr>
     </tbody>
   </table>
-  <p class="small muted">两套体系的算法与取数事件都不同（建议清单 <b>P1-7</b> 仍成立）：报告看“做没做到”，成绩册看“做了多少次”。</p>
+  <p class="small muted">两套体系的算法与取数事件都不同：报告看“做没做到”，成绩册看“做了多少次”。</p>
 
   <h3><span class="num">11.2</span>四维实训分细则（每维 100 封顶，算的是次数）</h3>
   <table>
@@ -883,8 +1023,11 @@
   两个容易误解的口径：「能量发放」数的是<b>你的钱包作为接收方</b>的能量记录（所以发放时接收方要选自己）；「链上交易」数的是<b>发送方或收款方</b>命中你钱包候选集的交易。</p>
   <figure>
     <img src="../assets/screenshots/manual/S15-mygrades.png" alt="我的成绩">
-    <figcaption>图 11-1 我的成绩：自上而下是“实训成绩概览（四维拆解）→ 系统实训草稿（标注不计入综合分）→ 能力雷达 → 成绩记录”。成绩记录的<b>行来源</b>列会写清这一行是“教师已评”还是“系统行”。</figcaption>
-  </figure><h3><span class="num">11.3</span>“系统实训草稿”是什么，与正式成绩隔了几步</h3><p>当前版本已把<b>草稿与成绩册彻底分家</b>（P1-8 / P1-25 已修）：打开报告、刷新报告都<b>不再</b>往成绩册里写任何行，
+    <figcaption>图 11-1 我的成绩（入口：侧边栏<b>成就中心 → 我的成绩</b>）：自上而下是“实训成绩概览（四维拆解）→ 系统实训草稿（标注不计入综合分）→ 能力雷达 → 成绩记录”。
+    页头「钱包地址」显示的是<b>你本人的 0x 链上地址</b>（可直接拿去区块链浏览器 / 钱包查询），
+    下方“已合并同一学生的多个身份口径”一行才是取数用的全部候选键。
+    成绩记录的<b>行来源</b>列会写清这一行是“教师已评”还是“系统行”。</figcaption>
+  </figure><h3><span class="num">11.3</span>“系统实训草稿”是什么，与正式成绩隔了几步</h3><p>当前版本已把<b>草稿与成绩册彻底分家</b>：打开报告、刷新报告都<b>不再</b>往成绩册里写任何行，
   成绩册唯一的系统写入通道是教师显式点“同步”。整条链路三段，每段都要有人按一次按钮：</p><ol class="steps">
     <li>你在<b>我的成绩</b>页点<b>同步实训草稿</b> —— 只生成一条草稿（页面上标“不计入综合分”），作用是让老师看见你的实训分。</li>
     <li>老师在<b>成绩册</b>的<b>系统实训草稿</b>区点<b>同步为成绩</b>（或“全部同步为本班成绩”）—— 这一步才真正生成正式行。</li>
@@ -916,9 +1059,9 @@
   </figure>
   <div class="note note--ok">
     <span class="t">成就与报告现在同一口径</span>
-    成就页与报告都已经改成按<b>钱包候选集</b>取数（P0-2 已修），所以“成就显示 6/6 角色、报告 E 项却是 0”这种矛盾在本版本已不会出现；
+    成就页与报告都已经改成按<b>钱包候选集</b>取数，所以“成就显示 6/6 角色、报告 E 项却是 0”这种矛盾在本版本已不会出现；
     实测账号的成就与报告均读到 <b>6/6 角色</b>。若仍对不上，先看监听器/浏览器有没有真实记录，再把两组数字一并报老师。
-    一个仍存在的小问题：成就<b>排行榜</b>只展示链上地址、不显示姓名（P3-23），看到陌生 <code>0x…</code> 属正常。
+    一个仍存在的小问题：成就<b>排行榜</b>只展示链上地址、不显示姓名，看到陌生 <code>0x…</code> 属正常。
   </div>
 
   <h3><span class="num">12.2</span>FAQ 与故障排查</h3>
@@ -926,16 +1069,17 @@
   <table>
     <thead><tr><th style="width:56mm">现象</th><th>原因与处理</th></tr></thead>
     <tbody>
-      <tr><td><b>登录失败，提示看不清原因</b></td><td>本版已把三类原因分开（P1-4 已修）：提示<b>实训 SSO 返回的原文</b>（如“用户名或密码错误”）→ 账号密码问题；提示<b>「SSO 登录接口 HTTP 4xx/5xx」</b>→ 身份服务异常，把<b>账号名 + 时间点</b>报老师；提示<b>「无法连接 SSO 服务」</b>→ 平台到 SSO 的网络不通，等老师处理。三种都不要连续重试</td></tr>
+      <tr><td><b>登录失败，提示看不清原因</b></td><td>本版已把三类原因分开：提示<b>实训 SSO 返回的原文</b>（如“用户名或密码错误”）→ 账号密码问题；提示<b>「SSO 登录接口 HTTP 4xx/5xx」</b>→ 身份服务异常，把<b>账号名 + 时间点</b>报老师；提示<b>「无法连接 SSO 服务」</b>→ 平台到 SSO 的网络不通，等老师处理。三种都不要连续重试</td></tr>
       <tr><td>登录后菜单里看不到某些页</td><td>角色权限不足。学生账号不包含教师端功能（如成绩录入、树种目录上架）属正常</td></tr>
+      <tr><td><b>总览页看不到任务卡 / 沙盘一直显示“待命”</b></td><td>两者都是<b>默认状态而非故障</b>：任务卡要等你在云桌面把 10 步打完才切成微任务模式（见 7.7）；沙盘轮次必须由教师创建并启动（见 8.3）</td></tr>
       <tr><td><b>云桌面终端无法粘贴命令</b></td><td>为训练手写命令，终端<b>故意屏蔽了 Ctrl+V</b>。只能逐字输入；写错的命令直接回车产生失败记录即可，不影响后续</td></tr>
       <tr><td>命令明明对了却不打勾</td><td>步骤按<b>顺序</b>正则匹配：必须先完成前一步。若顺序正确仍不通过，核对多余空格与参数（尤其地址大小写）；页面左侧步骤卡展开后的“语法格式”就是标准答案</td></tr>
       <tr><td>顶栏链状态不是"链运行中"</td><td>后端或链节点未就绪。先等 30 秒刷新；仍不行就通知老师，<b>不要在此时做部署类操作</b>（会留下一堆失败交易，影响监听器的异常统计）</td></tr>
       <tr><td>部署 / 发行报"权限不足"</td><td>ERC20 发行权仅在管理员钱包。检查顶栏是否切到了错误钱包；<b>铸造 NFT 被 403 拦下</b>则是没选联盟角色，回联盟页选角色即可（不扣 P 分）</td></tr>
-      <tr><td>报告分数与"我的成绩"不一致</td><td>正常（两套体系，P1-7）。以提交给老师的 Markdown 报告为准，算总评以成绩册为准（见第 11 章）</td></tr>
-      <tr><td>侧边栏"整体学习进度"不变化</td><td>本版已接上真实进度（每 15 秒与切页时刷新，P1-5 已修）；但它<b>只算搭链教程步数</b>，不等于报告九维分。它长期不动时，先确认你确实在云桌面完成了步骤</td></tr>
+      <tr><td>报告分数与"我的成绩"不一致</td><td>正常（两套体系）。以提交给老师的 Markdown 报告为准，算总评以成绩册为准（见第 11 章）</td></tr>
+      <tr><td>侧边栏"整体学习进度"不变化</td><td>本版已接上真实进度（每 15 秒与切页时刷新）；但它<b>只算搭链教程步数</b>，不等于报告九维分。它长期不动时，先确认你确实在云桌面完成了步骤</td></tr>
       <tr><td>不小心切了同学/内置的钱包</td><td>立即切回"我的钱包"再继续。切过去那一段数据归对方名下（同一候选集内的别名已能合并，跨账号不行），可补做一遍拿回分数</td></tr>
-      <tr><td>页面报错 / 班级与成绩列表空白</td><td>先刷新；成绩册为空通常是<b>教师还没绑定班级、或未同步花名册</b>（P0-1 / P0-4 已把错误显式暴露出来），需老师按教师手册第 3 章处理，学生无法绕过</td></tr>
+      <tr><td>页面报错 / 班级与成绩列表空白</td><td>先刷新；成绩册为空通常是<b>教师还没绑定班级、或未同步花名册</b>（这两类现在都会显式提示），需老师按教师手册第 3 章处理，学生无法绕过</td></tr>
       <tr><td>报告 100 分，综合分却只有 60</td><td>成绩册里没有教师分（或老师只同步了草稿未录入评分）。综合分 = 实训 × 0.6 + 教师 × 0.4，请老师完成第 11.3 节的第 3 步</td></tr>
     </tbody>
   </table><h3><span class="num">12.3</span>术语表</h3>
@@ -948,51 +1092,8 @@
   <div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>16 / 18</span></div>
 </section>
 
-<section class="page page--alt">
-  <div class="hdr"><span>附录 A · 已知问题索引</span><span>APPENDIX A · KNOWN ISSUES</span></div>
-
-  <h2>会影响你得分的已知问题（摘自《产品与逻辑问题建议清单》）</h2>
-  <p class="lead">本节内容摘自《产品与逻辑问题建议清单》，按<b>本版实测状态</b>分两栏：已修的你不用再绕路，仍存在的只是“看得到、不阻断得分”。编号供与老师沟通时使用。</p>
-
-  <h3><span class="num">A.1</span>本版已修复（不再需要学生绕路）</h3>
-  <table>
-    <thead><tr><th class="c" style="width:20mm">编号</th><th style="width:52mm">曾经的现象</th><th>现在的行为</th></tr></thead>
-    <tbody>
-      <tr><td class="c mono"><b>P0-1 / P0-4</b></td><td>班级看板 / 学生列表 / 进度统计全为空，花名册写入失败被静默吞掉</td><td>花名册写入结果显式暴露（<code>roster_ok</code>），班级口径未解析时直接提示 <code>class_unbound</code>，老师可手动绑定任教班级</td></tr>
-      <tr><td class="c mono"><b>P0-2</b></td><td>做了 E/F/G/I 但报告为 0；同一人不同口径 5~80 分差异</td><td>报告与成就的读路径统一到<b>钱包候选集</b>（真实地址 / user_id / <code>stu:</code> 别名 / 学号），实测 E = 10、F = 10</td></tr>
-      <tr><td class="c mono"><b>P0-3</b></td><td>交易明明发了，B 项始终 0 分（实测命中 0 笔）</td><td>链上表改按候选集匹配，实测命中 <b>19 笔</b> → B 项 15 分拿满，“优秀 🏆”不再被堵死</td></tr>
-      <tr><td class="c mono"><b>P1-4</b></td><td>登录失败只给一句笼统的 502 文案，看不出是密码错还是服务挂</td><td>三类分开：SSO 原文（密码错）/ 「SSO 登录接口 HTTP x」/「无法连接 SSO 服务」</td></tr>
-      <tr><td class="c mono"><b>P1-5</b></td><td>侧边栏“整体学习进度”是写死的展示值</td><td>改接服务端真实进度（每 15 秒与切页重拉）；口径仍为<b>搭链教程步数</b></td></tr>
-      <tr><td class="c mono"><b>P1-8 / P1-25</b></td><td>一打开报告就往成绩册插一行“系统自动”、教师分 0，会污染教师列表</td><td>查看与刷新报告<b>完全只读</b>；草稿只进 <code>grade_draft</code>，必须教师显式同步才落成绩册</td></tr>
-      <tr><td class="c mono"><b>P2-9</b></td><td>只读调用、编译失败也算“操作错误”，P 项动辄被扣满 −10</td><td>P 项只统计联盟页操作审计日志；IDE 编译失败、接口调试 reverted、NFT 403 均不计分</td></tr>
-      <tr><td class="c mono"><b>其他</b></td><td>建链教程命令注册表与页面展示清单错位（D 项 10 分不可达）</td><td>两边已对齐，10 步逐条可做完；第 04 章速查表即取自注册表</td></tr>
-      <tr><td class="c mono"><b>其他</b></td><td>后端重启重置 EVM 状态，旧合约列表里“看起来还能调”</td><td>合约管理与接口调试均区分<b>已失效 / 在链</b>，避免你误调用一个已经不在链上的地址</td></tr>
-    </tbody>
-  </table>
-
-  <h3><span class="num">A.2</span>本版仍存在（不阻断得分，但你会看到）</h3>
-  <table>
-    <thead><tr><th class="c" style="width:20mm">编号</th><th class="c" style="width:14mm">等级</th><th style="width:44mm">现象</th><th>你需要知道的</th></tr></thead>
-    <tbody>
-      <tr><td class="c mono"><b>P1-6</b></td><td class="c"><span class="tag tag--w">高</span></td><td>报告里出现“28/10 步”、20 份合约等不属于你的数据</td><td>只发生在<b>教师 / 管理员不指定钱包</b>的全局视图；学生登录自己账号只会看到本人数据</td></tr>
-      <tr><td class="c mono"><b>P1-7</b></td><td class="c"><span class="tag tag--w">高</span></td><td>同屏两个分：报告 100 / 实训分 100 但综合分 95.2</td><td>设计使然（九维门槛 vs 四维次数，再 60/40 合成），不是算错</td></tr>
-      <tr><td class="c mono"><b>P2-11</b></td><td class="c"><span class="tag tag--i">中</span></td><td>云桌面角标写“真实执行”，但输出像录像</td><td>出于安全整改，命令一律先在<b>沙箱虚拟文件系统</b>里仿真；Step 6–7 的余额查询、Step 8–10 的 <code>call</code> / <code>deploy</code> 在有链环境时<b>真实上链</b>（但发送方是 <code>0xadmin</code> / 机构钱包，不进你的 B 项），Step 1–5 与 Step 6 的规则表、Step 8 前三条为教学文本。写实训心得时请区分描述</td></tr>
-      <tr><td class="c mono"><b>P2-12</b></td><td class="c"><span class="tag tag--i">中</span></td><td>登录页块高、出块周期、沙盒 TPS 一直在动</td><td>只有“链模式 / 链状态”是后端真实值，其余为装饰动画</td></tr>
-      <tr><td class="c mono"><b>P3-15</b></td><td class="c"><span class="tag tag--p">低</span></td><td>区块链浏览器 Gas 分析永远是 0</td><td>链模式未回填 gas 字段，不是你的交易有问题</td></tr>
-      <tr><td class="c mono"><b>P3-23</b></td><td class="c"><span class="tag tag--p">低</span></td><td>成就排行榜只有地址没有姓名，偶见脏账号</td><td>不影响你的得分与成绩，仅作展示</td></tr>
-      <tr><td class="c mono"><b>环境依赖</b></td><td class="c"><span class="tag tag--i">中</span></td><td>兑换中心只有 1 个树种，G1 拿不满 8 分</td><td>平台<b>不会播种树种目录</b>，需教师 / 管理员上架 ≥ 2 个在售树种（教师手册 3.4）。开学前可让老师先确认</td></tr>
-    </tbody>
-  </table>
-  <div class="note note--tip">
-    <span class="t">如何反馈一个分数争议（30 秒模板）</span>
-    "账号 ____；报告里 ____ 项为 0；但我已在 ____（页面）完成 ____（动作），共 ____ 笔，交易哈希前 8 位是 ________；对应已知问题编号 ____。"
-    按这个格式发给出课老师，一次就能定位。
-  </div>
-  <div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>17 / 18</span></div>
-</section>
-
 <section class="page">
-  <div class="hdr"><span>附录 B · 交付前自检</span><span>APPENDIX B · FINAL CHECKLIST</span></div>
+  <div class="hdr"><span>附录 A · 交付前自检</span><span>APPENDIX A · FINAL CHECKLIST</span></div>
 
   <div class="kicker">SUBMIT CHECKLIST</div>
   <h2>交报告前，逐项划对号</h2>
@@ -1000,22 +1101,22 @@
     <thead><tr><th class="c" style="width:12mm">✓</th><th style="width:60mm">检查项</th><th class="c" style="width:26mm">目标</th><th>在哪确认</th></tr></thead>
     <tbody>
       <tr><td class="c">□</td><td>云桌面 10 步全部打勾</td><td class="c"><b>D = 10</b></td><td>云桌面顶部"已完成 x / 10 步"</td></tr>
-      <tr><td class="c">□</td><td>三大标准合约已部署（我自己部署的）</td><td class="c"><b>A = 20</b></td><td>合约管理列表，部署者 = 我的钱包（候选集）</td></tr>
+      <tr><td class="c">□</td><td>三大标准合约已部署（本人部署）</td><td class="c"><b>A = 20</b></td><td>合约管理列表，部署者 = 我的钱包（候选集）</td></tr>
       <tr><td class="c">□</td><td>三份生态合约在链上齐全</td><td class="c"><b>H = 5</b></td><td>联盟页合约状态 3/3（全局事实，不必自己部署）</td></tr>
-      <tr><td class="c">□</td><td>读过 3 份源码 + 编译成功 + 接口调试过</td><td class="c"><b>I = 5</b></td><td>合约 IDE 与接口调试页（只读函数调 1 次即可）</td></tr>
-      <tr><td class="c">□</td><td>链上交易 ≥ 10 笔（含部署与转账）</td><td class="c"><b>B = 15</b></td><td>区块链浏览器地址页，与报告同口径（P0-3 已修）</td></tr>
+      <tr><td class="c">□</td><td>读 3 份源码 + 编译成功 + 接口调试</td><td class="c"><b>I = 5</b></td><td>合约 IDE 与接口调试页（只读函数调 1 次）</td></tr>
+      <tr><td class="c">□</td><td>链上交易 ≥ 10 笔（含部署与转账）</td><td class="c"><b>B = 15</b></td><td>区块链浏览器地址页，与报告同口径</td></tr>
       <tr><td class="c">□</td><td>铸造过 1 份资产且市场成交 1 笔</td><td class="c"><b>C = 10</b></td><td>绿色资产市场成交记录（绿色市场成交也计入）</td></tr>
-      <tr><td class="c">□</td><td>6 个联盟角色都切换并成功发放过</td><td class="c"><b>E = 10 · F = 10</b></td><td>能量流水按角色筛，≥ 3 种角色有实质操作</td></tr>
-      <tr><td class="c">□</td><td><b>2 个不同树种</b>的证书 + 勋章 + 骑行券都兑换过</td><td class="c"><b>G = 15</b></td><td>兑换中心与我的资产（只有 1 个树种时 G1 仅 4 分，G 上限 11）</td></tr>
+      <tr><td class="c">□</td><td>6 个联盟角色都切换并成功发放过</td><td class="c"><b>E + F = 20</b></td><td>能量流水按角色筛，≥ 3 种角色有实质操作</td></tr>
+      <tr><td class="c">□</td><td><b>2 个不同树种</b>证书 + 勋章 + 骑行券都兑换</td><td class="c"><b>G = 15</b></td><td>兑换中心与我的资产（只有 1 个树种时 G1 仅 4 分，G 上限 11）</td></tr>
       <tr><td class="c">□</td><td>联盟页没有成堆的失败操作</td><td class="c"><b>P 扣分 = 0</b></td><td>报告页扣分行 + 联盟页操作日志按本人筛</td></tr>
       <tr><td class="c">□</td><td>报告已刷新并下载 Markdown</td><td class="c"><b>总分 ≥ 90</b></td><td>报告页右上角（实测可 100）</td></tr>
-      <tr><td class="c">□</td><td>草稿已同步且教师分不为空</td><td class="c"><b>行来源 = 教师已评</b></td><td>我的成绩（否则综合分最多只算到实训 × 60%）</td></tr>
+      <tr><td class="c">□</td><td>草稿已同步且教师分不为空</td><td class="c"><b>教师已评</b></td><td>我的成绩（否则综合分最多只算到实训 × 60%）</td></tr>
     </tbody>
   </table>
 
   <div class="grid3">
     <div class="card stat"><div class="lbl">合格线</div><div class="big">60</div><p class="small">优先级 1 的四个动作（部署 / 教程 / I 项 / 看一眼 H）做完就跨过。</p></div>
-    <div class="card stat"><div class="lbl">优秀线</div><div class="big">90</div><p class="small">再加 6 角色发放与一轮兑换，P 项控在 0，就已进“优秀 🏆”区间。</p></div>
+    <div class="card stat"><div class="lbl">卓越线</div><div class="big">90</div><p class="small">再加 6 角色发放与一轮兑换、P 项控在 0，就进「卓越 🏆」区间。</p></div>
     <div class="card stat"><div class="lbl">实测满分</div><div class="big">100</div><p class="small">九维全满零扣分；唯一外因是树种目录得有 ≥ 2 个在售树种。</p></div>
   </div>
 
@@ -1024,6 +1125,11 @@
     <b>先把三份标准合约部署下去（A 20 + I 5），再花半小时把云桌面 10 步打完（D 10），然后用 6 个角色各发放一次（E+F+G3 共 23），
     攒满 2500 能量换两个树种的证书、再换一枚勋章一张券（G 15），补上铸造与成交（C 10），核对交易已 ≥ 10 笔（B 15）；
     全程只在联盟页规范操作、失败不反复重试（P 0）。做完刷新报告、下载、请老师同步草稿并录教师分。</b>
+  </div>
+  <div class="note note--tip">
+    <span class="t">如果自查后仍觉得分数不对：给老师的 30 秒模板</span>
+    "账号 ____；报告里 ____ 项为 0；但我已在 ____（页面）完成 ____（动作），共 ____ 笔，交易哈希前 8 位是 ________。"
+    按这个格式发给出课老师，一次就能定位。
   </div>
   <div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>18 / 18</span></div>
 </section>

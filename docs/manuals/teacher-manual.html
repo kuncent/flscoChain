@@ -19,9 +19,8 @@
       <div><b>分数口径</b>综合成绩 = 实训成绩 × 60% + 教师评分 × 40%</div>
     </div>
     <p class="small muted" style="margin-top:12mm">
-      本手册中所有按钮路径、公式与数值，均已在真实环境用教师账号逐项验证；文中标注
-      <span class="tag tag--w">已知问题</span> 的位置，对应《产品与逻辑问题建议清单》中的编号，
-      用于解释"为什么平台显示的和预期不一致"，并给出教师侧的可用替代路径。
+      本手册中所有按钮路径、公式与数值，均已在真实环境用教师账号逐项验证；
+      凡平台显示与预期不一致之处，正文都当场给出原因与教师侧的可用替代路径。
     </p>
   </div>
 </section><section class="page"><div class="hdr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>HOW TO USE THIS MANUAL</span></div><div class="kicker">READ FIRST</div><h2>怎么用这本手册</h2><div class="grid3">
@@ -31,24 +30,25 @@
   </div><h2>目录</h2><ul class="toc">
     <li><span class="no">01</span><span class="tt">教师能做什么：权限矩阵与身份三件套</span><span class="pg">角色差异 · 数据可见范围</span></li>
     <li><span class="no">02</span><span class="tt">登录与会话 · 界面导览</span><span class="pg">SSO 登录 · 6 组导航 · 引擎切换陷阱</span></li>
-    <li><span class="no">03</span><span class="tt">开课准备：10 项自检清单</span><span class="pg">环境 · 数据 · 名单 · 演示账号</span></li>
+    <li><span class="no">03</span><span class="tt">开课准备：10 项自检清单</span><span class="pg">环境 · 学校绑定 · 名单 · 目录治理</span></li>
     <li><span class="no">04</span><span class="tt">课堂演示脚本（45 分钟一场）</span><span class="pg">搭链 → 合约 → 治理 → 验证</span></li>
-    <li><span class="no">05</span><span class="tt">学生成绩管理：录入 · 预览 · 刷新</span><span class="pg">四维公式 · 快照与实时</span></li>
+    <li><span class="no">05</span><span class="tt">学生成绩管理：录入 · 预览 · 刷新</span><span class="pg">四维公式 · 草稿同步 · 快照与实时</span></li>
     <li><span class="no">06</span><span class="tt">教师评分量表与等级建议</span><span class="pg">评分锚点 · 加减分项</span></li>
-    <li><span class="no">07</span><span class="tt">学情查看：三条可用路径</span><span class="pg">班级看板 · 控制台取数 · 卡点定位</span></li>
+    <li><span class="no">07</span><span class="tt">学情查看：班级看板与取数路径</span><span class="pg">班级看板 · 只读接口 · 卡点定位</span></li>
     <li><span class="no">08</span><span class="tt">实训报告的教师视角</span><span class="pg">九维分值 · 两种口径 · 导出</span></li>
-    <li><span class="no">09</span><span class="tt">运营沙盘：故障演练出题与判分</span><span class="pg">4 类故障 · MTTD / MTTR</span></li>
+    <li><span class="no">09</span><span class="tt">运营沙盘：故障演练出题与判分</span><span class="pg">五步出题 · 4 类故障 · MTTD / MTTR</span></li>
     <li><span class="no">10</span><span class="tt">一学期教学闭环 SOP</span><span class="pg">16 周排期 · 考核权重</span></li>
     <li><span class="no">11</span><span class="tt">争议处理 · 数据归档</span><span class="pg">六类争议标准答复</span></li>
     <li><span class="no">12</span><span class="tt">教师侧 FAQ 与故障排查</span><span class="pg">12 问 12 答</span></li>
     <li><span class="no">附 A</span><span class="tt">权限与接口速查表</span><span class="pg">能给谁用 · 怎么调</span></li>
-    <li><span class="no">附 B</span><span class="tt">已知问题对教师的影响</span><span class="pg">编号 · 现象 · 绕法</span></li>
-    <li><span class="no">附 C</span><span class="tt">评分录入模板与取数脚本</span><span class="pg">可直接复制使用</span></li>
-  </ul><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>02 / 33</span></div></section><section class="page"><div class="hdr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>HOW TO USE THIS MANUAL</span></div><div class="note note--warn">
+    <li><span class="no">附 B</span><span class="tt">评分录入模板与取数脚本</span><span class="pg">可直接复制使用</span></li>
+  </ul><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>02 / 41</span></div></section><section class="page"><div class="hdr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>HOW TO USE THIS MANUAL</span></div><div class="note note--warn">
     <span class="t">开课前必须知道的三件事</span>
     ① 平台是<b>真链</b>，不是仿真：你演示时产生的合约、交易、能量都会进真实数据并被计入某个钱包的报告；
-    ② 教师账号的<b>班级归属目前取不到</b>（建议清单 <b>P0-1</b>），因此"班级看板 / 学情明细"默认是空的，第 07 章给了三条可用的替代路径；
-    ③ 成绩册里除了你录的分，还会有<b>系统自动生成的草稿</b>（建议清单 <b>P1-8</b>），定分前先读第 05 章的"清理草稿"步骤。
+    ② 教师账号的班级<b>要自己绑一次</b>：SSO 未必下发班级，没绑定时所有班级看板只会看到你自己录入的行。
+    　绑定入口在「学生成绩」页顶部的橙色提示卡里（第 03 章 3.1），绑完学生<b>登录一次即自动进花名册</b>；
+    ③ <b>草稿与成绩册是分开的两张表</b>：学生点「同步实训草稿」只写草稿，只有你在成绩页点<b>「同步为成绩」</b>
+    　才进成绩册（第 05 章 5.5）。看一眼报告、查一次成绩都不会改学生的分。
   </div><div class="kicker">CHAPTER 01</div><h2>教师能做什么：一张权限矩阵说清楚</h2><p class="lead">平台只有三类登录身份：<b>管理员（1）</b>、<b>教师（3）</b>、<b>学生（4）</b>。教师与管理员在代码里被合称
   "特权角色"，能力几乎相同；区别只在管理员额外掌握账号与链环境的运维职责。教师<b>不是</b>只看成绩的角色——
   你可以以学生身份完成平台上的<b>任何一步操作</b>，这正是课堂演示的基础。</p><h3><span class="num">1.1</span>能力矩阵</h3><table>
@@ -56,16 +56,16 @@
     <tbody>
       <tr><td>完成全部实训操作（搭链 / IDE / 合约 / 钱包 / NFT / 生态 / 演练处置）</td><td class="c ok">✔</td><td class="c ok">✔</td><td class="c ok">✔</td><td>教师账号可完整走通学生流程，用于课前自测与课堂演示</td></tr>
       <tr><td>学生成绩管理 <span class="mono">/grades</span></td><td class="c ok">✔</td><td class="c ok">✔</td><td class="c no">✘</td><td>菜单「教学管理 · 学生成绩」仅对教师 / 管理员显示，路由级拦截</td></tr>
-      <tr><td>查看任意学生的实训报告</td><td class="c warn">接口</td><td class="c warn">接口</td><td class="c no">仅本人</td><td>后端允许教师带 <code>?wallet=</code> 查任意人；<b>但页面上没有学生选择器</b>（P1-6），见第 07 章</td></tr>
+      <tr><td>查看任意学生的实训报告</td><td class="c warn">接口</td><td class="c warn">接口</td><td class="c no">仅本人</td><td>后端允许教师带 <code>?wallet=</code> 查任意人；<b>但页面上没有学生选择器</b>，见第 07 章</td></tr>
       <tr><td>实时试算某钱包的实训成绩</td><td class="c ok">✔</td><td class="c ok">✔</td><td class="c no">✘</td><td>成绩对话框内「预览实训成绩」按钮，不落库</td></tr>
       <tr><td>运营沙盘：创建场景 / 启动 / 一键停止</td><td class="c ok">✔</td><td class="c ok">✔</td><td class="c no">✘</td><td>学生只能"提交处置动作"，不能出题与停机</td></tr>
-      <tr><td>班级学情看板（10 步搭链进度）</td><td class="c warn">空</td><td class="c warn">空</td><td class="c no">✘</td><td>依赖 <code>user_info</code> 花名册，当前为空表 → 看板恒空（P0-1 / P0-4）</td></tr>
+      <tr><td>班级学情看板（10 步搭链进度）</td><td class="c ok">✔</td><td class="c ok">✔</td><td class="c no">✘</td><td>绑定任教班级后即有数据（3.1）：花名册随学生登录自动登记，看板逐人显示完成步数与卡点</td></tr>
       <tr><td>重置某钱包的搭链进度</td><td class="c danger">✔ 高危</td><td class="c danger">✔ 高危</td><td class="c">仅本人</td><td>云桌面「重置进度」按<b>当前操作钱包</b>删除进度；教师可代任意钱包，误操作会直接清掉学生的 D 项依据</td></tr>
-      <tr><td>切换链执行引擎（侧边栏「引擎」）</td><td class="c warn">假</td><td class="c warn">假</td><td class="c warn">假</td><td>后端<b>没有</b>对应接口（实测 <code>POST /api/chain/mode</code> = 404），只改本机显示（P1-17）</td></tr>
+      <tr><td>切换链执行引擎（侧边栏「引擎」）</td><td class="c warn">假</td><td class="c warn">假</td><td class="c warn">假</td><td>后端<b>没有</b>对应接口（实测 <code>POST /api/chain/mode</code> = 404），只改本机显示</td></tr>
     </tbody>
-  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>03 / 33</span></div></section><section class="page"><div class="hdr"><span>第 01 章 · 教师角色与权限</span><span>CHAPTER 01 · ROLE &amp; PERMISSIONS</span></div><h3><span class="num">1.2</span>身份三件套：账号 / 操作钱包 / 联盟角色</h3><div class="grid3">
+  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>03 / 41</span></div></section><section class="page"><div class="hdr"><span>第 01 章 · 教师角色与权限</span><span>CHAPTER 01 · ROLE &amp; PERMISSIONS</span></div><h3><span class="num">1.2</span>身份三件套：账号 / 操作钱包 / 联盟角色</h3><div class="grid3">
     <div class="card"><h4>① 登录账号</h4><p class="small">形如 <code>tzt001</code>。决定菜单可见性与成绩归属（谁录的分）。教师账号来自实训 SSO，学校、班级由 SSO 下发。</p></div>
-    <div class="card"><h4>② 当前操作钱包</h4><p class="small">顶栏「当前操作钱包」。教师登录后默认是<b>以账号 ID 命名的钱包</b>（如 <code>cbad6270-dd7a-…</code>），<b>不是</b> 0x 地址。你的演示数据都挂在它下面。</p></div>
+    <div class="card"><h4>② 当前操作钱包</h4><p class="small">顶栏「当前操作钱包」。教师登录后会<b>自动发放并绑定一个本人 0x 地址</b>（实测形如 <code>0xb16f34bd…4d5f</code>），你的演示数据都挂在它下面。下拉里另有 6 个联盟角色钱包。</p></div>
     <div class="card"><h4>③ 联盟角色</h4><p class="small">"绿色低碳联盟链"页里的管理员 / 地铁 / 公交 / 单车 / 外卖 / 回收 6 角色。角色 = 能量发行权，与钱包是两回事。</p></div>
   </div><div class="note note--tip">
     <span class="t">一句话记住分工</span>
@@ -77,80 +77,149 @@
     <li>校验通过后，后端签发 24 小时的平台会话令牌（JWT）；前端保存到本地并自动注入后续请求。</li>
     <li>登录成功进入<b>总览</b>页：顶栏右侧出现"老师1号 / 教师"，"当前操作钱包"自动切到你的本人钱包。</li>
     <li>24 小时内刷新页面会自动恢复会话；过期后重新登录即可。从 SSO 门户跳转（URL 带 <code>token</code>）会自动完成免密登录。</li>
-  </ol><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>04 / 33</span></div></section><section class="page"><div class="hdr"><span>第 02 章 · 登录与界面</span><span>CHAPTER 02 · LOGIN &amp; UI TOUR</span></div><figure>
-    <img src="../assets/screenshots/manual/T01-dashboard.png" alt="教师总览页">
-    <figcaption>图 2-1 教师登录后的总览页：链状态、协议分布、教学入口与成就榜同屏；下方「班级实训进度看板」在教师身份下会显示为"教师视角 · 班级"。</figcaption>
+  </ol><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>04 / 41</span></div></section><section class="page"><div class="hdr"><span>第 02 章 · 登录与界面</span><span>CHAPTER 02 · LOGIN &amp; UI TOUR</span></div><figure>
+    <img src="../assets/screenshots/manual/T01b-dashboard-top.png" alt="教师总览页顶部">
+    <figcaption>图 2-1 教师登录后的总览页顶部：左侧是阶段进度与三项自统计（搭链步骤 / 已部署合约 / 链上交易），
+    右侧是<b>实训链状态</b>卡（链运行中 · 当前块高 · 交易总数 · 部署合约）与实训引擎行。
+    卡里的「<b>协议分布</b>」小饼条只在<b>当前钱包自己部署过标准合约</b>时才渲染（<code>standard_breakdown</code> 为空则整块不出现），
+    教师看到它缺席不是故障；下方「实训进度看板」在教师身份下会显示为“教师视角”（口径见 7.1）。</figcaption>
   </figure><div class="note note--bad">
-    <span class="t">如果登录失败：提示「[SSO 401] …」或「SSO 登录接口 HTTP 401」</span>
-    当前版本把<b>密码错误</b>与<b>SSO 服务异常</b>都包装成同一个 502/401 提示，无法区分（建议清单 <b>P1-4</b>）。
-    教师侧判断顺序：① 用小写账号、无空格重输一次；② 换浏览器或无痕窗口排除会话残留；
-    ③ 用同班学生账号试登——学生能登而你不能，是 SSO 侧账号状态问题，走教务重置；
-    ④ 都不行则把<b>账号 + 时间点</b>发给运维查 SSO 日志。<b>不要连续暴力重试</b>，可能触发风控锁定。
-  </div><h3><span class="num">2.2</span>左侧导航：与学生完全一致，只多一组</h3><table>
+    <span class="t">登录失败：提示语本身就是诊断结论</span>
+    登录链路分三段（取密文 → 提交校验 → 签发会话令牌），<b>每一段失败给出的话不一样</b>：
+    SSO 原文已透传，不会把密码错误也包成服务异常。按下表对号入座即可。
+  </div><table>
+    <thead><tr><th style="width:52mm">你看到的提示</th><th style="width:34mm">真实原因</th><th>怎么办</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">无法连接 SSO 服务：…</td><td>后端连不上 SSO（网络 / 服务未起 / 地址配错）</td><td><b>与账号无关</b>；找运维查 <code>EXTERNAL_API_BASE</code> 与网络，不要让学生重复重试</td></tr>
+      <tr><td class="mono">SSO 加密接口 HTTP 4xx / 5xx</td><td>连“取密码密文”这一步就失败，请求还没发出去</td><td>同上；换账号密码无效，先确认后端与 SSO 可达</td></tr>
+      <tr><td>SSO 返回的中文原话（如「用户名或密码错误」「账号已停用」）</td><td>账号或密码确实错了，或账号状态问题</td><td>用小写账号、无空格重输一次；仍失败走教务重置密码</td></tr>
+    </tbody>
+  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>05 / 41</span></div></section><section class="page"><div class="hdr"><span>第 02 章 · 登录与界面</span><span>CHAPTER 02 · LOGIN &amp; UI TOUR</span></div><ul class="dash">
+    <li><b>先排除会话残留</b>：换浏览器或无痕窗口再试一次；旧令牌不会自动失效，可能让你把“界面停在旧页”误判成“登不上”。</li>
+    <li><b>同班学生能登而你不能</b>：是 SSO 侧教师账号状态问题，把<b>账号 + 时间点</b>发给运维查 SSO 日志。</li>
+    <li><b>不要连续暴力重试</b>：可能触发风控锁定；课上急用可先用学生账号完成演示，课后修账号。</li>
+  </ul><h3><span class="num">2.2</span>左侧导航：与学生完全一致，只多一组</h3><table>
     <thead><tr><th style="width:36mm">分组</th><th>包含页面</th><th style="width:52mm">教师用途</th></tr></thead>
     <tbody>
-      
-      
-      
-      
-      
-      
-      
+      <tr><td><b>⛓️ 链底层搭建</b></td><td>总览 · 联盟链 ／ 云桌面 · 搭链教程</td><td>课堂演示起点；核对 10 步教程命令是否可执行</td></tr>
+      <tr><td><b>🔧 业务合约开发</b></td><td>合约 IDE ／ 合约管理 ／ 接口调试</td><td>演示写—编—部—调闭环；A / H / I 项得分点</td></tr>
+      <tr><td><b>🌿 联盟治理与运营</b></td><td>绿色低碳联盟链 ／ 能量钱包 ／ 绿色资产市场</td><td>6 角色发放与兑换演示；E / F / G / C 项得分点</td></tr>
+      <tr><td><b>🔍 链上验证</b></td><td>调用监听器 ／ 区块链浏览器</td><td>监管审计视角看全班数据；运营沙盘出题口</td></tr>
+      <tr><td><b>🏆 成就中心</b></td><td>成就墙 · 挑战任务</td><td>激励工具；排行榜按钱包展示，教师本人也会上榜</td></tr>
+      <tr><td><b>🎓 教学管理</b>（教师 / 管理员可见）</td><td>学生成绩</td><td>录分、刷新、看班级看板</td></tr>
+      <tr><td><b>底部大按钮</b> 生成实训报告</td><td>实训报告</td><td>教师打开看到的是<b>全局口径</b>报告（见第 08 章）</td></tr>
     </tbody>
-  <tr><td><b>⛓️ 链底层搭建</b></td><td>总览 · 联盟链 ／ 云桌面 · 搭链教程</td><td>课堂演示起点；核对 10 步教程命令是否可执行</td></tr><tr><td><b>🔧 业务合约开发</b></td><td>合约 IDE ／ 合约管理 ／ 接口调试</td><td>演示写—编—部—调闭环；A / H / I 项得分点</td></tr><tr><td><b>🌿 联盟治理与运营</b></td><td>绿色低碳联盟链 ／ 能量钱包 ／ 绿色资产市场</td><td>6 角色发放与兑换演示；E / F / G / C 项得分点</td></tr><tr><td><b>🔍 链上验证</b></td><td>调用监听器 ／ 区块链浏览器</td><td>监管审计视角看全班数据；运营沙盘出题口</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>05 / 33</span></div></section><section class="page"><div class="hdr"><span>第 02 章 · 登录与界面</span><span>CHAPTER 02 · LOGIN &amp; UI TOUR</span></div><table>
-    <thead><tr><th style="width:36mm">分组</th><th>包含页面</th><th style="width:52mm">教师用途</th></tr></thead>
-    <tbody>
-      
-      
-      
-      
-      
-      
-      
-    </tbody>
-  <tr><td><b>🏆 成就中心</b></td><td>成就墙 · 挑战任务</td><td>激励工具；排行榜按钱包展示，教师本人也会上榜</td></tr><tr><td><b>🎓 教学管理</b>（教师 / 管理员可见）</td><td>学生成绩</td><td>录分、刷新、看班级看板</td></tr><tr><td><b>底部大按钮</b> 生成实训报告</td><td>实训报告</td><td>教师打开看到的是<b>全局口径</b>报告（见第 08 章）</td></tr></table><h3><span class="num">2.3</span>顶栏与底栏：教师要看懂的四块信息</h3><div class="grid2">
+  </table><h3><span class="num">2.3</span>顶栏与底栏：教师要看懂的四块信息</h3><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>06 / 41</span></div></section><section class="page"><div class="hdr"><span>第 02 章 · 登录与界面</span><span>CHAPTER 02 · UI TOUR</span></div><div class="grid2">
     <div class="card"><h4>面包屑 + 阶段标签</h4><p class="small">「教学管理 / 学生成绩 · 教学 · 学生成绩管理」。左侧彩色标签告诉你当前页面属于哪个教学阶段，与学生看到的完全相同，便于口头指挥"打开阶段 3 的联盟治理页"。</p></div>
     <div class="card"><h4>链状态灯</h4><p class="small">显示 <b>EVM 真实链运行中</b>／<b>FISCO 节点已连接</b>／<b>本地沙盒模式</b>。<span class="tag tag--w">注意</span> 这个灯会被本机覆盖值影响，见 2.4。</p></div>
     <div class="card"><h4>当前操作钱包</h4><p class="small">下拉共 7 项：💼 我的钱包（你本人）+ 6 个联盟角色钱包（<code>0xadmin</code>／<code>0xmetro</code>／<code>0xbus</code>／<code>0xbike</code>／<code>0xtakeout</code>／<code>0xrecycle</code>）。切换即代表"以该身份写链"。</p></div>
     <div class="card"><h4>用户卡 / 快捷键 / 报告</h4><p class="small">用户卡弹出姓名、账号、学校、角色与退出；「? · 快捷键」呼出面板；「实训报告」一键进入报告页。数字键 <code>1</code>–<code>9</code> 直达 9 个主页面。</p></div>
-  </div><p>侧边栏底部「当前链状态」固定展示：<b>引擎</b>、<b>块高</b>、<b>共识 PBFT · 4节点</b>、<b>整体学习进度</b>。</p><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>06 / 33</span></div></section><section class="page"><div class="hdr"><span>第 02 章 · 登录与界面</span><span>CHAPTER 02 · UI TOUR</span></div><h3><span class="num">2.4</span>侧边栏两个"看起来能用、其实别乱点"的控件</h3><figure>
+  </div><p>侧边栏底部「当前链状态」固定展示：<b>引擎</b>、<b>块高</b>、<b>共识 PBFT · 4节点</b>、<b>整体学习进度</b>。</p><h3><span class="num">2.4</span>侧边栏两个读数：一个是假动作，一个会说真话</h3><figure>
     <img src="../assets/screenshots/manual/T09-engine-switch.png" alt="链引擎切换弹层">
     <figcaption>图 2-2 侧边栏「引擎」弹层：三个引擎选项 + "切换会重置链状态（块高归零）"的警示文案。</figcaption>
   </figure><table>
     <thead><tr><th style="width:34mm">控件</th><th style="width:44mm">平台承诺的行为</th><th>实测真实行为</th></tr></thead>
     <tbody>
-      <tr><td>引擎切换（FISCO / EVM / 本地沙盒）</td><td>切换链执行引擎，重置链状态、块高归零</td><td><b>只改你这台电脑的显示</b>：后端 <code>POST /api/chain/mode</code> 不存在（实测 404），链照旧运行、块高不变，但顶栏灯与全站"模式"标签会跟着变，<b>极易误判环境</b>（P1-17）</td></tr>
-      <tr><td>整体学习进度百分比</td><td>反映本人 / 本班学习进度</td><td>是<b>按页面写死的常量</b>（学生成绩页固定 88%、报告页 100%），与真实数据无关（P1-5）；看真实进度请用第 07 章路径</td></tr>
+      
+      
     </tbody>
-  </table><div class="note note--warn">
+  <tr><td>引擎切换（FISCO / EVM / 本地沙盒）</td><td>切换链执行引擎，重置链状态、块高归零</td><td><b>只改你这台电脑的显示</b>：后端 <code>POST /api/chain/mode</code> 不存在（实测 404），链照旧运行、块高不变，但顶栏灯与全站"模式"标签会跟着变，<b>极易误判环境</b></td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>07 / 41</span></div></section><section class="page"><div class="hdr"><span>第 02 章 · 登录与界面</span><span>CHAPTER 02 · UI TOUR</span></div><table>
+    <thead><tr><th style="width:34mm">控件</th><th style="width:44mm">平台承诺的行为</th><th>实测真实行为</th></tr></thead>
+    <tbody>
+      
+      
+    </tbody>
+  <tr><td>整体学习进度百分比</td><td>反映本人 / 本班学习进度</td><td><b>已是后端真实进度</b>：学生 = 本人 10 步完成占比；教师 / 管理员 = 班级 / 全校平均完成占比。<span class="tag tag--w">注意</span> 未绑定班级时会显示 <b>0%</b>，那是“取不到名单”而不是“全班没做”（见 3.1）</td></tr></table><div class="note note--warn">
     <span class="t">课堂上的安全用法</span>
     需要确认链环境时，<b>不要点引擎切换</b>，改为新开一个浏览器标签访问
     <code>http://&lt;平台地址&gt;/api/chain/status</code>，返回的 <code>mode</code> / <code>engine</code> / <code>height</code> 才是后端真实状态。
     如果曾误点过切换，把本机记录清掉即可恢复：浏览器控制台执行
     <code>localStorage.removeItem('chain_mode_override')</code> 后刷新页面。
-  </div><div class="kicker">CHAPTER 03</div><h2>开课准备：12 分钟 10 项自检</h2><p class="lead">这 10 项按"不通过就无法上课"排序。<b>第 1–4 项</b>每次上课前必查；<b>第 5–10 项</b>开课首周查一次即可。</p><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>07 / 33</span></div></section><section class="page"><div class="hdr"><span>第 03 章 · 开课准备</span><span>CHAPTER 03 · READINESS CHECK</span></div><table>
+  </div><div class="kicker">CHAPTER 03</div><h2>开课准备：12 分钟 10 项自检</h2><p class="lead">这 10 项按"不通过就无法上课"排序。<b>第 1–4 项</b>每次上课前必查；<b>第 5–10 项</b>开课首周查一次即可。</p><table>
     <thead><tr><th style="width:8mm">#</th><th style="width:36mm">检查项</th><th style="width:52mm">怎么做（通过标准）</th><th>不通过时怎么办</th></tr></thead>
     <tbody>
-      <tr><td>1</td><td>平台可访问</td><td>浏览器打开平台地址，能看到登录页</td><td>确认服务与端口（默认前端 5173 / 后端 8000）；本机调试时确认 <code>npm run dev</code> 与 <code>python run.py</code> 都在跑</td></tr>
-      <tr><td>2</td><td>后端真链在跑</td><td>访问 <code>/api/chain/status</code>，<code>mode</code> 为 <code>evm</code> 或 <code>fisco</code>，且执行一次操作后 <code>height</code> 会增长</td></tr>
-      <tr><td>3</td><td>教师登录成功</td><td><code>tzt001</code> 能登录，顶栏显示"教师"</td><td>按 2.1 的排错顺序处理；必要时先用学生账号完成上课，课后修账号</td></tr>
-      <tr><td>4</td><td>成绩页可进</td><td>左侧「教学管理 · 学生成绩」存在，页面能加载出统计卡</td><td>URL 直接访问 <code>/#/grades</code> 被弹回首页 = 会话角色不是 3/1，重新登录</td></tr>
-      <tr><td>5</td><td>学生账号已发放</td><td>至少 1 个学生账号能登录并看到「我的钱包」</td><td>SSO 侧补发账号；<span class="tag tag--w">已知问题</span> 学生首登需 SSO 返回正常，否则报 401（P1-4）</td></tr>
-      <tr><td>6</td><td>班级花名册</td><td><code>/api/auth/class-students</code> 返回同班学生（教师视角）</td><td>当前版本恒空（P0-1）。<b>应对</b>：用附 C 的花名册模板手工登记"学号—姓名—钱包"，第 05 章录分要用。<b>切勿</b>手工往 <code>user_info</code> 表里补数据（见附 B 的 P0-4）</td></tr>
-      <tr><td>7</td><td>三份生态合约状态</td><td>「绿色低碳联盟链」页显示 3/3 已激活（GreenEnergy / PlantCertificate / EcoBadge）</td><td>切到 <code>0xadmin</code> 钱包或联盟管理员角色，用「一键激活」部署；否则全班 H 项 5 分与后续 E/F/G 全被卡住</td></tr>
-      <tr><td>8</td><td>树种已上架 ≥ 2</td><td>生态页"植树证书"区可见 ≥ 2 个树种（默认仅"银杏 1000 能量"1 种）</td><td>管理员角色 → 添加树种（例：水杉 1500）。<b>不开这一步，学生 G-1 最高只有 4 分（满分 8）</b></td></tr>
-      <tr><td>9</td><td>勋章与骑行券有库存</td><td>生态勋章（10 能量）/ 骑行券（20 能量）可兑换，供应未耗尽</td><td>管理员补发供应；骑行券仅"共享单车"角色可发放</td></tr>
-      <tr><td>10</td><td>演示钱包已选定</td><td>确定一个"教师演示专用钱包"，并告知学生不要共用</td><td>见 3.2 的演示纪律；<b>切勿</b>直接借用学生钱包演示</td></tr>
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
     </tbody>
-  </table><p class="small muted">第 2 项若返回 <code>mode</code> 为 <code>mock</code>，说明后端起在沙盒模式（不产生真实链上数据），报告与成绩都会偏低，须切回真实链再上课。</p><h3><span class="num">3.1</span>花名册缺失时的手工登记法（开学第一周做一次）</h3><p>因为 <code>user_info</code> 表当前不会被登录流程写入（P0-4，表现为 P0-1），平台无法把"学号—姓名—钱包"关联起来。教师可用的最小闭环是<b>自己建一张对照表</b>：</p><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>08 / 33</span></div></section><section class="page"><div class="hdr"><span>第 03 章 · 开课准备</span><span>CHAPTER 03 · READINESS</span></div><ol class="steps">
-    <li>让学生登录后进入<b>实训报告</b>页，把页面右上角生成的<b>本人钱包地址</b>（学生为 <code>stu:&lt;用户ID&gt;</code> 或 0x 地址）抄给你，或直接截图。</li>
-    <li>你把它记进附 C 的模板：<code>学号 / 姓名 / 课程 / 钱包 / 班级</code>。</li>
-    <li>录分时把钱包填进"钱包地址"框，平台即可自动算出该生的实训成绩；<b>学号一定要用学生真实学号</b>（原因见 5.4）。</li>
-    <li>需要看某个学生的进度或报告时，用第 07 章的控制台取数法，输入这个钱包即可。</li>
-  </ol><div class="note note--tip">
-    <span class="t">为什么必须"学号 + 钱包"两个都有</span>
-    成绩记录的<b>唯一键是「学号 + 课程」</b>，而实训成绩的计算<b>只认钱包</b>。只有学号没有钱包 → 实训成绩恒为 0；
-    只有钱包没有学号 → 系统草稿会用 <code>W&lt;钱包前 10 位&gt;</code> 当学号，产生一条无法归档的幽灵记录。
+  <tr><td>1</td><td>平台可访问</td><td>浏览器打开平台地址，能看到登录页</td><td>确认服务与端口（默认前端 5173 / 后端 8000）；本机调试时确认 <code>npm run dev</code> 与 <code>python run.py</code> 都在跑</td></tr><tr><td>2</td><td>后端真链在跑</td><td>访问 <code>/api/chain/status</code>，<code>mode</code> 为 <code>evm</code> 或 <code>fisco</code>，且执行一次操作后 <code>height</code> 会增长</td><td>连不上或 <code>height</code> 恒不涨：链实例未起，找运维重启后再上课；<b>不要</b>用侧边栏“引擎切换”试图修复</td></tr><tr><td>3</td><td>教师登录成功</td><td><code>tzt001</code> 能登录，顶栏显示"教师"</td><td>按 2.1 的排错顺序处理；必要时先用学生账号完成上课，课后修账号</td></tr><tr><td>4</td><td>成绩页可进</td><td>左侧「教学管理 · 学生成绩」存在，页面能加载出统计卡</td><td>URL 直接访问 <code>/#/grades</code> 被弹回首页 = 会话角色不是 3/1，重新登录</td></tr><tr><td>5</td><td>学生账号已发放</td><td>至少 1 个学生账号能登录，并能在「能量钱包」页看到自己的 <b>0x 本人钱包</b></td><td>SSO 侧补发账号；登录报错按 2.1 的三类提示分开处理（服务不可达 ≠ 密码错）</td></tr><tr><td>6</td><td>学校与花名册</td><td>打开「学生成绩」页：顶部范围卡显示<b>「本校：天择大学（232）」</b>且<b>没出现</b>橙色提示卡，「搭链进度 · 本校看板」能看到学生</td><td>成绩<b>按学校归档</b>。学校通常已由登录下发；若显示「未定任教学校」，点<b>「绑定任教范围」</b>填真实<b>学校 ID</b>（如 <code>232</code>，可附班级作聚焦），详见 3.1；学生<b>登录一次即自动进花名册</b>，无需你手工登记</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>08 / 41</span></div></section><section class="page"><div class="hdr"><span>第 03 章 · 开课准备</span><span>CHAPTER 03 · READINESS CHECK</span></div><table>
+    <thead><tr><th style="width:8mm">#</th><th style="width:36mm">检查项</th><th style="width:52mm">怎么做（通过标准）</th><th>不通过时怎么办</th></tr></thead>
+    <tbody>
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+    </tbody>
+  <tr><td>7</td><td>三份生态合约状态</td><td>「绿色低碳联盟链」页显示 3/3 已激活（GreenEnergy / PlantCertificate / EcoBadge）</td><td>切到联盟管理员角色，用「一键激活」部署；否则全班 H 项 5 分与后续 E/F/G 全被卡住。<span class="tag tag--i">本机</span> 已 3/3；历史上被反复激活过多个地址，<b>以合约管理里未标失效的那一批为准</b></td></tr><tr><td>8</td><td>树种已上架 ≥ 2</td><td>生态页"植树证书"区可见 ≥ 2 个树种（默认仅"银杏 1000 能量"1 种）</td><td>管理员角色 → 添加树种（例：水杉 1500）。<b>不开这一步，学生 G-1 最高只有 4 分（满分 8）</b>。<span class="tag tag--i">本机</span> 已有银杏 1000 / 水杉 1500 两种（供应各 50）</td></tr><tr><td>9</td><td>勋章与骑行券有库存</td><td>生态勋章（10 能量）/ 骑行券（20 能量）可兑换，供应未耗尽</td><td>管理员补发供应；骑行券仅"共享单车"角色可发放。<span class="tag tag--i">本机</span> 两类供应均 100，已铸 13 / 6 份</td></tr><tr><td>10</td><td>演示钱包已选定</td><td>确定一个"教师演示专用钱包"，并告知学生不要共用</td><td>见 3.2 的演示纪律；<b>切勿</b>直接借用学生钱包演示</td></tr></table><p class="small muted">第 2 项若返回 <code>mode</code> 为 <code>mock</code>，说明后端起在沙盒模式（不产生真实链上数据），报告与成绩都会偏低，须切回真实链再上课。</p><h3><span class="num">3.1</span>开课第一周：确认任教学校 + 核对花名册（做一次，全学期受益）</h3><p><b>本版口径变更（重要）</b>：成绩不再按班级归档，而是<b>按学校归档</b>——
+  只要是<b>同一所学校</b>的学生，其成绩你都能查看与操作，<b>不必一个班一个班地切</b>。
+  因此平台上的数据分两类取数：
+  <b>成绩 / 名单 / 看板按学校</b>（总览页学情卡、成绩页列表与搭链看板、系统草稿列表），
+  <b>运营沙盘仍按班级</b>（它是分组演练的单位）。</p><p>决定“你能看哪些成绩”的字段只有一个：<b>学校 ID</b>。它来自登录时外部 SSO 返回的
+  <code>schoolId</code>（平台把它存进花名册的 <code>school_id</code> 列），
+  而<b>不是</b> <code>schoolName</code>（只用于显示），<b>也不是</b> <code>collegeId</code>（学院不参与归档）。
+  外部 SSO <b>不一定会下发</b>这个字段（返回 <code>0</code> / 空时平台按“无学校”处理），所以第一周要确认它定下来了：</p><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>09 / 41</span></div></section><section class="page"><div class="hdr"><span>第 03 章 · 开课准备</span><span>CHAPTER 03 · READINESS</span></div><ol class="steps">
+    <li>教师登录后进入左侧<b>教学管理 · 学生成绩</b>。顶部范围卡会写明当前归档口径：
+      <b>「本校：天择大学（232）· 跨班都能看能录」</b>即正常；
+      出现橙色提示卡（如「未定任教学校，只能看到你本人录入的成绩」）就是没定下来。</li>
+    <li>点范围卡右侧<b>「绑定任教范围」</b>，填真实<b>学校 ID</b>（如 <code>232</code>）→ 确定。
+      班级 ID <b>可选</b>，只用作“先只看这一个班”的聚焦，<b>不再是权限边界</b>。
+      <span class="tag tag--w">注意</span> 空值与 <code>0</code> 会被直接拒绝（“0”不是学校也不是班级）。</li>
+    <li>让学生<b>登录一次平台</b>：登录时平台会自动把「用户 ID—姓名—账号—班级—学校—本人钱包」写进花名册，
+      成绩行也由它按身份自动补齐归档字段，不需要你手工登记，也不需要你手填学校。</li>
+    <li>核对：橙色提示卡消失、范围卡显示本校即一切正常；搭链看板标题显示
+      <b>「本校 232 · N 人」</b>并逐人列出学号 / 姓名 / 钱包 / 完成步数 / 当前卡点，
+      <b>同校不同班的学生会一起出现</b>（这就是新口径的目的）。</li>
+    <li>想只看某一个班：在筛选框填<b>班级 ID</b> 后查询；填<b>外校</b>班级号会被直接拒绝
+      （<span class="mono">403</span>），避免“换个班号就绕过归档边界”。</li>
+  </ol><div class="note note--warn">
+    <span class="t">界面上「学号」那一列，显示的其实是登录账号</span>
+    实测 SSO 把<b>登录账号</b>（学生手机号 / 教师工号，如 <code>19898800030</code>）放在返回字段
+    <code>studentId</code> 里，把<b>姓名</b>放在 <code>username</code> 里——两个字段与字面意思相反。
+    平台按“<b>账号 = 学号列</b>”如实落库，所以：
+    ① 教师按“学号”搜人，要输入的是学生的<b>登录账号</b>；
+    ② 学生手册里让你填的“学号”也照此办理；
+    ③ 这套对应关系<b>不影响成绩归属</b>——归档只看<b>学校 ID</b>，且平台会按
+    用户 ID / 钱包 / 账号三种口径回查花名册，历史行不会因字段没填而消失。
+  </div><div class="note note--info">
+    <span class="t">范围卡那行小字在说什么</span>
+    「学校来源：… · 名单来源：… · N 人」是平台在<b>说真话</b>：学校解析优先级为
+    <b>人工绑定 → 花名册（登录下发的 schoolId）→ 成绩册派生</b>；三者都定不出时，
+    平台<b>不会</b>把你放去看全校，而是<b>只显示你本人录入的成绩</b>并给出橙色提示。
+    名单来源为<b>成绩册派生</b>时，说明花名册里还没有学生记录，当前列表是由你录过的成绩行反推的，
+    <b>仅供核对、不代表全校人数</b>。
+  </div><div class="note note--ok">
+    <span class="t">绑定范围也管得到“运营沙盘”</span>
+    看板与成绩册走<b>学校解析链</b>（绑定 → 花名册 → 成绩册），所以定完立刻生效；
+    沙盘<b>以前</b>只认登录令牌里的班级快照（它只在登录那一刻由外部 SSO 下发），因此会出现
+    “看板已定范围、沙盘却把轮次建到空班级”的口径分裂。本版起<b>沙盘与看板共用同一条解析链</b>：
+    本机实测教师令牌 <code>class_id</code> 曾为空、库里已定 216 →
+    <code>/api/sandbox/nodes</code> 返回 <code>class_id=216</code>，学生端 <code>/rounds/active</code> 正常命中。
+    <b>不必等运维改 SSO，也不必退出重登</b>；但沙盘按<b>班级</b>分组，所以
+    “带多个班”时仍需为每个班分别建轮次（成绩则一次看全校）。
+  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>10 / 41</span></div></section><section class="page"><div class="hdr"><span>第 03 章 · 开课准备</span><span>CHAPTER 03 · READINESS</span></div><div class="note note--tip">
+    <span class="t">为什么仍然建议保留一纸花名册（附 C）</span>
+    成绩记录的<b>唯一键是「学号 + 课程」</b>，而实训成绩的计算<b>只认钱包</b>：只有学号没有钱包 → 实训成绩恒为 0。
+    现在草稿与成绩行的学号默认取自花名册（真实学号），只有当花名册里没这个学生时才会退回
+    <code>W&lt;钱包前 10 位&gt;</code> 占位学号。因此附 C 那张“学号—姓名—钱包—班级”表仍然有用：
+    它是发生争议时你手上<b>不依赖平台的第二事实源</b>。
+  </div><div class="note note--info">
+    <span class="t">管理员专项：历史钱包认领</span>
+    “一人一钱包”上线前的数据写在公共演示钱包（如 <code>0xlearner</code>）名下。若不认领到具体学生，
+    该生的报告分会凭空偏低。入口：<code>POST /api/auth/wallet-alias/claim</code>（传 <code>alias</code> + <code>user_id</code>，仅管理员），
+    认领结果会写审计字段，可复查。
   </div><h3><span class="num">3.2</span>演示纪律：四条铁律</h3><table>
     <thead><tr><th style="width:34mm">铁律</th><th>原因</th></tr></thead>
     <tbody>
@@ -163,8 +232,35 @@
     <span class="t">想"从零开始"再演一遍？</span>
     链上数据不可回滚，但你不需要清空它：把演示钱包换成一个没用过的联盟角色钱包（如 <code>0xrecycle</code>），
     在报告页用 <code>?wallet=</code> 指定它，就能从 0 分状态完整演一次起步流程。
+  </div><h3><span class="num">3.3</span>上架树种与补库存：学生 G1 满分的唯一外部前置</h3><p class="lead">报告 G1（8 分）只看一件事：<b>本钱包兑换过 ≥ 2 个不同树种</b>。目录里只有 1 个树种时，学生再怎么努力也只能拿 4 分 ——
+  而<b>上架树种属治理职能，学生账号做不了</b>，只能由你或管理员完成。这一节就是上面自检表第 8、9 项的操作细则。</p><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>11 / 41</span></div></section><section class="page"><div class="hdr"><span>第 03 章 · 目录治理</span><span>CHAPTER 03 · CATALOG GOVERNANCE</span></div><table>
+    <thead><tr><th style="width:30mm">步骤</th><th>怎么做（界面路径 → 通过标准）</th></tr></thead>
+    <tbody>
+      <tr><td><b>① 切到治理身份</b></td><td>进入<b>绿色低碳联盟链</b>页，把当前身份切到<b>联盟管理员</b>（<code>0xadmin</code>）。只有具备「目录治理」职能的身份才会出现「🌳 植树证书发行与目录治理」卡与其中的<b>「上架树种（联盟治理）」</b>表单；<b>看不到这张卡 = 身份没切对</b>，不是页面坏了</td></tr>
+      <tr><td><b>② 填表上架第二个树种</b></td><td>树种名称（如 水杉）· 所需能量（<b>≥ 1000</b>，页面输入框最小值就是 1000）· 发行额度（一证一树、额满自动售罄，<b>建议 50~100</b>）· 图片地址（选填）· 描述 → 点<b>「添加树种」</b>。两个树种的价格拉开差距（如 1000 / 1500），学生顺便能练到“不同额度扣减”</td></tr>
+      <tr><td><b>③ 核对目录</b></td><td>刷新后在树种列表看到 ≥ 2 行且未售罄。接口口径：<code>GET /api/eco/trees</code> 每行返回 <code>remaining</code> 与 <code>sold_out</code>，后者为真时学生端表现为「售罄不可兑」</td></tr>
+      <tr><td><b>④ 补勋章与骑行券库存</b></td><td>勋章 / 骑行券由<b>对应发行节点</b>维护（谁发行、谁铸造、谁兜付）：生态勋章是内置默认类型、<b>全体联盟节点都可发行</b>（实测 10 能量、供应 100、已铸 13），<b>骑行券仅「共享单车」角色可发行</b>（20 能量、供应 100、已铸 6）。要补库存就把发行额度<b>上调</b></td></tr>
+    </tbody>
+  </table><div class="grid2">
+    <div class="note note--warn" style="margin:0">
+      <span class="t">三条不可逆红线（都写死在服务端）</span>
+      ① <b>所需能量不得低于 1000</b>：填更大可以通过、填更小直接 <code>400</code>；
+      ② <b>发行额度只可上调不可下调</b>：新上限低于已铸造数会被拒绝（否则链上事实超发）；
+      ③ <b>已签发证书不可变</b>：把树种下架（<code>status=off</code>）只让后续不可兑，<b>不会</b>撤回任何人已拿到的证书，也不会改学生的 G 分。
+    </div>
+    <div class="note note--tip" style="margin:0">
+      <span class="t">额度填 0 的含义（别误用）</span>
+      <code>supply=0</code> 是<b>「不限额」的存量兼容语义</b>，只用于早期数据，新上架请填真实份数：
+      不限额等于取消通胀约束，「发行数量 / 剩余 / 售罄」这套 ERC721 项目额度教学点就演示不出来，
+      一个班 30 人全兑同一树种时会把证书发行量瞬时推到远超设计值。
+    </div>
+  </div><div class="note note--ok">
+    <span class="t">本机现状（可直接对照）</span>
+    树种目录已有 <b>银杏（1000 能量）</b>与<b>水杉（1500 能量）</b>两个 active 项目，额度各 50、各已发行 1；
+    勋章与骑行券库存充足。<b>结论：本班学生 G1 的 8 分已无外部阻塞</b>，只要攒够 2500 能量换两个树种即可拿满 G 项 15 分（对应学生手册 7.4~7.6 与 7.8 的 T8）。
+    换环境部署时请重跑自检第 8、9 项：<b>空库首次启动会自动播种两个树种（银杏树 / 樟子松），但历史遗留库不会自动补齐</b>。
   </div><div class="kicker">CHAPTER 04</div><h2>课堂演示脚本：一场 45 分钟怎么排</h2><p class="lead">平台本身按"学生自主实操"设计，教师的价值不在讲概念，而在<b>把第一步跑通、把评价口径讲明白</b>。
-  建议固定用下面的时间盒，四节课（阶段 1→4）走完一学期主线。</p><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>09 / 33</span></div></section><section class="page"><div class="hdr"><span>第 04 章 · 课堂演示</span><span>CHAPTER 04 · DEMO SCRIPT</span></div><div class="flow">
+  建议固定用下面的时间盒，四节课（阶段 1→4）走完一学期主线。</p><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>12 / 41</span></div></section><section class="page"><div class="hdr"><span>第 04 章 · 课堂演示</span><span>CHAPTER 04 · DEMO SCRIPT</span></div><div class="flow">
     <div class="n"><b>0–5 分钟</b>交代目标<br>今天做完哪几步<br>报告里对应几分</div>
     <div class="sep">→</div>
     <div class="n"><b>5–25 分钟</b>教师演示<br>投屏走一遍<br>边做边看监听器</div>
@@ -186,7 +282,7 @@
       <tr><td>9</td><td>部署 GreenEnergy 绿色能量代币（管理员授权 + Gas 消耗说明）</td><td>第一次真实部署：<code>onlyMintController</code> 权限 + 为什么需要管理员授权</td><td>用非管理员身份部署被拒 → 正好演示权限模型</td></tr>
       <tr><td>10</td><td>商业化全链路验证（5 业务角色发放 → 居民持有 + 交易确认）</td><td>把 1–9 步串成业务：角色发能量、居民有余额、链上有回执</td><td>只做发放不查余额；提醒"验证"才算完成</td></tr>
     </tbody>
-  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>10 / 33</span></div></section><section class="page"><div class="hdr"><span>第 04 章 · 课堂演示</span><span>CHAPTER 04 · DEMO SCRIPT</span></div><div class="note note--tip">
+  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>13 / 41</span></div></section><section class="page"><div class="hdr"><span>第 04 章 · 课堂演示</span><span>CHAPTER 04 · DEMO SCRIPT</span></div><div class="note note--tip">
     <span class="t">这一步做完，学生会拿到什么分</span>
     10 步全部完成 → 报告 <b>D 项 10 分</b>（必修），同时"链搭建"维度 +8 分/步；
     另外<b>故意做出 1–3 次失败</b>可拿"探索型学生"+1~3 分。演示时不妨当场敲错一次，告诉学生"报错也被记录、也有分"。
@@ -208,7 +304,7 @@
     ① <b>钱包切忘了切回来</b>：演示完记得回到"我的钱包"，否则下一步又写进别人的账；
     ② <b>能量不够换证书</b>：证书 1000 能量，先让"回收公司"（+100/次）发 10 次，再兑换，别现场攒半天；
     ③ <b>没有第 2 个树种</b>：兑换证书时只有"银杏"，学生拿不满 G-1，按 3.1 自检第 8 项先补树种。
-  </div><h3><span class="num">4.3</span>把课堂交给学生的两个开关</h3><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>11 / 33</span></div></section><section class="page"><div class="hdr"><span>第 04 章 · 课堂演示</span><span>CHAPTER 04 · DEMO SCRIPT</span></div><ul class="dash">
+  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>14 / 41</span></div></section><section class="page"><div class="hdr"><span>第 04 章 · 课堂演示</span><span>CHAPTER 04 · DEMO SCRIPT</span></div><h3><span class="num">4.3</span>把课堂交给学生的两个开关</h3><ul class="dash">
     <li><b>验收口令</b>：让学生把报告页"提分建议"表格读给你听，第一行 <span class="mono">P1</span> 就是他下一步该做的事，教师不必逐个查。</li>
     <li><b>同桌互验</b>：A 把钱包地址给 B，B 在区块链浏览器地址页查余额与交易，确认 A 真的做过——这比教师检查更高效，也练了浏览器使用。</li>
   </ul><div class="kicker">CHAPTER 05</div><h2>学生成绩管理：一条数据的完整闭环</h2><p class="lead">「成绩管理」是教师日常使用频率最高的一页。它把<b>平台自动采集的链上行为</b>和<b>教师主观评价</b>合成一个综合分，
@@ -220,43 +316,37 @@
     <div class="n"><b>③ 教师评分</b>报告 / 课堂 / 答辩<br>教师手录 0–100</div>
     <div class="sep">→</div>
     <div class="n"><b>④ 综合成绩</b>实训 ×60%<br>+ 教师 ×40%</div>
-  </div><h3><span class="num">5.1</span>页面六个区块一览</h3><figure>
-    <img src="../assets/screenshots/manual/T05-grades.png" alt="成绩管理页顶部">
-    <figcaption>图 5-1 成绩管理页顶部：标题卡（教师专属）+ 四步闭环卡 + 课程统计卡。</figcaption>
-  </figure><table>
-    <thead><tr><th style="width:34mm">区块</th><th style="width:62mm">看到什么</th><th>教师该做什么</th></tr></thead>
+  </div><h3><span class="num">5.1</span>页面八个区块：从上到下就是你的工作顺序</h3><figure>
+    <img src="../assets/screenshots/manual/T02-grades-stats.png" alt="成绩管理页全貌">
+    <figcaption>图 5-1 「学生成绩」页实机状态（教师 tzt001 · 已绑定班级 216）：标题卡 → 四步闭环卡 → 课程成绩统计（1 人 100 / 88 / 95.2）→ 搭链进度·班级看板（10/10 全部完成）→ 系统实训草稿（1 条待同步）→ 筛选栏（班级号已自动带入）→ 成绩列表。注意顶部<b>没有</b>橙色提示卡，侧边栏「整体学习进度」为真实值 100%。</figcaption>
+  </figure><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>15 / 41</span></div></section><section class="page"><div class="hdr"><span>第 05 章 · 成绩管理</span><span>CHAPTER 05 · GRADES</span></div><table>
+    <thead><tr><th style="width:36mm">区块</th><th style="width:58mm">看到什么</th><th>教师该做什么</th></tr></thead>
     <tbody>
-      
-      
-      
-      
-      
-      
+      <tr><td>① 标题卡</td><td>「学生成绩管理 · 教师专属 · 已登录 · 教师」+ 当前教师姓名 + 一句话闭环说明；右上三按钮：新增成绩 / 刷新实训成绩 / 查询</td><td>所有写操作都从这三个按钮发起，其余区块都是展示</td></tr>
+      <tr><td>② 范围提示卡<br><span class="small muted">（只在异常时出现）</span></td><td>橙色卡，四种提示之一：未解析到班级 / 名单由成绩册派生 / 名单为空 / 登录信息未登记；右侧「绑定任教班级」按钮，下方小字「班级来源 · 名单来源 · N 人」</td><td><b>这张卡出现 = 你的取数范围有问题</b>，按 3.1 处理；正常状态是它<b>不存在</b>（如图 5-1）</td></tr>
+      <tr><td>③ 闭环说明卡</td><td>链上活动 → 实训成绩 → 教师评分 → 综合成绩（实训 60% + 教师 40%）</td><td>开学第一课把这四个框指给学生看，说清“我只占 40%”</td></tr>
+      <tr><td>④ 课程成绩统计</td><td>按课程分组：人数、实训均分、教师均分、综合均分（实测：区块链实训 · 1 人 · 100 / 88 / 95.2）；接口同时返 <span class="mono">total_rows</span> / <span class="mono">duplicate_rows</span> / <span class="mono">class_count</span></td><td>看均分健不健康；教师均分为空 = 还没录分；<b><span class="mono">duplicate_rows</span> &gt; 0 说明同一人存在多行</b>（官方口径：本校范围内按“课程 + 学生主体”去重，教师行优先于系统行）</td></tr>
+      <tr><td>⑤ 搭链进度 · 班级看板</td><td>标题带「班级 216」「平均完成 10 / 10 步」标签；逐人列 学号 / 姓名 / 钱包 / 完成步数 / 当前卡点 / 平均耗时每步</td><td>定位卡在第几步的学生（取数口径见第 07 章）</td></tr>
+      <tr><td>⑥ 系统实训草稿</td><td>「N 条待同步」+ 表列（学号 / 姓名 / 班级 / 实训草稿分 / <b>目标行</b> / 更新时间 / 同步为成绩），右下「全部同步为本班成绩」</td><td><b>这是草稿进入成绩册的唯一入口</b>（5.5）；先看「目标行」标签再点</td></tr>
+      <tr><td>⑦ 筛选栏</td><td>学号（精确）、姓名（模糊）、课程（模糊）、班级 ID；<b>绑定班级后班级号自动带入</b>，点「重置」会被清空</td><td>录分前先确认筛的是本班；<span class="tag tag--w">注意</span> 这里填<b>别班班号</b>也能查出别班行，接口不校验归属</td></tr>
+      <tr><td>⑧ 成绩列表</td><td>学号 / 姓名 / 课程 / <b>实训成绩</b> / 教师评分 / <b>综合成绩</b> / 班级 / 录入教师 / 备注 / 更新时间 / 操作；<b>教师正式行排在系统行之前</b></td><td>鼠标悬停“实训成绩”可展开四维明细（见 5.4）</td></tr>
     </tbody>
-  <tr><td>① 标题与按钮</td><td>「学生成绩管理 · 教师专属」、当前教师姓名，右上三个按钮：新增成绩 / 刷新实训成绩 / 查询</td><td>所有写操作都在这三个按钮，其余都是展示</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>12 / 33</span></div></section><section class="page"><div class="hdr"><span>第 05 章 · 成绩管理</span><span>CHAPTER 05 · GRADES</span></div><table>
-    <thead><tr><th style="width:34mm">区块</th><th style="width:62mm">看到什么</th><th>教师该做什么</th></tr></thead>
-    <tbody>
-      
-      
-      
-      
-      
-      
-    </tbody>
-  <tr><td>② 闭环说明卡</td><td>链上活动 → 实训成绩 → 教师评分 → 综合成绩（实训 60% + 教师 40%）</td><td>开学第一课把这四个框指给学生看，说清“我只占 40%”</td></tr><tr><td>③ 课程成绩统计</td><td>按课程分组：人数、实训均分、教师均分、综合均分</td><td>看均分健不健康；教师均分空白 = 还没录分</td></tr><tr><td>④ 搭链进度·班级看板</td><td>学号 / 姓名 / 钱包 / 完成步数 x/10 / 当前卡点「Step N · 标题」/ 平均耗时每步</td><td>定位卡在哪一步的学生（见 7.1 空态说明）</td></tr><tr><td>⑤ 筛选栏</td><td>学号（精确）、姓名（模糊）、课程（模糊）、班级 ID</td><td>录分前先按班级筛，避免跟同名学生弄混</td></tr><tr><td>⑥ 成绩列表</td><td>学号 / 姓名 / 课程 / <b>实训成绩</b> / 教师评分 / <b>综合成绩</b> / 班级 / 录入教师 / 备注 / 更新时间 / 操作</td><td>鼠标悬停“实训成绩”可展开四维明细（见 5.4）</td></tr></table><div class="note note--info">
-    <span class="t">分数颜色怎么读</span>
-    本页色阶为：<b>≥ 90</b> 优秀（青绿）、<b>≥ 80</b> 良好（主色）、<b>≥ 60</b> 及格（蓝）、<b>&lt; 60</b> 不及格（红）。
-    而「实训报告」页用的是另一套等级：≥ 90 优秀、≥ 75 良好、≥ 60 合格、≥ 40 待完善、&lt; 40 未完成。两套阈值<b>并不一致</b>：
-    例如 76 分在报告页已是“良好 🥈”，在成绩列表里只显示为蓝色“及格”。对外解释成绩时只选用一个口径，并把差异提前告知学生（详见附录 B）。
+  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>16 / 41</span></div></section><section class="page"><div class="hdr"><span>第 05 章 · 成绩管理</span><span>CHAPTER 05 · GRADES</span></div><div class="note note--ok">
+    <span class="t">分数颜色怎么读：全站已统一到同一套六档</span>
+    成绩页与报告页现在<b>共用同一份等级定义</b>（后端 <span class="mono">app/score_levels.py</span>，前端镜像在
+    <span class="mono">src/utils/score.ts</span>，报告接口直接下发 <span class="mono">level_key</span> / <span class="mono">level_color</span>）：
+    <b>≥ 90</b> 卓越 🏆、<b>≥ 80</b> 优秀 🥇、<b>≥ 70</b> 良好 🥈、<b>≥ 60</b> 合格 ✅、<b>≥ 40</b> 待完善 🚧、<b>&lt; 40</b> 未完成 ❌。
+    因此“80 分在成绩页算良好、在报告页算优秀”的分裂<b>已不存在</b>：同一分数在任何页面名称与颜色一致。
+    对外解释成绩时直接报名称即可，不必再加“本页口径”限定词。
   </div><h3><span class="num">5.2</span>录一份成绩：四步标准动作</h3><ol class="steps">
     <li><b>筛到本班</b>：先在筛选栏填班级 ID（或学号）点「查询」，确认列表只剩自己要处理的学生。</li>
     <li><b>新增</b>：点右上「新增成绩」，填学号 / 姓名 / 课程名（建议全学期统一填《联盟链实训》，否则统计会被拆散）。</li>
     <li><b>贴钱包并预览</b>：把学生自己的钱包地址贴进「钱包地址」，点输入框右侧的<b>「预览实训成绩」</b>，对话框下方会实时算出三行：实训成绩 / 教师评分 / 综合成绩。</li>
     <li><b>打分保存</b>：给「教师评分」（0–100，步进 0.5）→ 选填班级 ID 与备注 →「保存」，提示「成绩已录入」。</li>
-  </ol><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>13 / 33</span></div></section><section class="page"><div class="hdr"><span>第 05 章 · 成绩录入</span><span>CHAPTER 05 · ENTRY</span></div><figure>
+  </ol><figure>
     <img src="../assets/screenshots/manual/T10-grade-preview.png" alt="录分对话框预览实训成绩">
     <figcaption>图 5-2 对话框内点「预览实训成绩」后的实时回算：先看到结果再保存，避免“存完才发现钱包贴错了”。</figcaption>
-  </figure><h3><span class="num">5.3</span>表单字段与平台真实行为</h3><table>
+  </figure><h3><span class="num">5.3</span>表单字段与平台真实行为</h3><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>17 / 41</span></div></section><section class="page"><div class="hdr"><span>第 05 章 · 成绩录入</span><span>CHAPTER 05 · ENTRY</span></div><table>
     <thead><tr><th style="width:22mm">字段</th><th style="width:14mm">必填</th><th style="width:22mm">编辑时可改</th><th>平台如何处理（实测）</th></tr></thead>
     <tbody>
       <tr><td>学号</td><td class="c">是</td><td class="c">否（置灰）</td><td>与课程一起构成<b>唯一键</b>：同（学号+课程）再存一次是<b>覆盖</b>而非新增</td></tr>
@@ -272,7 +362,7 @@
     保存时后端只按（学号+课程）找记录，<b>不区分录入教师</b>；找到就直接 UPDATE，并把
     <span class="mono">teacher_id / teacher_name</span> 改成当前教师。合班上课或交接评学时，
     请先约定好课程名（如《联盟链实训-2026春-A班》）再加后缀区分。
-  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>14 / 33</span></div></section><section class="page"><div class="hdr"><span>第 05 章 · 实训成绩公式</span><span>CHAPTER 05 · TRAINING FORMULA</span></div><h3><span class="num">5.4</span>实训成绩四维：公式与权重（与后端一致）</h3><p class="lead">四维均为“行为计数 × 单价”封顶 100，再加权求和；四个维度合计占综合成绩 60%。</p><table>
+  </div><h3><span class="num">5.4</span>实训成绩四维：公式与权重（与后端一致）</h3><p class="lead">四维均为“行为计数 × 单价”封顶 100，再加权求和；四个维度合计占综合成绩 60%。</p><table>
     <thead><tr><th style="width:20mm">维度</th><th style="width:12mm">权重</th><th style="width:66mm">得分公式（封顶 100）</th><th>对应学生动作</th></tr></thead>
     <tbody>
       <tr><td>链搭建</td><td class="c mono">0.20</td><td class="mono">打开内置合约×5 + 保存工程×10 + 教程完成步×8</td><td>云桌面 10 步教程 + IDE 使用</td></tr>
@@ -283,47 +373,74 @@
   </table><div class="note note--ok">
     <span class="t">一分钟算出综合成绩</span>
     综合成绩 = <b>实训成绩 × 0.6</b> + <b>教师评分 × 0.4</b>（保留 1 位小数）。
-    例：实训 88.8、教师 77.5 → 88.8×0.6 + 77.5×0.4 = <b>84.3</b>，与图 5-1 列表里的综合成绩完全一致。
-  </div><figure>
+    实测样本：实训 100、教师 88 → 100×0.6 + 88×0.4 = <b>95.2</b>，与图 5-1 统计卡与列表里的综合成绩完全一致。
+  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>18 / 41</span></div></section><section class="page"><div class="hdr"><span>第 05 章 · 实训成绩公式</span><span>CHAPTER 05 · TRAINING FORMULA</span></div><figure>
     <img src="../assets/screenshots/manual/T11-training-detail.png" alt="四维明细 popover">
     <figcaption>图 5-3 悬停“实训成绩”弹出的四维明细：每行是「得分 × 权重」+ 原始计数，底部「合计」即实训成绩。</figcaption>
-  </figure><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>15 / 33</span></div></section><section class="page"><div class="hdr"><span>第 05 章 · 实训成绩公式</span><span>CHAPTER 05 · TRAINING FORMULA</span></div><div class="note note--tip">
+  </figure><div class="note note--tip">
     <span class="t">这张图就是最好的评学工具</span>
     学生来问“我为什么只有 50 分”，不要直接翻成绩单，而是弹开这四个框：
     哪个维度低、原始计数是多少一目了然（常见：“已部署合约 1”、“角色切换 0”），指向的是具体页面而非抽象批评。
-    小缺陷：能量发放、市场成交等少数字段尚未进中文映射，会直接显示英文原名（如 <span class="mono">energy_issue</span>），不影响读数。
-  </div><h3><span class="num">5.5</span>列表里的分数会“过期”，必须手动刷新</h3><p class="lead">成绩表存的是<b>录入那一刻的快照</b>；学生之后又部署了合约、又发了能量，列表分数不会自己变。</p><table>
-    <thead><tr><th style="width:36mm">数据</th><th style="width:44mm">列表快照（实测）</th><th style="width:44mm">实时重算（同一钱包）</th><th>结论</th></tr></thead>
+    四项指标已全部中文化：能量发放、绿色市场成交、ERC20 转账、报告查看等均显示中文标签，可直接投屏给学生看。
+    <br><b>再记一句：四维 ≠ 九维。</b>四维算的是<b>实训成绩</b>（就是成绩册那一列与草稿分，占综合 60%），
+    九维算的是<b>实训报告分</b>（第 08 章，只用于提分与答辩）。本机该生两边都是 100，<b>纯属巧合</b>：
+    每个维度都是“计数 × 单价”各自封顶 100，<b>只把报告页打开 25 次（每次 +4）就能刷满「联盟治理」整个维度</b>，
+    而九维里的 G / F 仍然可以是 0。因此争议时先说清你在讲哪一张表，防刷分要看<b>四个框里的原始计数形状</b>而不是合计。
+  </div><h3><span class="num">5.5</span>草稿 · 快照 · 实时：三个分数来源必须分清</h3><p class="lead">同一份链上行为，平台会在<b>三个地方</b>各存一份实训成绩。分不清这三者，就会发生“分数对不上”的争议。</p><table>
+    <thead><tr><th style="width:32mm">来源</th><th style="width:40mm">谁写 / 何时写</th><th style="width:32mm">会动成绩册吗</th><th>教师怎么用</th></tr></thead>
     <tbody>
-      <tr><td>已部署合约</td><td class="mono">16</td><td class="mono">19</td><td>学生录入后又部署了 3 份</td></tr>
-      <tr><td>编译成功</td><td class="mono">3</td><td class="mono">6</td><td>同上，IDE 继续在使用</td></tr>
-      <tr><td>角色切换</td><td class="mono">6</td><td class="mono">13</td><td>生态任务完成了更多次</td></tr>
-      <tr><td>四维得分</td><td class="mono">100 / 100 / 55 / 100 → 84.3</td><td class="mono">100 / 100 / 55 / 100 → 88.8</td><td>同一公式、不同快照 → 分数对不上</td></tr>
+      
+      
+      
     </tbody>
-  </table><div class="note note--bad">
+  <tr><td><b>系统实训草稿</b><br><span class="mono">grade_draft</span></td><td>学生本人在「我的成绩」点<b>同步实训草稿</b>时</td><td><b>不会</b>（草稿只写草稿表）</td><td>在 ⑥ 区点<b>「同步为成绩」</b>才进成绩册，这是唯一通道</td></tr><tr><td><b>成绩行快照</b><br><span class="mono">student_grades</span></td><td>你保存成绩、同步草稿、或点「刷新实训成绩」的那一刻</td><td>它<b>就是</b>成绩册</td><td>列表与统计只读它，<b>不会自己更新</b></td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>19 / 41</span></div></section><section class="page"><div class="hdr"><span>第 05 章 · 草稿同步与刷新</span><span>CHAPTER 05 · DRAFTS &amp; REFRESH</span></div><table>
+    <thead><tr><th style="width:32mm">来源</th><th style="width:40mm">谁写 / 何时写</th><th style="width:32mm">会动成绩册吗</th><th>教师怎么用</th></tr></thead>
+    <tbody>
+      
+      
+      
+    </tbody>
+  <tr><td><b>实时重算</b><br><span class="mono">compute-training</span></td><td>点对话框里的<b>「预览实训成绩」</b>时现算</td><td><b>不写库</b>，可反复点</td><td>争议时的准绳：先看实时值，再决定要不要刷新或补录</td></tr></table><p>实测同一钱包（学生 <span class="mono">19898800030</span> · <span class="mono">0x017f…d366</span>，
+  快照写入于 <span class="mono">09-07 08:54</span>，右列为一小时后再拉一次实时值）：</p><table>
+    <thead><tr><th style="width:52mm">计数项</th><th class="c" style="width:32mm">成绩行快照<br><span class="small muted">（grades[].training_detail）</span></th><th class="c" style="width:24mm">实时重算<br><span class="small muted">（detail_now）</span></th><th>结论</th></tr></thead>
+    <tbody>
+      <tr><td>报告查看 <span class="mono">report_view</span></td><td class="c mono">33</td><td class="c mono">45</td><td>快照之后又打开了 12 次——其中<b>含教师端的核对动作</b>（见 8.1 陷阱一）</td></tr>
+      <tr><td>角色切换 / 能量发放 / 铸造 / 成交 / 挂牌 / ERC20 转账</td><td class="c mono">15 / 11 / 1 / 1 / 1 / 7</td><td class="c mono">15 / 11 / 1 / 1 / 1 / 7</td><td>此后没有新行为，六项计数一字不变</td></tr>
+      <tr><td><b>四维得分 → 实训成绩</b></td><td class="c mono">100/100/100/100 → 100.0</td><td class="c mono">→ 100.0</td><td><b>四个维度各自封顶 100</b>：计数继续涨，分数已经封顶</td></tr>
+    </tbody>
+  </table><div class="note note--tip">
+    <span class="t">这组数字解释了两件常事</span>
+    ① <b>“刷新了分数却没变”不等于没生效</b>：计数会从 33 跳到 45，但维度已封顶时总分一动不动；跟学生解释要看四个框，不要只看合计。
+    ② <b>打开报告页的次数是会计分的</b>（联盟治理 · 报告查看），而且<b>谁查的都算在学生头上</b>：高分班这一项计数普遍偏大（本机实测一个小时内从 33 到 45）。
+    判断“是否本人操作”要认钱包与链上回执，而不是这一项。
+  </div><div class="note note--bad">
     <span class="t">「刷新实训成绩」是全库动作，不只刷本班</span>
-    点该按钮后，后端会对成绩表中<b>所有已绑钱包的记录</b>重算实训成绩，
-    <b>不看班级、不看录入教师、也不受页面筛选条件影响</b>（弹窗里写的“所有学生”是真话）。
-    合班 / 多教师并行时，这会把其它班级记录的实训分、综合分一起改写。
-    安全做法：只在<b>期末统一关分</b>时点一次，并先导出/截图留档；平时想预览请只用对话框里的「预览实训成绩」（它不写库）。
+    点它之后，后端对成绩表中<b>所有已绑钱包的记录</b>重算实训成绩，<b>不看班级、不看录入教师、也不受页面筛选条件影响</b>
+    （弹窗里写的“所有学生”是真话）。合班 / 多教师并行时会连带改写其它班级的实训分与综合分。
+    安全做法：只在<b>期末统一关分</b>时点一次，点前先导出或截图留档；平时预览只用对话框里的「预览实训成绩」（不写库）。
+    <b>平时要把学生最新实训分同步进成绩册，请用 ⑥ 区的「同步为成绩」</b>——它按行、按班级收敛，且不会动你的教师分。
+  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>20 / 41</span></div></section><section class="page"><div class="hdr"><span>第 05 章 · 草稿同步与刷新</span><span>CHAPTER 05 · DRAFTS &amp; REFRESH</span></div><h4>把一条草稿变成正式成绩：四步</h4><ol class="steps">
+    <li>⑥ 区列出本班待同步草稿，<b>先看「目标行」标签</b>：<span class="tag tag--p">教师行·只刷实训</span>／<span class="tag tag--w">系统行·将接管</span>／<span class="tag tag--i">新建行</span>。</li>
+    <li>点该行右侧<b>「同步为成绩」</b>；期末可点右下「全部同步为本班成绩」批量处理。未绑定班级时批量同步会被直接拒绝（<span class="mono">400</span>：请先绑定班级）。</li>
+    <li>核对后果：你的<b>教师正式行只刷新实训成绩与综合成绩</b>，<b>教师评分与备注原样保留</b>；系统行被整行接管（录入教师改成你）；没有行的学生新建一行，备注写「由系统草稿同步生成，待教师录入评分」。</li>
+    <li>若提示<b>拒绝同步</b>：说明该草稿的身份与钱包归属账号不一致（多为旧版本教师代刷留下的错配草稿）。让学生<b>本人</b>到「我的成绩」重新点一次「同步实训草稿」，你再同步。</li>
+  </ol><div class="note note--warn">
+    <span class="t">成绩册里的“系统自动”旧遗留行：怎么认、怎么处理</span>
+    实测本机成绩册 3 行：1 行教师正式行（<span class="mono">19898800030</span> · 班级 216 · 100/88/95.2），
+    另 2 行录入教师为 <b>system</b>、班级为<b>空</b>、学号是 <span class="mono">W0xlearner</span> / <span class="mono">W0x44bfd612</span> 这种伪学号，备注写着「实训报告自动生成草稿」。
+    <b>当前版本已不再产生这种行</b>：报告页改为只读不写成绩，学生侧只写草稿表，该备注文案在后端已无出处——它们是<b>旧版遗留</b>。
+    为什么不影响你：列表与统计都按班级收敛，班级为空的行不会出现在本班看板里（管理员或清空班级筛选时才可见，会拉低全校均分）。
+    处理方式：<b>不要凭印象手删</b>——先在异常台账登记并导出留档，确认是历史演示数据后由管理员统一清理（删除无班级校验）。
+    统计口径已按<b>主体去重</b>：若 ⑥ 区标题旁出现「成绩册重复行 N 条（已按主体去重）」，说明同一人同时有教师行与系统行，均分<b>不会</b>被重复计算。
   </div><ul class="dash">
-    <li><b>刷新不改教师评分</b>：只重写 <span class="mono">training_score / final_score / training_detail / updated_at</span>，你手录的分数与备注会保留。</li>
+    <li><b>刷新不改教师评分</b>：只重写 <span class="mono">training_score / final_score / training_detail / updated_at</span>，你手录的分与备注会保留。</li>
     <li><b>不绑钱包的记录不会被刷</b>：条件为 <span class="mono">wallet != ''</span>；这类行永远停在录入时的分数，请先补钱包再刷。</li>
-    <li><b>删一条成绩只需一次确认</b>：弹窗「确认删除《姓名 · 课程》成绩记录？」点删除就真删，<b>无回收站、不校验班级</b>，任何教师都能删任意记录——建议只删自己录入的行，并先导出备份。</li>
-  </ul><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>16 / 33</span></div></section><section class="page"><div class="hdr"><span>第 05 章 · 刷新与删除</span><span>CHAPTER 05 · REFRESH &amp; DELETE</span></div><div class="note note--warn">
-    <span class="t">“系统自动”的 0 分草稿行怎么处理</span>
-    实测截图里能看到：同一个 <span class="mono">0xlearner</span> 出现两行，正式录入行综合 84.3，“系统自动”草稿行只有 53.3。
-    学生每打开一次「实训报告」页，平台会自动写入一条录入教师为 <b>system</b>、教师评分 0 的草稿成绩；
-    这类行的学号会被写成 <span class="mono">W0xlear…</span> 这种伪学号。处理方式：<b>不要删、不要点刷新</b>，
-    直接对同一钱包用「新增成绩」填真实学号/姓名/班级并保存——保存会命中（学号+课程）以外的另一条时新建，
-    而你填的真实学号行就是正式行；草稿行不只是观感问题——一旦花名册里有该生真实学号（修好 P0-4 后必然如此），
-    草稿的 UPDATE 会<b>命中你的正式成绩行</b>，把综合分重算为“教师分按 0 计”的低分（在库副本上实测 84.3 → 0.6，班级同时被抹空，P1-25）。
-    目前因花名册恒空而尚未发生，<b>你只需记住：不要为了看板好看手工往 <span class="mono">user_info</span> 补数据</b>（问题定义见附录 B）。
-  </div><figure>
-    <img src="../assets/screenshots/manual/T06-grades-list.png" alt="成绩列表含系统草稿行">
-    <figcaption>图 5-4 成绩列表实态：1 行教师录入 + 4 行“系统自动”草稿（伪学号 <span class="mono">W0xlear…</span>），课程均分被明显拉低。</figcaption>
+    <li><b>删除只需一次确认且不可恢复</b>：弹窗「确认删除《姓名 · 课程》成绩记录？」点删除就真删，<b>无回收站、不校验班级</b>——只删自己录入的行，删前先导出。</li>
+  </ul><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>21 / 41</span></div></section><section class="page"><div class="hdr"><span>第 05 章 · 草稿同步与刷新</span><span>CHAPTER 05 · DRAFTS &amp; REFRESH</span></div><figure>
+    <img src="../assets/screenshots/manual/T06-grades-list.png" alt="成绩列表与系统实训草稿卡">
+    <figcaption>图 5-4 本班实态：⑥ 区「系统实训草稿」1 条待同步（目标行 = 教师行·只刷实训，草稿分 100.0），下方成绩列表共 1 条（实训 100 / 教师 88 / 综合 95.2，录入教师 老师1号）。列表里<b>没有</b>伪学号草稿行混入——它们因班级为空已被收敛掉。</figcaption>
   </figure><div class="kicker">CHAPTER 06</div><h2>教师评分量表：那 40% 怎么打才有说服力</h2><p class="lead">平台只保证“教师评分计入加权”，<b>不校验你给多少分</b>。一份能顶住复核的成绩，靠的是固定量表 + 可追证据。
-  以下量表是本校实训语境下的推荐做法，可直接拿来用。</p><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>17 / 33</span></div></section><section class="page"><div class="hdr"><span>第 06 章 · 评分量表</span><span>CHAPTER 06 · RUBRIC</span></div><h3><span class="num">6.1</span>四子项 100 分制</h3><table>
+  以下量表是本校实训语境下的推荐做法，可直接拿来用。</p><h3><span class="num">6.1</span>四子项 100 分制</h3><table>
     <thead><tr><th style="width:30mm">子项</th><th class="c" style="width:14mm">分值</th><th style="width:48mm">看什么</th><th>拿满标准</th></tr></thead>
     <tbody>
       <tr><td>报告完成度</td><td class="c mono">30</td><td>实训报告九维雷达与提分建议表</td><td>必修项（D/E/H）全部拿满，提建议里不再出现红色（error）条目</td></tr>
@@ -331,48 +448,62 @@
       <tr><td>口头答辩</td><td class="c mono">25</td><td>3 问：为何要 CA 证书？mint 与 transfer 区别？为何只能管理员铸造？</td><td>三问都能用业务语言回答，不只背命令</td></tr>
       <tr><td>规范与协作</td><td class="c mono">20</td><td>学号↔钱包一致性、命名、备注、互验记录</td><td>花名册上一钱包一人，无互借钱包</td></tr>
     </tbody>
-  </table><table>
-    <thead><tr><th style="width:26mm">分数带</th><th style="width:22mm">教师评分</th><th>描述（写进备注栏的句式）</th></tr></thead>
+  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>22 / 41</span></div></section><section class="page"><div class="hdr"><span>第 06 章 · 评分量表</span><span>CHAPTER 06 · RUBRIC</span></div><table>
+    <thead><tr><th style="width:26mm">教师评定档</th><th style="width:22mm">教师评分</th><th>描述（写进备注栏的句式）</th></tr></thead>
     <tbody>
-      <tr><td>优秀</td><td class="c mono">90–100</td><td>九维 ≥ 8 项满值，能解释权限模型与共识；答辩三问全对</td></tr>
-      <tr><td>良好</td><td class="c mono">80–89</td><td>主流程完整，1–2 处依赖提示才能完成；证据链齐全</td></tr>
-      <tr><td>合格</td><td class="c mono">65–79</td><td>能跑通但说不清为何这么跑；报告只到 C/B 水平</td></tr>
-      <tr><td>待完善</td><td class="c mono">50–64</td><td>关键步骤缺口（未部合约 / 未切角色），但已交钱包与回执</td></tr>
-      <tr><td>不合格</td><td class="c mono">0–49</td><td>无链上痕迹、钱包与学号对不上、或沿用他人钱包</td></tr>
+      <tr><td>A 档</td><td class="c mono">90–100</td><td>九维 ≥ 8 项满值，能解释权限模型与共识；答辩三问全对</td></tr>
+      <tr><td>B 档</td><td class="c mono">80–89</td><td>主流程完整，1–2 处依赖提示才能完成；证据链齐全</td></tr>
+      <tr><td>C 档</td><td class="c mono">65–79</td><td>能跑通但说不清为何这么跑；报告只到 C/B 水平</td></tr>
+      <tr><td>D 档</td><td class="c mono">50–64</td><td>关键步骤缺口（未部合约 / 未切角色），但已交钱包与回执</td></tr>
+      <tr><td>E 档</td><td class="c mono">0–49</td><td>无链上痕迹、钱包与学号对不上、或沿用他人钱包</td></tr>
     </tbody>
-  </table><h3><span class="num">6.2</span>教师分的杠杆有多大</h3><p>以同一个实训成绩 <b>88.8</b> 的学生为例（真实账号 0xlearner）：</p><table>
-    <thead><tr><th class="c" style="width:24mm">教师评分</th><th class="c" style="width:24mm">综合成绩</th><th class="c" style="width:24mm">成绩页色阶</th><th>一句话点评</th></tr></thead>
+  </table><div class="note note--warn">
+    <span class="t">为什么分数带用 A–E 档而不用“优秀 / 良好”</span>
+    平台六档等级名（卓越 / 优秀 / 良好 / 合格 / 待完善 / 未完成）是<b>按分数自动判</b>的，
+    与上表的<b>教师主观分带</b>不是同一件事：例如学生综合 88 分在页面上恒显示“优秀 🥇”，
+    但你的教师分 70 只到本表的 B 档。两套名字若混用，学生会拿“系统都说我优秀了”来驳你的分，
+    因此<b>口头与备注里只说自己那套档（A–E）</b>，把六档名字留给系统读数。
+  </div><h3><span class="num">6.2</span>教师分的杠杆有多大</h3><p>以实测样本为准：学生 <span class="mono">19898800030</span>，<b>实训成绩 100.0</b>（四维全部封顶）。此时综合分 = 60 + 教师分 × 0.4：</p><table>
+    <thead><tr><th class="c" style="width:24mm">教师评分</th><th class="c" style="width:24mm">综合成绩</th><th class="c" style="width:30mm">六档等级（全站同源）</th><th>一句话点评</th></tr></thead>
     <tbody>
-      <tr><td class="c mono">60</td><td class="c mono">77.3</td><td class="c">及格（蓝）</td><td>实操很好但表达/规范差，会被拉到及格带</td></tr>
-      <tr><td class="c mono">70</td><td class="c mono">81.3</td><td class="c">良好</td><td>中性评价，不会抹杀努力</td></tr>
-      <tr><td class="c mono">80</td><td class="c mono">85.3</td><td class="c">良好</td><td>手松一点打分，仍在良好带</td></tr>
-      <tr><td class="c mono">90</td><td class="c mono">89.3</td><td class="c">良好（差 0.7 到优秀）</td><td>想送学生进优秀带，教师分得给满 92 以上</td></tr>
+      <tr><td class="c mono">0</td><td class="c mono">60.0</td><td class="c">合格 ✅</td><td>实操满分但教师分 0：综合分直接落到合格下沿</td></tr>
+      <tr><td class="c mono">25</td><td class="c mono">70.0</td><td class="c">良好 🥈</td><td>教师分每差 25 分，综合分正好跳一档</td></tr>
+      <tr><td class="c mono">50</td><td class="c mono">80.0</td><td class="c">优秀 🥇</td><td>实操满分也会被 50 分压到优秀下沿</td></tr>
+      <tr><td class="c mono">75</td><td class="c mono">90.0</td><td class="c ok">卓越 🏆</td><td><b>实训满分时，教师分 75 就是卓越线</b></td></tr>
+      <tr><td class="c mono">88</td><td class="c mono">95.2</td><td class="c ok">卓越 🏆</td><td>本手册的实测样本（图 5-1 统计卡与列表即此值）</td></tr>
     </tbody>
-  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>18 / 33</span></div></section><section class="page"><div class="hdr"><span>第 06 章 · 评分量表</span><span>CHAPTER 06 · RUBRIC</span></div><div class="note note--warn">
+  </table><p class="small muted">表内“综合成绩 / 等级”两列是<b>按公式算出的映射</b>，不是本机会新增一行 0 分成绩；
+  等级名与颜色直接取自报告接口下发的 <span class="mono">level</span> / <span class="mono">level_color</span>，
+  所以成绩页、报告页、导出件三处不会出现两个名字。</p><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>23 / 41</span></div></section><section class="page"><div class="hdr"><span>第 06 章 · 评分量表</span><span>CHAPTER 06 · RUBRIC</span></div><div class="note note--warn">
     <span class="t">三种常见误用</span>
-    ① <b>把实训分再打一遍</b>：看到实训 90 就手录 90，实际只拉高了已自动计入的 60%，对区分度无帮助；教师分应该量“报告 + 表达 + 规范”。
+    ① <b>把实训分再打一遍</b>：看到实训满分就手录满分，综合分直接进卓越带，教师分失去区分度（它只占 40%，却成了唯一变量）；教师分应该量“报告 + 表达 + 规范”。
     ② <b>全班统一 80</b>：统计卡上“教师均分 80”看似安全，但学生综合分完全由链上行为决定，沉默的学生无法被看到。
     ③ <b>先给分后绑钱包</b>：不填钱包保存后，综合分 = 0×0.6 + 教师分×0.4，一个给 90 分的学生只能拿 36 分。
-  </div><div class="kicker">CHAPTER 07</div><h2>学情查看：页面空着时，数据从哪里捞</h2><p class="lead">平台提供了三个学情入口，但当前版本下有两个会空。先说清“空不等于没数据”，再说可用的第三条路。</p><table>
-    <thead><tr><th style="width:38mm">路径</th><th style="width:44mm">看什么</th><th>当前可用性（实测）</th></tr></thead>
+  </div><div class="kicker">CHAPTER 07</div><h2>学情查看：三条路径都能用，先选对范围</h2><p class="lead">平台提供三个学情入口。<b>绑定任教班级之后（3.1），三条都可用</b>；本页说清各自口径与差异，避免用错来源。</p><table>
+    <thead><tr><th style="width:38mm">路径</th><th style="width:50mm">看什么</th><th>口径与注意（实测）</th></tr></thead>
     <tbody>
-      <tr><td>① 总览·班级学情卡</td><td>班级人数 / 平均完成步数 x/10 / 平均进度 / 平均实训成绩 + 步骤 1–10 完成率柱条</td><td><span class="tag tag--e">空</span> 显示“暂无同班学生数据”</td></tr>
-      <tr><td>② 成绩管理·搭链进度看板</td><td>逐人：学号 / 姓名 / 钱包 / 完成步数 / 当前卡点 / 平均耗时</td><td><span class="tag tag--e">空</span> 同一根因；标签会显示“全部班级”</td></tr>
-      <tr><td>③ 只读接口 + 控制台</td><td>任意钱包的逐步进度 / 四维得分 / 九维报告 / 任务证据</td><td><span class="tag tag--p">可用</span> 需 F12 粘一段脚本，见 7.2</td></tr>
+      <tr><td>① 总览 · 实训进度看板</td><td>人数 / 平均完成步数 x/10 / 平均进度 / 平均实训成绩 + 步骤 1–10 完成率柱条 + 逐人一行</td><td><span class="tag tag--p">可用</span> <b>默认是本校口径（跨班）</b>：标题为「本校实训进度看板 · 教师视角 · 本校 {学校} · N 个班级」，人数标签也跟着变成本校人数；<b>只有未定任教学校时</b>才退化成「班级实训进度看板 · 教师视角 · 班级 216（未定任教学校）」。名单来自<b>花名册</b>（学生登录即登记），<b>与是否录过成绩无关</b></td></tr>
+      <tr><td>② 成绩管理 · 搭链进度看板</td><td>逐人：学号 / 姓名 / 钱包 / 完成步数 / 当前卡点 / 平均耗时每步</td><td><span class="tag tag--p">可用</span> 与①同源，多了「平均耗时每步」（实测 2 分 6 秒）；标签显示「班级 216」「平均完成 10 / 10 步」</td></tr>
+      <tr><td>③ 只读接口 + 控制台脚本</td><td>任意钱包的逐步进度 / 四维得分 / 九维报告 / 任务证据</td><td><span class="tag tag--p">可用</span> 不受班级范围限制，是<b>跨班核对与留证</b>的手段（7.2 / 7.3）</td></tr>
     </tbody>
-  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>19 / 33</span></div></section><section class="page"><div class="hdr"><span>第 07 章 · 学情查看</span><span>CHAPTER 07 · INSIGHTS</span></div><figure>
-    <img src="../assets/screenshots/manual/T08-dashboard-classboard-empty.png" alt="班级学情空态">
-    <figcaption>图 7-1 总览页“班级学情”空态：这不是学生没做，而是教师账号拿不到班级归属。</figcaption>
-  </figure><div class="note note--bad">
-    <span class="t">根因：教师账号没有可用的班级归属（P0-1），而花名册从未落库（P0-4）</span>
-    实测登录返回：<span class="mono">classId="0"</span>、<span class="mono">className=null</span>；更根本的是后端 <span class="mono">user_info</span> 表<b>一行都没有</b>——登录时写花名册必抛异常且被静默吞掉（P0-4）。
-    因此按班级聚合的三个接口（<span class="mono">/auth/class-students</span>、<span class="mono">/auth/platform-progress</span>、<span class="mono">/chain/tutorial/progress/class</span>）均返回空。
-    但同一个空值在成绩列表里是“取不到班级就不过滤”，所以<b>看板是空的、列表却是全校的</b>——两者矛盾属平台缺陷，不是你的误操作。
-  </div><h3><span class="num">7.1</span>短期可用的替代做法</h3><ul class="dash">
-    <li><b>筛选栏手动填班级</b>：成绩页筛选栏的“班级 ID”是精确匹配，填学生成绩里已有的值（如 <span class="mono">班级1</span>）能正常收敛到本班。</li>
-    <li><b>花名册自己维护</b>（见 3.1）：把“学号 ↔ 姓名 ↔ 钱包”当权威源，所有取数以钱包为主键。</li>
-    <li><b>看过报告页的全局口径</b>：它不依赖班级，能拿到链高 / 合约数 / 调用量等硬指标（见 8.1）。</li>
-  </ul><h3><span class="num">7.2</span>六个只读接口，绕开所有班级问题</h3><table>
+  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>24 / 41</span></div></section><section class="page"><div class="hdr"><span>第 07 章 · 学情查看</span><span>CHAPTER 07 · INSIGHTS</span></div><figure>
+    <img src="../assets/screenshots/manual/T01-dashboard.png" alt="总览页实训进度看板（有数据）">
+    <figcaption>图 7-1 本机实态的总览页看板：标题「<b>本校实训进度看板</b> · 教师视角 · 本校 天择大学 · <b>1 个班级</b>」（本师只带一个班，所以“本校”与“本班”此处重合），
+    显示 1 人、10/10、100%、平均实训成绩 100，步骤 1–10 完成率柱条全为 1/1，逐人一行“赵佳正（19898800030）10/10 · 100 · 95.2”。
+    <b>要看本班而不混入其他班，用成绩页的「搭链进度 · 班级看板」（路径②）。</b></figcaption>
+  </figure><figure>
+    <img src="../assets/screenshots/manual/T08-dashboard-classboard-empty.png" alt="未绑定班级时的空态">
+    <figcaption>图 7-2 对照：<b>绑定之前</b>同一张卡是空的，提示「暂无本校学生数据（学生登录后自动同步）」（看板走本校口径时）或「暂无同班学生数据……」（未定学校、退化成班级口径时）——这句话本身就是解法：先绑班，再让学生登录一次。<span class="small muted">（本图摄于早期版本，顶栏钱包当时显示为账号 ID；当前版本显示 0x 本人钱包）</span></figcaption>
+  </figure><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>25 / 41</span></div></section><section class="page"><div class="hdr"><span>第 07 章 · 学情查看</span><span>CHAPTER 07 · INSIGHTS</span></div><div class="note note--info">
+    <span class="t">班级范围是怎么定下来的（一句话版）</span>
+    解析优先级：<b>显式绑定（<span class="mono">class_teacher_bind</span>）→ 花名册（<span class="mono">user_info</span>）→ 登录令牌快照 → 成绩册派生</b>；
+    四条全落空时，看板不再“不过滤”，而是<b>退化成只看你自己录入过的行</b>并弹橙色提示卡。
+    所以“看板是空的、列表却是全校的”这种矛盾<b>已经不存在</b>；现在真正要防的是把<b>“没绑班”当成“没数据”</b>。
+  </div><h3><span class="num">7.1</span>看板的三个常见误读</h3><ul class="dash">
+    <li><b>看板里没有人</b>：先确认班级已绑定，再确认学生<b>登录过至少一次</b>——花名册是登录时登记的，没登录过的学生不会出现在任何班级看板里。</li>
+    <li><b>提示卡小字写着「名单来源：成绩册派生」</b>：说明花名册里还没有该班记录，当前列表是由你录过的成绩行反推的，<b>仅供核对、不代表全班人数</b>。</li>
+    <li><b>筛选栏点了「重置」</b>：班级号被清空后，列表口径会回到“按你的班级解析”，而不是“全校”；想跨班核对请显式填班级号，或走 7.2 接口。</li>
+  </ul><h3><span class="num">7.2</span>九个只读接口：跨班核对与留证</h3><table>
     <thead><tr><th style="width:56mm">接口（均需已登录，自动带 JWT）</th><th style="width:44mm">关键返回</th><th>用途</th></tr></thead>
     <tbody>
       
@@ -381,8 +512,11 @@
       
       
       
+      
+      
+      
     </tbody>
-  <tr><td class="mono">GET /api/chain/tutorial/progress?wallet=</td><td class="mono">done_count / total_steps / percent / steps[]</td><td>逐人定位卡在哪一步</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>20 / 33</span></div></section><section class="page"><div class="hdr"><span>第 07 章 · 取数手册</span><span>CHAPTER 07 · READ-ONLY APIs</span></div><table>
+  <tr><td class="mono">GET /api/chain/tutorial/progress?wallet=</td><td class="mono">done_count / total_steps / percent / steps[]</td><td>逐人定位卡在哪一步</td></tr><tr><td class="mono">POST /api/grades/compute-training</td><td class="mono">training_score / detail / final_score</td><td>不落库的四维实时重算（录分前预览）</td></tr><tr><td class="mono">GET /api/grades/my?wallet=</td><td class="mono">grades[] / total / training_now / detail_now</td><td>看某个学生被录入过哪些成绩，并存对比（发现重复行）</td></tr><tr><td class="mono">GET /api/missions/curriculum?wallet=</td><td class="mono">verified_count / items[].verify.evidence</td><td>任务完成“链上证据”，可直接引用到评语</td></tr><tr><td class="mono">GET /api/report/aggregate?wallet=</td><td class="mono">score / level / breakdown[9]</td><td>指定学生的九维报告（页面不提供此入口）</td></tr><tr><td class="mono">GET /api/grades/list?class_id=</td><td class="mono">items[] / total / class_source / hint</td><td>已知班级值时按班收敛成绩名单（每行带 <span class="mono">row_kind</span>：teacher / system）</td></tr><tr><td class="mono">GET /api/grades/drafts</td><td class="mono">items[]（含目标行）/ class_unbound / hint</td><td>就是成绩页 ⑥ 区的数据源：看本班还有哪些草稿待同步</td></tr><tr><td class="mono">GET /api/auth/roster-status</td><td class="mono">class_source / roster_source / wallet_candidates / checks[]</td><td><b>看板为空时先查这个</b>：班级与名单到底解析成了什么、哪一项自检没通过</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>26 / 41</span></div></section><section class="page"><div class="hdr"><span>第 07 章 · 取数手册</span><span>CHAPTER 07 · READ-ONLY APIs</span></div><table>
     <thead><tr><th style="width:56mm">接口（均需已登录，自动带 JWT）</th><th style="width:44mm">关键返回</th><th>用途</th></tr></thead>
     <tbody>
       
@@ -391,10 +525,13 @@
       
       
       
+      
+      
+      
     </tbody>
-  <tr><td class="mono">POST /api/grades/compute-training</td><td class="mono">training_score / detail / final_score</td><td>不落库的四维实时重算（录分前预览）</td></tr><tr><td class="mono">GET /api/grades/my?wallet=</td><td class="mono">grades[] / total / training_now / detail_now</td><td>看某个学生被录入过哪些成绩，并存对比（发现重复行）</td></tr><tr><td class="mono">GET /api/missions/curriculum?wallet=</td><td class="mono">verified_count / items[].verify.evidence</td><td>任务完成“链上证据”，可直接引用到评语</td></tr><tr><td class="mono">GET /api/report/aggregate?wallet=</td><td class="mono">score / level / breakdown[9]</td><td>指定学生的九维报告（页面不提供此入口）</td></tr><tr><td class="mono">GET /api/grades/list?class_id=</td><td class="mono">items[] / total</td><td>已知班级值时按班收敛成绩名单</td></tr></table><p class="small muted">全量盘点类接口（不依赖班级）：<span class="mono">/api/explorer/overview</span>（块高 / 交易数 / 合约协议分布）、<span class="mono">/api/eco/audit/overview</span>（调用成功与异常清单）。实测参考值：块高 12、交易 37、合约 22（ERC20 8 / ERC721 3 / ERC1155 5 / 自定义 6）。</p><h3><span class="num">7.3</span>控制台批量取数（推荐收藏）</h3><pre><span class="c">// 在平台页面按 F12 → Console，粘贴运行：一次算完全班实训成绩与卡点</span>
+  <tr><td class="mono">GET /api/chain/tutorial/progress/class</td><td class="mono">students[] / avg_done / class_id</td><td>班级维度的逐人卡点聚合（教师只能查自己班，传别班班号直接 <span class="mono">403</span>）</td></tr></table><p class="small muted">全量盘点类接口（不依赖班级）：<span class="mono">/api/explorer/overview</span>（块高 / 交易数 / 合约协议分布）、<span class="mono">/api/eco/audit/overview</span>（调用成功与异常清单）。取证当日（本机 9 月 7 日上午）实测值：块高 21、交易 109、合约 30（ERC20 12 / ERC1155 7 / ERC721 5 / 自定义 6）。<b>块高与交易数会随使用持续上涨，只用作“链是不是在跑”的判断，不要当基准值核对。</b></p><h3><span class="num">7.3</span>控制台批量取数（推荐收藏）</h3><pre><span class="c">// 在平台页面按 F12 → Console，粘贴运行：一次算完全班实训成绩与卡点</span>
 <span class="g">const</span> token = localStorage.getItem(<span class="y">'auth_token'</span>);
-<span class="g">const</span> roster = [ <span class="y">'0xlearner'</span>, <span class="y">'0x…'</span> ];   <span class="c">// 从花名册粘贴钱包清单</span>
+<span class="g">const</span> roster = [ <span class="y">'0x017f9f6f706d99b8e0697b8dccca2dd3e95cd366'</span>, <span class="y">'0x…'</span> ];   <span class="c">// 从花名册粘贴钱包清单</span>
 <span class="g">for</span> (<span class="g">const</span> w <span class="g">of</span> roster) {
   <span class="g">const</span> h = { <span class="y">'Content-Type'</span>: <span class="y">'application/json'</span>, Authorization: <span class="y">'Bearer '</span> + token };
   <span class="g">const</span> g = <span class="g">await</span> fetch(<span class="y">'/api/grades/compute-training'</span>, { method: <span class="y">'POST'</span>, headers: h,
@@ -403,108 +540,202 @@
   <span class="g">const</span> stuck = (p.steps || []).find(s =&gt; !s.done);
   console.log(w, <span class="y">'实训'</span>, g.training_score, <span class="y">'综合(按80)'</span>, g.final_score, <span class="y">'搭链'</span>, p.done_count + <span class="y">'/'</span> + p.total_steps,
               <span class="y">'卡在 Step'</span>, stuck ? stuck.step : <span class="y">'—'</span>);
-}</pre><p class="small muted">脚本全部走只读接口，不写库；<span class="mono">compute-training</span> 只传 <span class="mono">manual_score=80</span> 供参考，不影响已存成绩。</p><h3><span class="num">7.4</span>读数时注意两个坑</h3><ul class="dash">
-    <li><b>done_count 与 steps[] 可能不自洽</b>：实测某钱包 <span class="mono">done_count=6 / percent=60</span>，但 steps 里 Step 1 的 <span class="mono">done=false</span>。以 <span class="mono">done_count</span> 为准，“第一个未 done 的步骤”当作卡点参考而非结论（已记进建议清单 P2-21）。</li>
-    <li><b>任务进度与成绩不同源</b>：<span class="mono">missions/curriculum</span> 实测 verified_count=9/10，而 <span class="mono">tutorial/progress</span> 只算到 6/10；前者是“任务认定”，后者是“步骤记录”，跟学生解释时只用一个。</li>
-  </ul><div class="kicker">CHAPTER 08</div><h2>实训报告：两个口径、九维明细、一个导出陷阱</h2><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>21 / 33</span></div></section><section class="page"><div class="hdr"><span>第 08 章 · 实训报告</span><span>CHAPTER 08 · REPORT</span></div><p class="lead">报告页是评分时最常用的依据，但它与成绩表<b>不同源</b>，而且教师看到的默认是全校合并卷。</p><h3><span class="num">8.1</span>你打开报告页看到的是哪一份</h3><table>
-    <thead><tr><th style="width:24mm">口径</th><th style="width:24mm">入口</th><th class="c" style="width:14mm">得分</th><th class="c" style="width:24mm">等级</th><th>取数范围</th></tr></thead>
+}</pre><p class="small muted">脚本全部走只读接口，不写库；<span class="mono">compute-training</span> 只传 <span class="mono">manual_score=80</span> 供参考，不影响已存成绩。</p><h3><span class="num">7.4</span>读数时注意两个口径差</h3><ul class="dash">
+    <li><b>“完成步数”与“逐步状态”现在同源</b>：后端遍历同一份步骤注册表统计 <span class="mono">done_count</span>，不会再出现“计数 6 却显示 Step 1 未完成”的打架。但读侧按<b>钱包候选集</b>合并匹配（本人 0x 地址 / 登录 ID / <span class="mono">stu:</span> 别名 / 学号），因此学生从不同入口操作时，进度会把这几套标识下的记录<b>并成一份</b>——这是设计而不是重复计数。</li>
+    <li><b>任务清单与搭链进度不同源</b>：<span class="mono">/missions/curriculum</span> 判的是“10 项微任务的服务端验收证据”（合约名、发放角色、交易笔数…），<span class="mono">/chain/tutorial/progress</span> 判的是“10 步教程命令是否执行成功”。两者数字不同很正常，跟学生解释时<b>只用一个</b>。</li>
+  </ul><div class="note note--info">
+    <span class="t">顺手记一条：两处班级权限的收严程度不一样</span>
+    <span class="mono">/chain/tutorial/progress/class</span> 对教师强制“只能查自己班级”，传别班班号直接 <span class="mono">403</span>，管理员不限；
+    而成绩列表筛选栏填别班班号仍会返回数据（5.1 ⑦）。跨班核对时不要把两者当同一套权限，也不要用后者当“越权工具”。
+  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>27 / 41</span></div></section><section class="page"><div class="hdr"><span>第 08 章 · 实训报告</span><span>CHAPTER 08 · REPORT</span></div><div class="kicker">CHAPTER 08</div><h2>实训报告：三份读数、九维明细、两个观察陷阱</h2><p class="lead">报告页是评分时最常用的依据，但它与成绩表<b>不同源</b>：教师默认看到的是全链合并卷，学生自己看到的才是他那份。
+  本章把同一批数据在三个入口下的<b>实测读数</b>摆在一起，免得你拿全局卷去评个人。</p><h3><span class="num">8.1</span>同一批数据，三种读数（本机实测）</h3><table>
+    <thead><tr><th style="width:22mm">口径</th><th style="width:34mm">入口</th><th class="c" style="width:13mm">总分</th><th class="c" style="width:20mm">等级</th><th>取数范围与差异来源</th></tr></thead>
     <tbody>
-      <tr><td>全局报告</td><td class="c">报告页默认</td><td class="c mono">80</td><td class="c">良好 🥈</td><td>全链汇总：所有合约 / 所有调用 / 所有生态行为</td></tr>
-      <tr><td>个人报告</td><td class="c mono">?wallet=</td><td class="c mono">43</td><td class="c">待完善 🚧</td><td>仅该钱包名下的行为（实测：同一个 0xlearner）</td></tr>
+      <tr><td>全局报告</td><td>教师打开报告页（默认）</td><td class="c mono">90</td><td class="c">卓越 🏆</td><td>全链汇总：30 份合约 / 109 笔交易 / 所有账号的生态行为；<b>含 P 项 −10</b>（包场所有人的 18 次失败操作，已扣满 10 分上限）</td></tr>
+      <tr><td>学生本人</td><td>学生登录后看报告页</td><td class="c mono">100</td><td class="c">卓越 🏆</td><td>该生四个钱包口径的并集（基础 55 / 55 · 高级实战 40 / 40 · 综合拓展 5 / 5）；<b>P 项 0</b>（扣分按 actor 归因，不背别人的锅）</td></tr>
+      <tr><td>教师查该生</td><td class="mono c">?wallet=学生钱包</td><td class="c mono">98</td><td class="c">卓越 🏆</td><td>与上一行<b>同一批数据</b>（钱包候选集四个地址完全一致），只差在 E 项：按钱包单口径只认到 4/6 角色 → 高级实战发 38 / 40，<b>少 2 分</b></td></tr>
     </tbody>
   </table><figure>
-    <img src="../assets/screenshots/manual/T04-report-global.png" alt="教师看到的全局报告">
-    <figcaption>图 8-1 教师打开报告页看到的全局卷：顶部大分是全链汇总，不是任何一个学生的分数。</figcaption>
-  </figure><div class="note note--bad">
-    <span class="t">页面上没有“选学生”的入口（P1-6）</span>
+    <img src="../assets/screenshots/manual/S13-report-score.png" alt="学生本人视角的实训报告">
+    <figcaption>图 8-1 学生账号（赵佳正）自己打开报告页的读数：<b>100 / 100 · 卓越 🏆</b>，九维 A–I 全项满值。
+    <b>教师账号看不到这一屏</b>：报告页对教师恒为全局口径。</figcaption>
+  </figure><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>28 / 41</span></div></section><section class="page"><div class="hdr"><span>第 08 章 · 实训报告</span><span>CHAPTER 08 · REPORT</span></div><div class="note note--bad">
+    <span class="t">页面上没有“选学生”的入口</span>
     教师账号的报告页<b>从不传 wallet 参数</b>，因此只能看到全局口径；
     要看某个学生的九维，只能走接口：<span class="mono">GET /api/report/aggregate?wallet=学生钱包</span>。
     同理，<span class="mono">/api/report/download</span> 也永远导的是全局卷，文件名固定
-    <span class="mono">report.md</span> / <span class="mono">report.json</span>（实测 md 约 15 KB）。
+    <span class="mono">report.md</span> / <span class="mono">report.json</span>。
+  </div><div class="note note--warn">
+    <span class="t">两个“观察即改动”的陷阱</span>
+    <b>一、你查一次，该生的「报告查看」就 +1。</b>查看行为会埋点到<b>被查看的学生</b>名下（而不是你），
+    而「报告查看」在四维里是<b>联盟治理</b>维度的一项（每次 +4 分、该维封顶 100）。
+    所以：① 不要拿该计数当“学生自己看了几次”来核对；② 评分前让学生<b>最后统一刷一次草稿</b>，
+    免得你的核对动作把分刷上去又无人知晓。<span class="tag tag--i">实测</span> 本机该生该维早已封顶，所以无影响；未封顶的学生会受影响。
+    <br><b>二、你查到的分数会比学生自己看到的低 2 分。</b>特权角色查个人报告时不带 <code>user_id</code> 口径，
+    E 项只能按钱包归因，会漏掉“以节点身份切换角色”那一段埋点（本机实测：教师口径 4/6 → E 8 分；学生本人 6/6 → E 10 分）。
+    <b>以草稿 / 成绩册为准</b>：草稿由学生本人刷新产生，走的是完整口径（见 5.5）。
   </div><ul class="dash">
     <li><b>归档个人报告的正确做法</b>：让学生自己在报告页点导出（学生登录时传的是自己钱包），文件名手写“学号-姓名-report.md”后提交。</li>
-    <li><b>教师留档</b>：用 7.3 的控制台脚本把 <span class="mono">/api/report/aggregate?wallet=</span> 的结果另存为 JSON，一份一个钱包，不会串味。</li>
-  </ul><h3><span class="num">8.2</span>九维评分细则（A–I）与教师核查动作</h3><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>22 / 33</span></div></section><section class="page"><div class="hdr"><span>第 08 章 · 九维拆解</span><span>CHAPTER 08 · NINE DIMENSIONS</span></div><table>
+    <li><b>教师留档</b>：用 7.3 的控制台脚本把 <span class="mono">/api/report/aggregate?wallet=</span> 的结果另存为 JSON，一份一个钱包，不会串味；
+      但请记住这份是<b>保守读数</b>（E 项可能少 2 分）。</li>
+  </ul><h3><span class="num">8.2</span>九维评分细则（A–I）与教师核查动作</h3><table>
     <thead><tr><th style="width:26mm">维度</th><th class="c" style="width:10mm">满分</th><th style="width:62mm">给分规则（与后端一致）</th><th>教师核查方式</th></tr></thead>
     <tbody>
-      <tr><td>A 合约部署</td><td class="c mono">20</td><td>≥ 1 份 +10；ERC20 / ERC721 / ERC1155 另计 +3 / +3 / +4</td><td>合约管理列表：看份数与协议分布</td></tr>
-      <tr><td>B 链上交易</td><td class="c mono">15</td><td>≥ 10 笔 15；≥ 5 笔 10；≥ 2 笔 5；≥ 1 笔 2</td><td>区块链浏览器交易列表（个人口径可能恒为 0，见 P0-3）</td></tr>
-      <tr><td>C NFT</td><td class="c mono">10</td><td>铸造 ≥ 1 +5；市场成交 ≥ 1 +5</td><td>NFT 市场“我的铸造 / 挂单”</td></tr>
-      <tr><td>D 搭链教程（必修）</td><td class="c mono">10</td><td>10/10 → 10；≥ 5 → 6；≥ 1 → 2；失败尝试 +1~3</td><td><span class="mono">/chain/tutorial/progress?wallet=</span></td></tr>
-      <tr><td>E 角色与节点体验</td><td class="c mono">10</td><td>6/6 → 10；≥ 4 → 8；≥ 2 → 5；≥ 1 → 2</td><td>生态页角色切换记录（四维里的“角色切换”）</td></tr>
-      <tr><td>F 能量发放多样性</td><td class="c mono">10</td><td>3 种角色 → 10；2 种 → 6；1 种且 ≥ 3 次 → 3</td><td>发放流水的角色分布</td></tr>
-      <tr><td>G 资产兑换</td><td class="c mono">15</td><td>证书：≥ 2 树种 8 / 1 树种 4；勋章+骑行券都换 4；发放角色 ≥ 4 种 +3</td><td>环境仅 1 个树种时，G-1 天花板 4 分（P2-13）</td></tr>
-      <tr><td>H 生态合约激活</td><td class="c mono">5</td><td>GreenEnergy / PlantCertificate / EcoBadge：3/3 → 5；2/3 → 2；1/3 → 1</td><td>合约管理里三份系统合约是否可调用</td></tr>
-      <tr><td>I 综合拓展</td><td class="c mono">5</td><td>读源码 ≥ 3 +2；真实编译 ≥ 1 +1；接口调试 ≥ 1 +2</td><td>IDE 行为 + 接口调试记录</td></tr>
-      <tr><td>P 操作扣分</td><td class="c mono">≤ 15</td><td>错误调用每条 −1（上限 −10）；警告每条 −0.3（上限 −5）；合计不超 15</td><td><span class="mono">/eco/audit/overview</span> 异常清单（实测 −10）</td></tr>
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
     </tbody>
-  </table><div class="note note--info">
-    <span class="t">扣分不要当“态度分”用</span>
-    当前版本里<b>只读函数调用失败也计入错误</b>（如 <span class="mono">name</span> / <span class="mono">decimals</span> 对未部署地址返回
-    “Tried to read 32 bytes, only got 0 bytes.”），实测全局 10 次调用 5 次失败、成功率 50%，直接扣满 10 分（P2-9）。
-    评分时先看失败记录是不是只读调用，否则会对认真探路的学生不公。
-  </div><div class="kicker">CHAPTER 09</div><h2>运营沙盘：出题、跑轮、判分</h2><p class="lead">沙盘在「运行监控」页内，教师建场景并启轮，学生看到故障后提交处置动作，系统自动算 MTTD / MTTR。
-  它是平台里唯一能量化「反应速度」的模块：除了链上做了多少分，还能看谁先把故障修好。</p><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>23 / 33</span></div></section><section class="page"><div class="hdr"><span>第 09 章 · 运营沙盘</span><span>CHAPTER 09 · SANDBOX</span></div><figure>
+  <tr><td>A 合约部署</td><td class="c mono">20</td><td>≥ 1 份 +10；ERC20 / ERC721 / ERC1155 另计 +3 / +3 / +4</td><td>合约管理列表：看份数与协议分布（失效地址已有标注）</td></tr><tr><td>B 链上交易</td><td class="c mono">15</td><td>≥ 10 笔 15；≥ 5 笔 10；≥ 2 笔 5；≥ 1 笔 2</td><td>区块链浏览器交易列表（个人口径已不再恒为 0，实测该生 19 笔）</td></tr><tr><td>C NFT</td><td class="c mono">10</td><td>铸造 ≥ 1 +5；市场成交 ≥ 1 +5（绿色市场成交也计入）</td><td>NFT 市场“我的铸造 / 挂单”</td></tr><tr><td>D 搭链教程（必修）</td><td class="c mono">10</td><td>10/10 → 10；≥ 5 → 6；≥ 1 → 2；失败尝试另计探索加分 +1~3，<b>但与步骤分合计封顶 10</b>（不存在 10+3=13）</td><td><span class="mono">/chain/tutorial/progress?wallet=</span>（与 steps 同源）；该生实测 <span class="mono">steps_done 10 · failed_attempts 0</span></td></tr><tr><td>E 角色与节点体验</td><td class="c mono">10</td><td>6/6 → 10；≥ 4 → 8；≥ 2 → 5；≥ 1 → 2</td><td>生态页角色切换记录。<span class="tag tag--w">口径</span> 教师查到的可能比学生少 1~2 个角色（见 8.1；与微任务 T2 已共用同一实现）</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>29 / 41</span></div></section><section class="page"><div class="hdr"><span>第 08 章 · 九维拆解</span><span>CHAPTER 08 · NINE DIMENSIONS</span></div><table>
+    <thead><tr><th style="width:26mm">维度</th><th class="c" style="width:10mm">满分</th><th style="width:62mm">给分规则（与后端一致）</th><th>教师核查方式</th></tr></thead>
+    <tbody>
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+    </tbody>
+  <tr><td>F 能量发放多样性</td><td class="c mono">10</td><td>3 种角色 → 10；2 种 → 6；1 种且 ≥ 3 次 → 3</td><td>发放流水的角色分布（实测该生 5 种 / 11 次 → 满分）</td></tr><tr><td>G 资产兑换</td><td class="c mono">15</td><td>证书：≥ 2 树种 8 / 1 树种 4；勋章+骑行券都换 4；发放角色 ≥ 4 种 +3</td><td>环境仅 1 个树种时，G-1 天花板 4 分</td></tr><tr><td>H 生态合约激活</td><td class="c mono">5</td><td>GreenEnergy / PlantCertificate / EcoBadge：3/3 → 5；2/3 → 2；1/3 → 1</td><td>合约管理里三份系统合约是否可调用</td></tr><tr><td>I 综合拓展</td><td class="c mono">5</td><td>读源码 ≥ 3 +2；真实编译 ≥ 1 +1；接口调试 ≥ 1 +2</td><td>IDE 行为 + 接口调试记录（实测该生 4 / 6 / 9）</td></tr><tr><td>P 操作扣分</td><td class="c mono">≤ 15</td><td>每条 error −1（上限 −10）；每条 warn −0.3 取整（上限 −5）；合计不超 15。<b>无扣分时整行不显示</b></td><td><span class="mono">/eco/errors/list</span> 异常清单（实测：学生个人卷 0，全局卷 −10）</td></tr></table><figure>
+    <img src="../assets/screenshots/manual/S13c-report-breakdown.png" alt="九维评分明细表">
+    <figcaption>图 8-2 报告页的「综合评分明细（V2 满分 100）」：基础 55（A~D）+ 高级实战 40（E~H）+ 综合拓展 5（I）= 100，
+    扣分上限 −15（error ≤ 10 / warn ≤ 5）。本图摄于学生本人视角，故 P 行不出现；“规则说明”列与后端逐字一致，可直接当评分口径表用。</figcaption>
+  </figure><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>30 / 41</span></div></section><section class="page"><div class="hdr"><span>第 08 章 · 九维拆解</span><span>CHAPTER 08 · NINE DIMENSIONS</span></div><div class="note note--ok">
+    <span class="t">P 项不再当“态度分”误用（本批已收严）</span>
+    三个变化使扣分变得可解释：<b>一</b>、扣分按 <b>actor 归因</b>（<code>actor_wallet</code> / <code>actor_user_id</code>），
+    行政角色给该生发能量失败不再算到学生头上；<b>二</b>、只有<b>生态实战页的写操作失败</b>会上报 error
+    （发能量 / 兑换证书勋章 / 部署 / 挂牌买入 / 上下架 / 切角色），<b>接口调试页的只读调用（<span class="mono">name</span> /
+    <span class="mono">decimals</span>）根本不上报</b> → 旧手册里“认真探路反被扣分”的写法已不成立；
+    <b>三</b>、失效合约地址现在在接口调试与合约管理里<b>直接可分辨</b>，不会让学生误调老地址。
+    遇到争议时：先问“这条 error 是谁按的”，再看“它是写操作还是只读”。
+  </div><div class="kicker">CHAPTER 09</div><h2>运营沙盘：出题、跑轮、判分</h2><p class="lead">沙盘在「运行监控」页内，教师建场景并启轮，学生看到故障后提交处置动作，系统自动算 MTTD / MTTR：
+  它是平台里<b>唯一能量化「反应速度」</b>的模块。<span class="tag tag--i">口径声明</span> 本章数字来自本机实跑三轮的后台台账
+  （<span class="mono">ops_rounds</span> 中 round #1~#3 均为 <span class="mono">stopped</span>），不是源码推演。</p><figure>
     <img src="../assets/screenshots/manual/T07-monitor-sandbox.png" alt="运行监控·运营沙盘">
-    <figcaption>图 9-1 运行监控页的运营沙盘区：场景列表 + 轮次参数 + 记分板。</figcaption>
-  </figure><h3><span class="num">9.1</span>四类故障与对症处置（判分核心）</h3><table>
+    <figcaption>图 9-1 运行监控页的「🛰️ 运营沙盘 · 链上运维演练」卡（教师视角）：卡头为<b>待命</b>（当前无进行中轮次），
+    下方场景表三行全部「已演练」——每一行都是一次完整课堂演练的沉淀。
+    <span class="tag tag--w">版本</span> 早期版本顶栏把“当前操作钱包”显示为账号 ID，现在显示钱包名称与地址。</figcaption>
+  </figure><h3><span class="num">9.1</span>教师侧五步：从出题到停机</h3><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>31 / 41</span></div></section><section class="page"><div class="hdr"><span>第 09 章 · 沙盘出题</span><span>CHAPTER 09 · SANDBOX SETUP</span></div><ol class="steps">
+    <li><b>进页</b>：侧边栏「链上验证 → 运行监控」（<span class="mono">#/monitor</span>），滚到沙盘卡。
+      <b>只有教师 / 管理员看得到出题行</b>，学生只能看到故障态与处置动作下拉。</li>
+    <li><b>出题</b>：选<b>故障类型</b>（💥 节点宕机 / ⏸️ 共识停滞 / 🎭 凭证重放攻击 / ⛽ gas 飙升）
+      → 填<b>目标 TPS</b>（0.1–5，默认 1.0）与<b>时长（秒）</b>（10–600，默认 120）→ 点<b>「创建场景」</b>。</li>
+    <li><b>启轮</b>：场景表新增一行「待启动」→ 点行末<b>「启动」</b>（已有轮次进行时该按钮置灰）。
+      标题由后端按故障类型生成（如「节点宕机演练」），<b>页面上改不了</b>，要自定义标题只能走接口。</li>
+    <li><b>跑轮</b>：卡头灯亮并显示「轮次 #N 进行中」，依次出现<b>故障横幅 → KPI 记分板 → 处置流水</b>；
+      同班学生看到的是<b>同一轮</b>（按班级隔离，不是每人一份）。</li>
+    <li><b>停机</b>：点右上<b>「⏹ 一键停止」</b>（接口会等负载线程退出，最多 3 秒，不会“停了还在写链”）；
+      不点也会按时长 / 配额自动结束（<span class="mono">stop_reason = duration_or_quota</span>）。
+      场景状态从「待启动」变「已演练」，<b>一个场景只能启一轮</b>，要再练就得重建场景。</li>
+  </ol><div class="note note--warn">
+    <span class="t">页面上没有「交易配额」与「节点编号」两个输入框</span>
+    负载生成器<b>会真实写链</b>，而控制总量的两个参数——<span class="mono">quota</span>（默认 200 笔、硬顶 600）与
+    <span class="mono">node_index</span>（默认 0，有 0–3）——<b>只能在接口请求体里传</b>，出题行并不提供它们。
+    也就是说：只靠页面点按钮，你<b>无法</b>把一节演练课压到“只写 30 笔 / 只宕 node1”。要小配额试跑请用下面这段控制台代码（与 7.3 同一用法，F12 → Console）：
+  </div><pre><span class="c">// 建一个“课堂友好”的小场景：0.5 TPS / 40 秒 / 配额 30 笔 / 宕 node1</span>
+<span class="g">await</span> fetch(<span class="y">'/api/sandbox/scenarios'</span>, { method: <span class="y">'POST'</span>,
+  headers: { <span class="y">'Content-Type'</span>: <span class="y">'application/json'</span>,
+             Authorization: <span class="y">'Bearer '</span> + localStorage.getItem(<span class="y">'auth_token'</span>) },
+  body: JSON.stringify({ scenario_type: <span class="y">'node_down'</span>, title: <span class="y">'小班演练 · node1 宕机'</span>,
+    target_tps: 0.5, duration_s: 40, quota: 30, node_index: 1 })
+}).then(r =&gt; r.json()).then(j =&gt; console.log(j.data || j))</pre><p class="small muted">建完回到页面刷新即可在场景表看到它（配置列写着 <span class="mono">TPS 0.5 · 40s · 配额 30</span>），
+  后续「启动 / 停止」仍在页面上点。<b>本机实测这一组参数</b>：40 秒内合成 16 笔交易全部成功，
+  学生在第 3.03 秒提交对症动作 → MTTD = MTTR = <b>3.03s</b>、处置率 <b>100%</b>、成功率 <b>100%</b>。</p><h3><span class="num">9.2</span>四类故障与对症处置（判分核心）</h3><table>
     <thead><tr><th style="width:30mm">场景</th><th style="width:52mm">学生看到的可观测现象</th><th style="width:44mm">对症动作（命中才推 MTTD/处置率）</th><th class="c">满分动作</th></tr></thead>
     <tbody>
-      <tr><td>节点宕机 <span class="mono">node_down</span></td><td>节点列表里指定编号节点离线（云桌面 / 监控同步读取故障态）</td><td class="mono">重启节点</td><td class="c">1 种</td></tr>
-      <tr><td>共识停滞 <span class="mono">consensus_stall</span></td><td>展示“出块暂停”，且轮次期间不再有新交易入块</td><td class="mono">重启节点 + 修复重部署</td><td class="c">2 种</td></tr>
-      <tr><td>凭证重放攻击 <span class="mono">replay_attack</span></td><td>审计列表出现两条<b>同一 proof_no</b> 的可疑能量记录</td><td class="mono">重放审计</td><td class="c">1 种</td></tr>
-      <tr><td>gas 飙升 <span class="mono">gas_spike</span></td><td>平均 Gas 上抬，伴随一批低价值转账</td><td class="mono">修复重部署 + 交易限流</td><td class="c">2 种</td></tr>
+      
+      
+      
+      
     </tbody>
-  </table><div class="note note--warn">
+  <tr><td>节点宕机 <span class="mono">node_down</span></td><td>节点列表里指定编号节点离线（云桌面 / 监控同步读取故障态）</td><td class="mono">重启节点</td><td class="c">1 种</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>32 / 41</span></div></section><section class="page"><div class="hdr"><span>第 09 章 · 故障与参数</span><span>CHAPTER 09 · FAULT MODELS</span></div><table>
+    <thead><tr><th style="width:30mm">场景</th><th style="width:52mm">学生看到的可观测现象</th><th style="width:44mm">对症动作（命中才推 MTTD/处置率）</th><th class="c">满分动作</th></tr></thead>
+    <tbody>
+      
+      
+      
+      
+    </tbody>
+  <tr><td>共识停滞 <span class="mono">consensus_stall</span></td><td>展示“出块暂停”，且轮次期间不再有新交易入块</td><td class="mono">重启节点 + 修复重部署</td><td class="c">2 种</td></tr><tr><td>凭证重放攻击 <span class="mono">replay_attack</span></td><td>审计列表出现两条<b>同一 proof_no</b> 的可疑能量记录</td><td class="mono">重放审计</td><td class="c">1 种</td></tr><tr><td>gas 飙升 <span class="mono">gas_spike</span></td><td>平均 Gas 上抬，伴随一批低价值转账</td><td class="mono">修复重部署 + 交易限流</td><td class="c">2 种</td></tr></table><div class="note note--warn">
     <span class="t">出题前必知三条</span>
     ① <b>gas_spike 会走真实 chain_client 合成转账</b>（1–40 笔），会计入链上交易与课堂数据；
     ② <b>replay_attack 会向能量记录表插两条脏数据</b>，只增不改不删，但会留在审计列表里；
     ③ 故障注入不会删改学生真实数据，可放心演示；轮次停止后“共识暂停”标记自动解除。
-  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>24 / 33</span></div></section><section class="page"><div class="hdr"><span>第 09 章 · 运营沙盘</span><span>CHAPTER 09 · SANDBOX</span></div><h3><span class="num">9.2</span>轮次参数与安全红线</h3><table>
+  </div><h3><span class="num">9.3</span>轮次参数与安全红线</h3><table>
     <thead><tr><th style="width:30mm">参数</th><th style="width:34mm">取值范围</th><th style="width:22mm">默认</th><th>课堂建议</th></tr></thead>
     <tbody>
       <tr><td>目标 TPS</td><td class="mono">0.1 – 5.0（硬顶）</td><td class="c mono">1.0</td><td>入门课 0.5，对比课用 3.0 看吞吐差异</td></tr>
       <tr><td>轮次时长</td><td class="mono">10 – 600 秒</td><td class="c mono">120</td><td>课堂用 120–180 秒，不占满下课时间</td></tr>
-      <tr><td>交易配额</td><td class="mono">1 – 600（硬顶）</td><td class="c mono">200</td><td>控制总量首选改小配额，比改 TPS 更可预测</td></tr>
-      <tr><td>节点编号</td><td class="mono">0 – 3</td><td class="c mono">0</td><td>四个节点对应四个组织，换不同编号宕机可自然带出治理话题</td></tr>
+      <tr><td>交易配额<br><span class="small muted">（页面无控件）</span></td><td class="mono">1 – 600（硬顶）</td><td class="c mono">200</td><td>控制总量首选改小配额，比改 TPS 更可预测；<b>只能走接口传</b>（见 9.1 的控制台代码）</td></tr>
+      <tr><td>节点编号<br><span class="small muted">（页面无控件）</span></td><td class="mono">0 – 3</td><td class="c mono">0</td><td>四个节点对应四个组织，换不同编号宕机可自然带出治理话题；不传恒为 node0</td></tr>
     </tbody>
-  </table><p class="small muted">同一班级同时只允许一个进行中轮次；教师可一键停止（<span class="mono">/rounds/{id}/stop</span>），
-  停止接口会等待负载线程退出，不会出现“停了还在写链”。</p><h3><span class="num">9.3</span>四个 KPI 到底在算什么</h3><table>
+  </table><p class="small muted">超范围的值不会报错，而是被<b>静默钳位</b>到边界（如 TPS 填 8 → 存成 5.0）；
+  同一班级同时只允许一个进行中轮次，教师可一键停止（<span class="mono">/rounds/{id}/stop</span>），
+  停止接口会等待负载线程退出，不会出现“停了还在写链”。</p><h3><span class="num">9.4</span>四个 KPI 到底在算什么</h3><table>
     <thead><tr><th style="width:26mm">KPI</th><th style="width:56mm">官方口径</th><th>读法与陷阱</th></tr></thead>
     <tbody>
-      <tr><td class="mono">mttd_seconds</td><td>故障注入 → <b>首个</b>处置动作的秒数</td><td>乱提交动作也会把它变小，因此单看 MTTD 会奖励“猜”</td></tr>
-      <tr><td class="mono">mttr_seconds</td><td>故障注入 → 首个<b>对症</b>动作的秒数；未恢复记 −1</td><td>−1 不是“负秒数”，是“没修好”；统计前先排除 −1</td></tr>
-      <tr><td class="mono">handle_rate</td><td>已命中对症动作种类 / 场景应有种类 × 100</td><td>共识停滞与 gas 飙升需要 2 种动作才到 100%</td></tr>
-      <tr><td class="mono">success_rate</td><td>合成交易成功数 / 尝试数；<b>无尝试记 100</b></td><td>刚启轮就看到 100%，不代表健康</td></tr>
+      
+      
+      
+      
     </tbody>
-  </table><p class="small muted">记分板每 10 秒采一次样（写 <span class="mono">ops_kpis</span> 并推 <span class="mono">sandbox_kpi</span> 事件），
-  因此学生提交动作后最多等 10 秒才会看到曲线变化，不是卡死。</p><h3><span class="num">9.4</span>把沙盘成绩归入教师分</h3><div class="grid3">
-    <div class="card"><span class="lbl">A 档・+90~100</span><h4>MTTR ≤ 30s</h4><p class="small">一次提交即对症，处置率 100%，能说出为何这么修。</p></div>
-    <div class="card"><span class="lbl">B 档・+75~89</span><h4>MTTR ≤ 60s</h4><p class="small">先误提交一次再对症，最终处置率 100%。</p></div>
-    <div class="card"><span class="lbl">C 档・&lt; 75</span><h4>MTTR = −1</h4><p class="small">始终未命中对症动作，或只靠“重启节点”处理一切场景。</p></div>
-  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>25 / 33</span></div></section><section class="page"><div class="hdr"><span>第 09 章 · 沙盘记分</span><span>CHAPTER 09 · SCORING</span></div><div class="note note--bad">
-    <span class="t">开课前必做的一个验证：师生是否同一个“班”</span>
-    沙盘所有数据（场景 / 轮次 / 故障态）都按登录凭据里的 <span class="mono">class_id</span> 严格隔离，
-    而教师账号的 <span class="mono">class_id</span> 当前为 <span class="mono">"0"</span>（P0-1 同源问题）。
-    如果学生凭据里的班级不是 <span class="mono">"0"</span>，你建的轮次学生会永远看不到（<span class="mono">/rounds/active</span> 返回空）。
-    <b>验收方法</b>：用教师账号建一轮 10 秒的短轮 → 叫一个学生刷新监控页 → 看不到故障就换班级值重建，或请运维先补齐班级字段。
-  </div><div class="kicker">CHAPTER 10</div><h2>一学期怎么推：16 周教学节奏表</h2><p class="lead">平台没有“开课 / 锁课”概念，所有数据实时累积。因此教师需要自己制造节奏：
+  <tr><td class="mono">mttd_seconds</td><td>故障注入 → <b>首个</b>处置动作的秒数（任意动作都算）</td><td>乱提交动作也会把它变小，因此单看 MTTD 会奖励“猜”</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>33 / 41</span></div></section><section class="page"><div class="hdr"><span>第 09 章 · 沙盘记分</span><span>CHAPTER 09 · SCORING</span></div><table>
+    <thead><tr><th style="width:26mm">KPI</th><th style="width:56mm">官方口径</th><th>读法与陷阱</th></tr></thead>
+    <tbody>
+      
+      
+      
+      
+    </tbody>
+  <tr><td class="mono">mttr_seconds</td><td>故障注入 → 首个<b>对症</b>动作的秒数；未恢复记 −1</td><td>−1 不是“负秒数”，是“没修好”；统计前先排除 −1</td></tr><tr><td class="mono">handle_rate</td><td>已命中对症动作<b>种类</b> / 场景应有种类 × 100</td><td>共识停滞与 gas 飙升需要 2 种动作才到 100%；同一动作重复提交不重复计数</td></tr><tr><td class="mono">success_rate</td><td>合成交易成功数 / 尝试数；<b>无尝试记 100</b></td><td>刚启轮就看到 100%，不代表健康；它只反映链的消化能力，<b>与学生动作无关</b></td></tr></table><p class="small muted">记分板每 10 秒采一次样（写 <span class="mono">ops_kpis</span> 并推 <span class="mono">sandbox_kpi</span> 事件），
+  因此学生提交动作后最多等 10 秒才会看到曲线变化，不是卡死。<span class="tag tag--i">实测</span>
+  本机一轮的终值：<span class="mono">mttd 3.03 · mttr 3.03 · handle_rate 100 · success_rate 100 · tx 16/16 · actions_submitted 1</span>。
+  轮次结束后页面会回到“待命”，但终值永远存在台账里：<span class="mono">GET /api/sandbox/rounds</span> 的
+  <span class="mono">result.kpis</span> 就是停机那一刻的最后一采（<b>没有删除入口</b>，一学期后会累积多条，与成绩一样需请管理员统一清理）。</p><div class="note note--bad">
+    <span class="t">处置动作下拉框默认就停在正确答案上</span>
+    前端为了降低学生操作成本，会把下拉<b>预选为该场景的首个对症动作</b>（node_down 就是「重启节点」）。
+    也就是说：<b>什么都不懂的学生直接点「提交」也能拿到 MTTD = MTTR 与 100% 处置率</b>。
+    因此不要把这两个时间值当“会”与“不会”的分界线：要拉开区分度，就要求学生填写<b>「处置说明」</b>
+    （随动作一起入库，最长 200 字）并当堂追问“为何是这个动作”。
+  </div><h3><span class="num">9.5</span>把沙盘成绩归入教师分</h3><div class="grid3">
+    <div class="card"><span class="lbl">甲・教师分 90~100</span><h4>MTTR ≤ 30s</h4><p class="small">一次提交即对症，处置率 100%，能说出为何这么修。</p></div>
+    <div class="card"><span class="lbl">乙・教师分 75~89</span><h4>MTTR ≤ 60s</h4><p class="small">先误提交一次再对症，最终处置率 100%。</p></div>
+    <div class="card"><span class="lbl">丙・教师分 &lt; 75</span><h4>MTTR = −1</h4><p class="small">始终未命中对症动作，或只靠“重启节点”处理一切场景。</p></div>
+  </div><div class="note note--tip">
+    <span class="t">开沙盘课前只做两件事：确认同班 + 先小配额试跑</span>
+    ① 沙盘已改走<b>班级解析链</b>，班级对不对<b>只取决于你绑没绑班</b>，与重登无关：
+    成绩页顶部提示卡显示「班级来源：<b>显式绑定</b> · 216」即可；若为空串，回 3.1 重绑。
+    ② <b>第一次先自己跑一轮</b>（按 9.1 那段代码用 0.5 TPS / 40 秒 / 配额 30），确认学生能提交动作再开全堂；
+    负载生成器<b>会真实写链</b>（页面出题默认每轮 200 笔配额），先小配额跑通再放开。
+    <br><b>课堂形态建议</b>：第一轮由你<b>教师演示</b>（投屏故障态与 KPI，学生用口头 / 纸质交方案，
+    你按 9.4 四个口径人工判分并归入 6.1 的「报告完成度」子项）；第二轮再放学生自己上手。
+  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>34 / 41</span></div></section><section class="page"><div class="hdr"><span>第 10 章 · 学期节奏</span><span>CHAPTER 10 · SEMESTER SOP</span></div><div class="kicker">CHAPTER 10</div><h2>一学期怎么推：16 周教学节奏表</h2><p class="lead">平台没有“开课 / 锁课”概念，所有数据实时累积。因此教师需要自己制造节奏：
   下表的三个检查点就是防止学生堆到期末一次性交作业的关卡。</p><table>
     <thead><tr><th style="width:18mm">周次</th><th style="width:32mm">教学目标</th><th style="width:56mm">平台动作（教师）</th><th>产出物 / 验收</th></tr></thead>
     <tbody>
-      <tr><td>第 1 周</td><td>开卡与基线</td><td>跑完 3.1 十项自检；建花名册（学号·姓名·钱包）；自己用演示钱包跑一遍 10 步</td><td>花名册 v1；演示钱包基线分</td></tr>
+      <tr><td>第 1 周</td><td>开卡与基线</td><td>跑完第 3 章的 10 项自检（含 3.1 绑班）；<b>不手工建花名册</b>——学生登录一次即自动进册，你只负责核对；用自己钱包跑一遍 10 步</td><td>花名册核对截图；教师本人钱包的基线分</td></tr>
       <tr><td>第 2–3 周</td><td>阶段 1 搭链</td><td>按第 4 章脚本授课；课后用 7.3 脚本拉全班 <span class="mono">done_count</span></td><td>done_count ≥ 8 视为达标，低者第 4 周重点辅导</td></tr>
       <tr><td>第 4–6 周</td><td>阶段 2 合约与交易</td><td>盯 A / B / I 三项；要学生把部署回执发群里，教师抽查</td><td><b>检查点①</b>：人人 ≥ 1 份合约 + ≥ 5 笔交易</td></tr>
-      <tr><td>第 7–10 周</td><td>阶段 3 生态闭环</td><td>盯 E / F / G / H 四项（占报告 40 分）；先补树种（见 3.1 第 8 项）</td><td><b>检查点②・期中</b>：先录一次教师分（不点刷新）</td></tr>
-      <tr><td>第 11–13 周</td><td>阶段 4 资产与运营</td><td>NFT 铸造 + 挂牌成交；排 1 节沙盘课（第 9 章）</td><td>每人 ≥ 1 次完整处置记录（MTTR ≠ −1）</td></tr>
-      <tr><td>第 14–15 周</td><td>逐人答辩</td><td>5 分钟/人：看报告九维 + 三问；当场算教师分</td><td>量表四子项得分表（附录 C）</td></tr>
-      <tr><td>第 16 周</td><td>关分与归档</td><td>留档→点一次「刷新实训成绩」→导出→复核异常行→归档</td><td>成绩包（见 11.3）</td></tr>
+      <tr><td>第 7–10 周</td><td>阶段 3 生态闭环</td><td>盯 E / F / G / H 四项（占报告 40 分）；先确认树种 ≥ 2（第 3 章自检第 8 项）</td><td><b>检查点②・期中</b>：让学生刷一次草稿、你同步入册并录教师分</td></tr>
+      <tr><td>第 11–13 周</td><td>阶段 4 资产与运营</td><td>NFT 铸造 + 挂牌成交；排 1 节沙盘课（第 9 章，<b>先过 9.5 那两件课前自检：同班 + 小配额试跑</b>）</td><td>每人 ≥ 1 次完整处置记录（MTTR ≠ −1）</td></tr>
+      <tr><td>第 14–15 周</td><td>逐人答辩</td><td>5 分钟/人：看报告九维 + 三问；当场算教师分</td><td>量表四子项得分表（附录 B）</td></tr>
+      <tr><td>第 16 周</td><td>关分与归档</td><td>叫学生统一刷草稿 → 你点「全部同步为本班成绩」→ 逐人录 / 核教师分 → 导出 → 复核异常行 → 归档</td><td>成绩包（见 11.3）</td></tr>
     </tbody>
-  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>26 / 33</span></div></section><section class="page"><div class="hdr"><span>第 10 章 · 学期节奏</span><span>CHAPTER 10 · SEMESTER SOP</span></div><div class="grid3">
+  </table><div class="grid3">
     <div class="card"><span class="lbl">日常巡检</span><h4>每 2 周一次</h4><p class="small">只拉两个数：全班 <span class="mono">done_count</span> 均值与 <span class="mono">/explorer/overview</span> 交易总量。低于预期就在下节课安排集体实操。</p></div>
     <div class="card"><span class="lbl">防刷分</span><h4>看结构不看总分</h4><p class="small">四维明细里“链上验证”满、“联盟治理”为 0，典型只刷调用不做业务；反之则只堆次数。</p></div>
     <div class="card"><span class="lbl">临下课前</span><h4>两句话验收</h4><p class="small">“报出你的钱包地址”+“打开报告页读第一行提分建议”。做不到就是没真正做。</p></div>
-  </div><h3><span class="num">11.1</span>五步处理成绩争议</h3><div class="flow">
+  </div><h3><span class="num">11.1</span>五步处理成绩争议</h3><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>35 / 41</span></div></section><section class="page"><div class="hdr"><span>第 11 章 · 争议与归档</span><span>CHAPTER 11 · DISPUTES</span></div><div class="flow">
     <div class="n"><b>① 接诉</b>先收钱包地址<br>不收口头描述</div>
     <div class="sep">→</div>
     <div class="n"><b>② 取数</b><span class="mono">grades/my</span><br><span class="mono">tutorial/progress</span><br><span class="mono">report/aggregate</span></div>
@@ -517,25 +748,25 @@
   </div><table>
     <thead><tr><th style="width:44mm">学生说法</th><th style="width:44mm">真实原因</th><th>标准答复</th></tr></thead>
     <tbody>
-      <tr><td>“我做了很多，分数没涨”</td><td>列表是录入时的快照；或成绩行根本没绑钱包</td><td>先查绑没绑；已绑则告知统一刷新时点，不给个别人刷（会影响全校）</td></tr>
-      <tr><td>“为什么我 43 分，他 80 分？”</td><td>两个口径：个人报告 vs 全局报告</td><td>43 是你的个人九维，80 是全校合并卷，不能互比；你的成绩以成绩表为准</td></tr>
-      <tr><td>“调用失败凭什么扣分”</td><td>只读调用失败也计入错误（P2-9）；而这些失败的目标多为<b>链重置后已作废的旧合约地址</b>（P2-14）</td><td>查出失败函数名：若全为 <span class="mono">name/decimals</span> 类只读调用，不扣，备注写明原因</td></tr>
-      <tr><td>“列表里有两个我”</td><td>系统草稿行（P1-8）</td><td>带真实学号的那行才是正式成绩，<span class="mono">W0x…</span> 那行忽略</td></tr>
-      <tr><td>“换电脑后钱包变了”</td><td>钱包标识不统一（P0-2）</td><td>链上数据跟钱包走，不跟人走；从此刻固定一个钱包并告知你修改成绩行</td></tr>
+      <tr><td>“我做了很多，分数没涨”</td><td>成绩行是<b>同步/录入时刻的快照</b>；而实训分只能由<b>学生本人刷草稿</b>产生，教师无法代刷</td><td>先查成绩行有没有绑钱包；已绑则让学生自己刷草稿→你同步入册，并约定<b>全班统一刷</b>的时点（见 5.5）</td></tr>
+      <tr><td>“为什么我 98 分，他 100 分？”</td><td>两个口径：你用的 <span class="mono">?wallet=</span> 读数是<b>保守口径</b>（E 项按钱包归因，可能少认 2 个角色）；学生自己看到的是完整口径</td><td>不拿报告页分数当定论，<b>以成绩册 / 草稿为准</b>（草稿走完整口径，见 8.1）</td></tr>
+      <tr><td>“调用失败凭什么扣分”</td><td>当前版本：个人卷 P 项实测为 <b>0</b>——扣分按 actor 归因，且<b>只有生态实战页的写操作失败会上报</b>，接口调试页只读调用根本不上报</td><td>把该生的 error 行拉出来（<span class="mono">/eco/errors/list</span>）逐条对：写操作失败才扣，只读探路不扣（见 8.2）</td></tr>
+      <tr><td>“列表里有两个我”</td><td>旧版自动写入的 <span class="mono">system</span> 遗留行（当时备注文案已无出处）；新链路已改为只经草稿入册</td><td>遗留行班级为空、<b>不会进入已绑班教师本班列表与统计</b>；同一主体在统计里已按主体去重</td></tr>
+      <tr><td>“换电脑后钱包变了”</td><td>学生钱包由密钥库按账号（user_id）绑定，<b>换设备登录仍是同一地址</b>；只有“一人一钱包”上线前的历史数据写在公共演示钱包名下</td><td>取数已按四口径并集；若该生确有数据留在 <span class="mono">0xlearner</span> 等演示钱包，走管理员认领（见 3.1）</td></tr>
     </tbody>
   </table><h3><span class="num">11.2</span>备注栏标准句式</h3><pre><span class="c">备注 = 依据 + 快照日 + 结论，例：</span>
-<span class="g">“答辩通过；依据=A/H/I 满、链上回执 0x3f…9a；</span>
-<span class="g"> 快照 2026-06-18；报告 43 为个人口径，与成绩不互比。”</span></pre><h3><span class="num">11.3</span>期末归档清单（缺一不可）</h3><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>27 / 33</span></div></section><section class="page"><div class="hdr"><span>第 11 章 · 争议与归档</span><span>CHAPTER 11 · DISPUTES</span></div><ul class="check">
+<span class="g">“答辩通过；依据=A/H/I 满、链上回执 0x…；草稿同步于 2026-09-07 08:44；</span>
+<span class="g"> 教师查得的 98 为保守口径（E 项），成绩以成绩册 100.0 为准。”</span></pre><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>36 / 41</span></div></section><section class="page"><div class="hdr"><span>第 11 章 · 争议与归档</span><span>CHAPTER 11 · DISPUTES</span></div><h3><span class="num">11.3</span>期末归档清单（缺一不可）</h3><ul class="check">
     <li><b>花名册终版</b>：学号 · 姓名 · 钱包 · 班级，一人一钱包，无重复地址。</li>
     <li><b>成绩表导出</b>：刷新后的完整列表（含实训 / 教师 / 综合三列与更新时间）。</li>
     <li><b>逐人报告</b>：<span class="mono">学号-姓名-report.md</span>，由学生自己导出提交。</li>
     <li><b>答辩记分表</b>：四子项得分与教师签名，对应教师评分的构成。</li>
-    <li><b>异常台账</b>：本次遇到的平台问题（哪个编号、影响哪几个学生），供下一轮开课预判。</li>
+    <li><b>异常台账</b>：本次遇到的平台问题（什么现象、影响哪几个学生），供下一轮开课预判。</li>
   </ul><div class="note note--ok">
     <span class="t">一句话原则</span>
     <b>链上数据不可改，成绩可以改，但必须留痕。</b>任何一次改分都要在备注里写清依据与日期；
     没留痕的改分，在复核时与错录无法区分。
-  </div><div class="kicker">CHAPTER 12</div><h2>教师 FAQ：14 个真机问过的问题</h2><table>
+  </div><div class="kicker">CHAPTER 12</div><h2>教师 FAQ：16 个真机问过的问题</h2><table>
     <thead><tr><th style="width:52mm">问题</th><th>答案</th></tr></thead>
     <tbody>
       
@@ -552,8 +783,10 @@
       
       
       
+      
+      
     </tbody>
-  <tr><td>登录一直转圈或报 502？</td><td>先确认后端在跑；若是 SSO 回调失败会被包成 502（P1-4），改用账号 + 密码登录。密码需加密后提交，界面会自动处理（P0 场景见 2.1）。</td></tr><tr><td>为什么看不到本班学生名单？</td><td>教师账号班级归属为空（P0-1）。用成绩页筛选栏手填班级 ID，或用 7.3 脚本按钱包取数。</td></tr><tr><td>为什么成绩列表里有别的班的学生？</td><td>同一个根因的另一面：取不到班级时列表不过滤（P0-1）。别默认「列表=我班学生」。</td></tr><tr><td>报告页 80 分，学生说他 43 分？</td><td>页面显示的是全局合并卷，个人口径要带 <span class="mono">?wallet=</span>（P1-6 / P1-7）。</td></tr><tr><td>「刷新实训成绩」能点几次？</td><td>建议只在期末关分时点一次。它是全库动作，会连带改写其它班级的记录（P1-18）。</td></tr><tr><td>想临时看某个学生的真实分？</td><td>用对话框里的「预览实训成绩」（<span class="mono">compute-training</span>），它不写库，随便点。</td></tr><tr><td>学生换了钱包怎么办？</td><td>编辑该生成绩行、替换钱包地址、保存即重算；旧地址上的链上数据不会迁移，务必在备注里记明更换日期。</td></tr><tr><td>能不能删掉一条成绩？</td><td>能，但无班级与归属校验（P1-19），删了不可恢复。误删就按同样（学号+课程）重新录入即可复原。</td></tr><tr><td>两个老师教同一门课会冲突吗？</td><td>会。同（学号+课程）后保存者覆盖前者，且「录入教师」会变成后者（P2-20）。请用课程名后缀分班。</td></tr><tr><td>「切换引擎」按钮要按吗？</td><td>不要。当前版本它是假动作（请求 404 被静默忽略，P1-17），还会污染顶链链类型标识；真要确认引擎请看 <span class="mono">/api/chain/status</span>。</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>28 / 33</span></div></section><section class="page"><div class="hdr"><span>第 12 章 · 常见问题</span><span>CHAPTER 12 · FAQ</span></div><table>
+  <tr><td>登录一直转圈或报 502？</td><td>先确认后端在跑。SSO 回调失败现在会被明确区分提示，不再一律包成 502；三类提示的分开处理见 2.1。密码需加密后提交，界面会自动处理。</td></tr><tr><td>为什么看不到本班学生名单？</td><td>先按 3.1 点「绑定任教班级」。绑完仍空，则是花名册里还没有本班登录记录（提示卡小字会写「名单来源：成绩册派生」），叫学生登录一次即可。</td></tr><tr><td>为什么成绩列表里有别的班的学生？</td><td>已收严：<b>未绑班时只列你自己录入的行</b>。还能看到别班，只可能是你在筛选栏里手填了那个班号（填了就直接查那个班，不拦）。</td></tr><tr><td>报告页 90 分，学生说他 100 分？</td><td>三个口径并存：教师页=全局合并卷（90，含 P 项 −10）；学生自己=完整口径（100）；你带 <span class="mono">?wallet=</span> 查=保守口径（98）。逐条解释见 8.1。</td></tr><tr><td>我查出来的分为什么比学生自己看的低？</td><td>特权角色查个人报告时不带 <code>user_id</code> 口径，E 项只按钱包归因，会少认 1~2 个角色（最多 −2 分）。<b>评分以成绩册 / 草稿为准</b>，不要拿这份读数去驳回学生。</td></tr><tr><td>「刷新实训成绩」能点几次？</td><td>它是<b>全库动作</b>：只跳过没绑钱包的行，其余不分班级一律重算（会用该行已有的教师分重算综合，不清零）。建议只在期末关分时点一次，提前留档。日常看实时分请用草稿链路。</td></tr><tr><td>同步草稿时报 400 / 被拒？</td><td>400 = 你还没绑班级就点了「全部同步」；rejected = 草稿的<b>身份与钱包归属不一致</b>（该行不是这个账号的钱包）。两种都不会写库，按提示补绑班级或让学生本人重刷草稿。</td></tr><tr><td>想临时看某个学生的真实分？</td><td>用对话框里的「预览实训成绩」（<span class="mono">compute-training</span>），它不写库，随便点。</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>37 / 41</span></div></section><section class="page"><div class="hdr"><span>第 12 章 · 常见问题</span><span>CHAPTER 12 · FAQ</span></div><table>
     <thead><tr><th style="width:52mm">问题</th><th>答案</th></tr></thead>
     <tbody>
       
@@ -570,8 +803,10 @@
       
       
       
+      
+      
     </tbody>
-  <tr><td>云桌面第 1–5 步是真实上链吗？</td><td>前半段为教学仿真、后半段真实（P2-11）。写教学材料与学生报告时要区分描述。</td></tr><tr><td>沙盘轮次建好了，学生说看不到？</td><td>先验班级一致性（P0-1 同源）：教师 class_id 与学生不同时，<span class="mono">/rounds/active</span> 永远为空。</td></tr><tr><td>侧边栏「整体学习进度」能当学情看吗？</td><td>不能，那是界面固定值（P1-5）。看真实进度请用报告页与总览页。</td></tr><tr><td>成就中心排行榜上为什么有一串 UUID？</td><td>那是没绑定钱包的账户标识（含教师自己的钱包，P3-23）。评奖时请以学号 + 钱包人工核对，不要直接拿榜单截图。</td></tr></table><div class="kicker">APPENDIX A</div><h2>页面与接口速查</h2><h3><span class="num">A.1</span>页面地图（hash 路由）</h3><table>
+  <tr><td>学生换了钱包怎么办？</td><td>编辑该生成绩行、替换钱包地址、保存即重算；旧地址上的链上数据不会迁移，务必在备注里记明更换日期。</td></tr><tr><td>能不能删掉一条成绩？</td><td>能，但无班级与归属校验，删了不可恢复。误删就按同样（学号+课程）重新录入即可复原。</td></tr><tr><td>两个老师教同一门课会冲突吗？</td><td>会。同（学号+课程）后保存者覆盖前者，且「录入教师」会变成后者。请用课程名后缀分班。</td></tr><tr><td>「切换引擎」按钮要按吗？</td><td>不要。当前版本它是假动作（请求 404 被静默忽略），还会污染顶链链类型标识；真要确认引擎请看 <span class="mono">/api/chain/status</span>。</td></tr><tr><td>云桌面第 1–5 步是真实上链吗？</td><td>前半段为教学仿真、后半段真实。写教学材料与学生报告时要区分描述。</td></tr><tr><td>沙盘轮次建好了，学生说看不到？</td><td>本版已改：沙盘改走<b>班级解析链</b>，与看板同口径。你只要按 3.1 绑过班，建出的场景 / 轮次就会落在 216。仍看不到时只有一种原因：<b>你还没绑班</b>（四来源全空），回 3.1 绑一次即可，<b>不需要重登</b>。</td></tr><tr><td>侧边栏「整体学习进度」能当学情看吗？</td><td>可以了：现在读后端真实进度——学生看本人完成步数占比，教师 / 管理员看平台平均值。仅当接口异常时才退回阶段参考值。</td></tr><tr><td>成就中心排行榜上为什么有一串 UUID？</td><td>那是没绑定钱包的账户标识（含教师自己的钱包）。评奖时请以学号 + 钱包人工核对，不要直接拿榜单截图。</td></tr></table><div class="kicker">APPENDIX A</div><h2>页面与接口速查</h2><h3><span class="num">A.1</span>页面地图（hash 路由）</h3><table>
     <thead><tr><th style="width:34mm">路由</th><th style="width:34mm">菜单名</th><th style="width:16mm">权限</th><th>教师常用动作</th></tr></thead>
     <tbody>
       
@@ -589,7 +824,7 @@
       
       
     </tbody>
-  <tr><td class="mono">#/dashboard</td><td>总览</td><td class="c">全体</td><td>看班级学情（当前空态）、平台关键指标</td></tr><tr><td class="mono">#/cloud</td><td>搭链云桌面</td><td class="c">全体</td><td>10 步搭链演示；【高危】重置进度会删链上数据</td></tr><tr><td class="mono">#/ide</td><td>合约 IDE</td><td class="c">全体</td><td>打开内置模板、阅读源码、真实编译</td></tr><tr><td class="mono">#/contracts</td><td>合约管理</td><td class="c">全体</td><td>部署与查看合约清单</td></tr><tr><td class="mono">#/interfaces</td><td>接口调试</td><td class="c">全体</td><td>按 ABI 调用读写函数（I 项与链上验证）</td></tr><tr><td class="mono">#/monitor</td><td>调用监听器</td><td class="c">全体</td><td>选合约监听调用流水；运营沙盘在此页</td></tr><tr><td class="mono">#/explorer</td><td>区块链浏览器</td><td class="c">全体</td><td>按哈希 / 地址反查，学生互验主要工具</td></tr><tr><td class="mono">#/nft</td><td>NFT 交易市场</td><td class="c">全体</td><td>铸造、挂牌、购买</td></tr><tr><td class="mono">#/wallet</td><td>ERC20 钱包</td><td class="c">全体</td><td>转账刷交易笔数（B 项）</td></tr><tr><td class="mono">#/eco</td><td>绿色低碳联盟链</td><td class="c">全体</td><td>6 角色切换、发能量、兑换证书/勋章/券</td></tr><tr><td class="mono">#/report</td><td>实训报告</td><td class="c">全体</td><td>全局九维；个人口径需带 <span class="mono">?wallet=</span></td></tr><tr><td class="mono">#/my-grades</td><td>我的成绩</td><td class="c">全体</td><td>以当前顶链钱包为准，教师看的是自己的</td></tr><tr><td class="mono">#/achievements</td><td>成就中心</td><td class="c">全体</td><td>成就与积分榜（注意 UUID 噪声）</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>29 / 33</span></div></section><section class="page"><div class="hdr"><span>附录 A · 速查</span><span>APPENDIX A · CHEATSHEET</span></div><table>
+  <tr><td class="mono">#/dashboard</td><td>总览</td><td class="c">全体</td><td>看班级学情与平台关键指标（三条取数路径均可用，见第 07 章）</td></tr><tr><td class="mono">#/cloud</td><td>搭链云桌面</td><td class="c">全体</td><td>10 步搭链演示；【高危】重置进度会删链上数据</td></tr><tr><td class="mono">#/ide</td><td>合约 IDE</td><td class="c">全体</td><td>打开内置模板、阅读源码、真实编译</td></tr><tr><td class="mono">#/contracts</td><td>合约管理</td><td class="c">全体</td><td>部署与查看合约清单</td></tr><tr><td class="mono">#/interfaces</td><td>接口调试</td><td class="c">全体</td><td>按 ABI 调用读写函数（I 项与链上验证）</td></tr><tr><td class="mono">#/monitor</td><td>调用监听器</td><td class="c">全体</td><td>选合约监听调用流水；运营沙盘在此页</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>38 / 41</span></div></section><section class="page"><div class="hdr"><span>附录 A · 速查</span><span>APPENDIX A · CHEATSHEET</span></div><table>
     <thead><tr><th style="width:34mm">路由</th><th style="width:34mm">菜单名</th><th style="width:16mm">权限</th><th>教师常用动作</th></tr></thead>
     <tbody>
       
@@ -607,22 +842,26 @@
       
       
     </tbody>
-  <tr><td class="mono">#/grades</td><td>学生成绩</td><td class="c"><span class="tag tag--p">教师专属</span></td><td>录分、刷新、看板；非教师访问会跳回总览</td></tr></table><h3><span class="num">A.2</span>教师高频接口</h3><table>
+  <tr><td class="mono">#/explorer</td><td>区块链浏览器</td><td class="c">全体</td><td>按哈希 / 地址反查，学生互验主要工具</td></tr><tr><td class="mono">#/nft</td><td>NFT 交易市场</td><td class="c">全体</td><td>铸造、挂牌、购买</td></tr><tr><td class="mono">#/wallet</td><td>ERC20 钱包</td><td class="c">全体</td><td>转账刷交易笔数（B 项）</td></tr><tr><td class="mono">#/eco</td><td>绿色低碳联盟链</td><td class="c">全体</td><td>6 角色切换、发能量、兑换证书/勋章/券</td></tr><tr><td class="mono">#/report</td><td>实训报告</td><td class="c">全体</td><td>全局九维；个人口径需带 <span class="mono">?wallet=</span></td></tr><tr><td class="mono">#/my-grades</td><td>我的成绩</td><td class="c">全体</td><td>以当前顶链钱包为准，教师看的是自己的</td></tr><tr><td class="mono">#/achievements</td><td>成就中心</td><td class="c">全体</td><td>成就与积分榜（注意 UUID 噪声）</td></tr><tr><td class="mono">#/grades</td><td>学生成绩</td><td class="c"><span class="tag tag--p">教师专属</span></td><td>录分、同步草稿、看板；非教师访问会跳回总览</td></tr></table><h3><span class="num">A.2</span>教师高频接口</h3><table>
     <thead><tr><th style="width:56mm">接口</th><th style="width:16mm">方法</th><th>写库？</th></tr></thead>
     <tbody>
-      <tr><td class="mono">/api/grades/list · /stats</td><td class="c mono">GET</td><td>否</td></tr>
-      <tr><td class="mono">/api/grades/my?wallet=</td><td class="c mono">GET</td><td>否</td></tr>
-      <tr><td class="mono">/api/grades/compute-training</td><td class="c mono">POST</td><td>否（实时重算预览）</td></tr>
-      <tr><td class="mono">/api/grades/upsert</td><td class="c mono">POST</td><td><b>是</b>（新增或覆盖成绩行）</td></tr>
-      <tr><td class="mono">/api/grades/{id}</td><td class="c mono">DELETE</td><td><b>是</b>（不可恢复）</td></tr>
-      <tr><td class="mono">/api/grades/refresh-training</td><td class="c mono">POST</td><td><b>是・全库</b></td></tr>
-      <tr><td class="mono">/api/chain/tutorial/progress?wallet=</td><td class="c mono">GET</td><td>否</td></tr>
-      <tr><td class="mono">/api/report/aggregate[?wallet=]</td><td class="c mono">GET</td><td>否（但会触发草稿行，见 P1-8）</td></tr>
-      <tr><td class="mono">/api/missions/curriculum?wallet=</td><td class="c mono">GET</td><td>否</td></tr>
-      <tr><td class="mono">/api/sandbox/scenarios · /rounds/start · /rounds/{id}/stop</td><td class="c mono">GET/POST</td><td><b>是</b>（建场景 / 起停轮次）</td></tr>
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
     </tbody>
-  </table><div class="kicker">APPENDIX B</div><h2>已知问题对教师的实际影响</h2><p class="lead">编号与《产品与逻辑问题建议清单》一致，方便报请运维或对照修复进度。</p><table>
-    <thead><tr><th style="width:14mm">编号</th><th class="c" style="width:12mm">等级</th><th style="width:52mm">现象</th><th>教师应对（本手册已写入流程）</th></tr></thead>
+  <tr><td class="mono">/api/grades/list · /stats</td><td class="c mono">GET</td><td>否（统计按班级收敛 + 主体去重）</td></tr><tr><td class="mono">/api/grades/my?wallet=</td><td class="c mono">GET</td><td>否</td></tr><tr><td class="mono">/api/grades/compute-training</td><td class="c mono">POST</td><td>否（实时重算预览）</td></tr><tr><td class="mono">/api/grades/drafts</td><td class="c mono">GET</td><td>否（看本班待同步草稿）</td></tr><tr><td class="mono">/api/grades/draft/refresh</td><td class="c mono">POST</td><td><b>是・仅写草稿表</b>（学生本人动作）</td></tr><tr><td class="mono">/api/grades/draft/apply</td><td class="c mono">POST</td><td><b>是・唯一入册通道</b>（可传 draft_id / user_id+course / all=true）</td></tr><tr><td class="mono">/api/grades/upsert</td><td class="c mono">POST</td><td><b>是</b>（新增或覆盖成绩行）</td></tr><tr><td class="mono">/api/grades/{id}</td><td class="c mono">DELETE</td><td><b>是</b>（不可恢复，无班级校验）</td></tr><tr><td class="mono">/api/grades/refresh-training</td><td class="c mono">POST</td><td><b>是・全库</b></td></tr><tr><td class="mono">/api/auth/bind-class · /roster-status</td><td class="c mono">POST · GET</td><td><b>是</b>（写绑定）· 否（看名单来源）</td></tr><tr><td class="mono">/api/chain/tutorial/progress?wallet= · /progress/class</td><td class="c mono">GET</td><td>否（后者跨班会 403）</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>39 / 41</span></div></section><section class="page"><div class="hdr"><span>附录 A · 速查</span><span>APPENDIX A · CHEATSHEET</span></div><table>
+    <thead><tr><th style="width:56mm">接口</th><th style="width:16mm">方法</th><th>写库？</th></tr></thead>
     <tbody>
       
       
@@ -638,69 +877,15 @@
       
       
       
-      
-      
-      
-      
-      
-      
     </tbody>
-  <tr><td class="c mono">P0-1</td><td class="c"><span class="tag tag--e">P0</span></td><td>教师班级归属为空：看板/花名册空，但成绩列表不外过滤</td><td>花名册自建（3.1）+ 筛选栏手填班级（7.1）+ 脚本取数（7.3）</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>30 / 33</span></div></section><section class="page"><div class="hdr"><span>附录 B · 已知问题</span><span>APPENDIX B · KNOWN ISSUES</span></div><table>
-    <thead><tr><th style="width:14mm">编号</th><th class="c" style="width:12mm">等级</th><th style="width:52mm">现象</th><th>教师应对（本手册已写入流程）</th></tr></thead>
-    <tbody>
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-    </tbody>
-  <tr><td class="c mono">P0-4</td><td class="c"><span class="tag tag--e">P0</span></td><td>花名册 <span class="mono">user_info</span> 恒 0 行：登录写库抛错被吞，是 P0-1 的直接根因</td><td>同 P0-1；<b>切勿</b>手工往该表塞数据——那会让系统草稿覆盖你的正式成绩（P1-25）</td></tr><tr><td class="c mono">P0-2</td><td class="c"><span class="tag tag--e">P0</span></td><td>钱包标识分裂：UUID / 0x… / 带 <span class="mono">stu:</span> 标记，三种写法并存</td><td>录分只认学生实际写链地址，一人一钱包入册</td></tr><tr><td class="c mono">P0-3</td><td class="c"><span class="tag tag--e">P0</span></td><td>个人报告交易笔数为 0，但全链已有 37 笔</td><td>不拿 B 项当“没做”证据，改查浏览器地址页</td></tr><tr><td class="c mono">P1-5</td><td class="c"><span class="tag tag--w">P1</span></td><td>侧边栏进度为界面固定值</td><td>不当学情看，已在 2.4 提醒</td></tr><tr><td class="c mono">P1-6</td><td class="c"><span class="tag tag--w">P1</span></td><td>报告页无学生选择器，导出恒为全局</td><td>个人报告走接口；归档让学生自己导出</td></tr><tr><td class="c mono">P1-7</td><td class="c"><span class="tag tag--w">P1</span></td><td>同一学生“成绩 88.8 / 报告 43”</td><td>只用一个口径解释，已在 11.1 给话术</td></tr><tr><td class="c mono">P1-8</td><td class="c"><span class="tag tag--w">P1</span></td><td>学生一打开报告页就多出“系统自动”草稿行</td><td>不删不刷，新建真实学号行为正式行（5.5）</td></tr><tr><td class="c mono">P1-17</td><td class="c"><span class="tag tag--w">P1</span></td><td>引擎切换请求 404 被静默忽略，却提示成功</td><td>不演示、不依赖；用 <span class="mono">/api/chain/status</span> 核实</td></tr><tr><td class="c mono">P1-18</td><td class="c"><span class="tag tag--w">P1</span></td><td>刷新实训成绩为全库动作，不分班级</td><td>只在期末点一次，提前留档</td></tr><tr><td class="c mono">P1-19</td><td class="c"><span class="tag tag--w">P1</span></td><td>删除成绩无班级/归属校验、无回收站</td><td>只删自己录入的行；删前导出</td></tr><tr><td class="c mono">P2-9</td><td class="c"><span class="tag tag--i">P2</span></td><td>只读调用失败也计入错误，直接扣满 10 分</td><td>扣分前看函数名；必要时备注抵消</td></tr><tr><td class="c mono">P2-10</td><td class="c"><span class="tag tag--i">P2</span></td><td>成绩列表是录入快照，不自动重算</td><td>用预览/接口看实时值，列表只当台账</td></tr><tr><td class="c mono">P2-11</td><td class="c"><span class="tag tag--i">P2</span></td><td>云桌面 1–5 步为仿真回放</td><td>演示与写报告时区分真假上链</td></tr><tr><td class="c mono">P2-13</td><td class="c"><span class="tag tag--i">P2</span></td><td>环境仅 1 个树种，G-1 天花板 4 分</td><td>开课前管理员补第二个树种（3.1 第 8 项）</td></tr><tr><td class="c mono">P2-20</td><td class="c"><span class="tag tag--i">P2</span></td><td>同（学号+课程）跨教师互相覆盖，录入教师被改写</td><td>课程名加班级后缀；定期与另一位教师互查</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>31 / 33</span></div></section><section class="page"><div class="hdr"><span>附录 B · 已知问题</span><span>APPENDIX B · KNOWN ISSUES</span></div><table>
-    <thead><tr><th style="width:14mm">编号</th><th class="c" style="width:12mm">等级</th><th style="width:52mm">现象</th><th>教师应对（本手册已写入流程）</th></tr></thead>
-    <tbody>
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-      
-    </tbody>
-  <tr><td class="c mono">P2-21</td><td class="c"><span class="tag tag--i">P2</span></td><td>done_count 与 steps[].done 不自洽</td><td>以 done_count 为准，卡点当参考</td></tr><tr><td class="c mono">P2-22</td><td class="c"><span class="tag tag--i">P2</span></td><td>成绩页色阶与报告页等级阈值不一致</td><td>对外只用一套描述（建议用报告页等级）</td></tr><tr><td class="c mono">P3-23</td><td class="c"><span class="tag tag--p">P3</span></td><td>成就榜以 UUID 裸展示，教师本人也上榜</td><td>评奖人工校学号+钱包</td></tr><tr><td class="c mono">P3-24</td><td class="c"><span class="tag tag--p">P3</span></td><td>四维明细部分指标无中文标签</td><td>口头补充含义即可，不影响读数</td></tr></table><div class="kicker">APPENDIX C</div><h2>可直接拷贝的三张表</h2><h3><span class="num">C.1</span>花名册模板（开课第一周建立，全学期只认这一份）</h3><table>
+  <tr><td class="mono">/api/report/aggregate[?wallet=]</td><td class="c mono">GET</td><td>否（不再隐式写成绩；但会给学生记一次「报告查看」）</td></tr><tr><td class="mono">/api/missions/curriculum?wallet=</td><td class="c mono">GET</td><td>否</td></tr><tr><td class="mono">/api/sandbox/scenarios · /rounds/start · /rounds/{id}/stop</td><td class="c mono">GET/POST</td><td><b>是</b>（建场景 / 起停轮次；班级按解析链取）</td></tr></table><div class="kicker">APPENDIX B</div><h2>可直接拷贝的三张表</h2><h3><span class="num">B.1</span>花名册模板（开课第一周建立，全学期只认这一份）</h3><table>
     <thead><tr><th style="width:26mm">学号</th><th style="width:20mm">姓名</th><th style="width:56mm">钱包地址（完整 42 位）</th><th style="width:20mm">班级</th><th>登记日期 / 备注</th></tr></thead>
     <tbody>
       <tr><td class="mono">19898800030</td><td>实训学生</td><td class="mono">0xlearner</td><td class="mono">班级1</td><td>演示账，8 月 25 日登记</td></tr>
       <tr><td class="mono">20260100101</td><td>张三</td><td class="mono">0x44bfd612de0c6bd923b8ebcbdd4c0d043a4c6dda</td><td class="mono">班级1</td><td>顶栏“我的钱包”复制而来</td></tr>
       <tr><td class="mono">20260100102</td><td>李四</td><td class="mono">—</td><td class="mono">班级1</td><td>未交钱包，不得录入成绩</td></tr>
     </tbody>
-  </table><h3><span class="num">C.2</span>答辩记分卡（对应第 6 章量表，合计即教师评分）</h3><table>
+  </table><h3><span class="num">B.2</span>答辩记分卡（对应第 6 章量表，合计即教师评分）</h3><table>
     <thead><tr><th style="width:26mm">子项</th><th class="c" style="width:14mm">满分</th><th class="c" style="width:16mm">得分</th><th>现场依据（必填一句话）</th></tr></thead>
     <tbody>
       <tr><td>报告完成度</td><td class="c mono">30</td><td class="c">___</td><td>九维已到满分项：＿＿＿＿；仍为 0 项：＿＿＿＿</td></tr>
@@ -709,7 +894,7 @@
       <tr><td>规范与协作</td><td class="c mono">20</td><td class="c">___</td><td>学号↔钱包一致：是 / 否</td></tr>
       <tr><td><b>合计＝教师评分</b></td><td class="c mono">100</td><td class="c"><b>___</b></td><td>写入成绩行备注：“答辩 06-18，30+25+20+18”</td></tr>
     </tbody>
-  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>32 / 33</span></div></section><section class="page"><div class="hdr"><span>附录 C · 模板</span><span>APPENDIX C · TEMPLATES</span></div><h3><span class="num">C.3</span>两张检查卡</h3><div class="grid2">
+  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>40 / 41</span></div></section><section class="page"><div class="hdr"><span>附录 B · 模板</span><span>APPENDIX B · TEMPLATES</span></div><h3><span class="num">B.3</span>两张检查卡</h3><div class="grid2">
     <div>
       <h4>开课前（第 1 周）</h4>
       <ul class="check">
@@ -717,7 +902,7 @@
         <li class="no">自己演示钱包有完整基线数据</li>
         <li class="no">花名册已收齐钱包，无一人两钱包</li>
         <li class="no">课程名已定死（含班级后缀）</li>
-        <li class="no">已知问题清单已发学生（避免课上反复问）</li>
+        <li class="no">学生手册「成就与常见问题」一节已发学生（避免课上反复问）</li>
       </ul>
     </div>
     <div>
@@ -734,16 +919,16 @@
     <thead><tr><th style="width:34mm">项</th><th>说明</th></tr></thead>
     <tbody>
       <tr><td>适用产品</td><td>FISCOChain 联盟链实训平台（前端 Vue3 + Element Plus，后端 FastAPI + SQLite，链为 FISCO-BCOS 2.9.1，CHAIN_MODE=evm）</td></tr>
-      <tr><td>取证时间</td><td>2026-09-06，本地环境（前端 5173 / 后端 8000）实机运行</td></tr>
-      <tr><td>取证账号</td><td>教师 <span class="mono">tzt001</span>（角色 roleId=3、学校“天择大学”、classId="0"）；学生侧数据以演示钱包 <span class="mono">0xlearner</span> 与本地签发账号取证</td></tr>
+      <tr><td>取证时间</td><td>2026-09-06 开始取证、09-07 上午复测收口，正文数字以 09-07 复测为准；本地环境（前端 5173 / 后端 8000）实机运行</td></tr>
+      <tr><td>取证账号</td><td>教师 <span class="mono">tzt001</span>（角色 roleId=3、学校“天择大学”、classId="0"）；学生 <span class="mono">19898800030</span>（roleId=4，操作钱包 <span class="mono">0x017f…d366</span>）；演示钱包 <span class="mono">0xlearner</span> 只出现在“一人一钱包”上线前的历史数据里，认领口径见 3.1</td></tr>
       <tr><td>取证手段</td><td>界面实机操作 + 只读接口拉取 + 后端源码校对三管齐下；所有截图均为真机抓取，未做修饰</td></tr>
       <tr><td>写入限制</td><td>取证过程中<b>未修改任何学生真实数据</b>；仅使用不写库的预览接口与只读查询</td></tr>
-      <tr><td>数字口径</td><td>文中块高 12 / 交易 37 / 合约 22 / 调用 10（50% 成功）等均为当时快照，实际以页面与接口为准</td></tr>
+      <tr><td>数字口径</td><td>文中块高 21 / 交易 109 / 合约 30（ERC20 12 · ERC1155 7 · ERC721 5 · 自定义 6）为 09-07 上午快照，会随使用继续上涨，实际以页面与接口为准</td></tr>
     </tbody>
   </table><div class="note note--info">
     <span class="t">本手册怎么读</span>
     第一遍只读三页：「开课三件事」（P.3）、第 03 章自检、第 05 章录分。能跑通一次课再回头补第 06、第 09 章。
     手册中标【高危】【假动作】的部分不随版本升级自动失效，换环境后请重跑 3.1 十项自检再下结论。
-  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>33 / 33</span></div></section>
+  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 教师使用手册</span><span>41 / 41</span></div></section>
 </body>
 </html>
