@@ -33,6 +33,7 @@ from app.routers.grades import (
     _apply_draft_to_grades,
     _compute_final,
     _is_teacher_owned,
+    _pick_wallet,
     _refresh_draft,
 )
 from app.routers.report import _actor_scope, _load_eco_brief
@@ -458,6 +459,89 @@ def test_my_grades_returns_draft_not_grades(client, temp_db):
     body = r.json()
     assert body["total"] == 0 and body["draft"] and body["draft"]["training_score"] >= 0
     assert "tzs001" in body["wallet_candidates"]
+
+
+# ===========================================================================
+# 学生获取成绩的三段卡点（P1-30 / P2-31 / P2-32，真机走「我的成绩」时发现）
+# ===========================================================================
+def test_pick_wallet_never_replaces_real_address_with_account_id(temp_db):
+    """P2-31：成绩册行的钱包列不得被账号 ID 覆盖（否则无法与链上对账）。"""
+    addr, addr2 = to_address("tzs001"), "0x" + "a" * 40   # 第二个是任意合法地址形态
+    assert _pick_wallet(addr, "0ae7783d-d59d-40e1-8fcc-001d752ee3fb") == addr
+    assert _pick_wallet(addr, "stu:tzs001") == addr
+    assert _pick_wallet(addr, "0xlearner") == addr          # 内置演示钱包（既有规则）
+    assert _pick_wallet("", addr) == addr
+    assert _pick_wallet("0xlearner", "stu:tzs001") == "stu:tzs001"   # 均非真地址时仍收敛
+    assert _pick_wallet(addr, addr2) == addr2
+
+
+def test_draft_wallet_normalized_and_row_keeps_real_address(client, temp_db):
+    """P2-31 全链路：前端传登录 user_id，草稿与成绩行都必须落在真实地址上。"""
+    addr = to_address("tzs001")
+    with get_conn() as conn:
+        conn.execute("INSERT INTO user_info(user_id,name,role_id,student_id,class_id,wallet) "
+                     "VALUES('tzs001','张三',4,'2024001','c1',?)", (addr,))
+        bind_teacher_class(conn, "tzt001", "c1", bound_by="tzt001")
+    r = client.post("/api/grades/draft/refresh", params={"wallet": "tzs001"}, headers=_h(STUDENT))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["wallet"] == addr, "草稿入库的钱包必须是可核对的真实链上地址"
+    a = client.post("/api/grades/draft/apply", json={"draft_id": body["draft_id"]},
+                    headers=_h(TEACHER))
+    assert a.status_code == 200, a.text
+    with get_conn() as conn:
+        g = conn.execute("SELECT wallet, class_id FROM student_grades").fetchone()
+        assert g["wallet"] == addr and is_address(g["wallet"])
+        assert g["class_id"] == "c1"
+
+
+def test_orphan_draft_visible_and_stamped_with_teacher_class(client, temp_db):
+    """P1-30：无班级草稿不得变成暗数据；采纳时自动归入操作教师的班级。"""
+    with get_conn() as conn:
+        bind_teacher_class(conn, "tzt001", "c1", bound_by="tzt001")
+        # 花名册无该生、成绩册也无行 → 旧版会落进空班级桶，教师按班级永远筛不到
+        draft = _refresh_draft(conn, "stu:tzs999", "tzs999")
+    assert draft["class_id"] == "" and draft["class_missing"] is True
+    body = client.get("/api/grades/drafts", headers=_h(TEACHER)).json()
+    assert body["total"] == 1 and body["orphan_total"] == 1, "无班级草稿必须看得见"
+    assert body["items"][0]["class_missing"] is True
+    a = client.post("/api/grades/draft/apply", json={"draft_id": body["items"][0]["id"]},
+                    headers=_h(TEACHER))
+    assert a.status_code == 200 and a.json()["synced"] == 1, a.text
+    with get_conn() as conn:
+        g = conn.execute("SELECT class_id FROM student_grades").fetchone()
+        assert g["class_id"] == "c1", "成绩行无班级时在教师列表里不存在，教师分无从录入"
+
+
+def test_orphan_draft_falls_back_to_token_class_for_owner(client, temp_db):
+    """P1-30 回退链：花名册没班级时，本人令牌里的班级快照仍能把草稿归班。"""
+    with get_conn() as conn:
+        conn.execute("INSERT INTO user_info(user_id,name,role_id,student_id,class_id) "
+                     "VALUES('tzs001','张三',4,'2024001','')")
+    body = client.post("/api/grades/draft/refresh", params={"wallet": "stu:tzs001"},
+                       headers=_h(STUDENT)).json()
+    assert body["class_id"] == "c1", "学生令牌带班级（STUDENT.class_id=c1）→ 草稿不再落空桶"
+    assert body["class_missing"] is False
+
+
+def test_my_grades_exposes_draft_sync_state(client, temp_db):
+    """P2-32：学生端要能看出草稿是否已被教师同步入册，而不是自己猜。"""
+    with get_conn() as conn:
+        conn.execute("INSERT INTO user_info(user_id,name,role_id,student_id,class_id) "
+                     "VALUES('tzs001','张三',4,'2024001','c1')")
+        bind_teacher_class(conn, "tzt001", "c1", bound_by="tzt001")
+        draft = _refresh_draft(conn, "stu:tzs001", "tzs001")
+    body = client.get("/api/grades/my", params={"wallet": "stu:tzs001"},
+                      headers=_h(STUDENT)).json()
+    assert body["draft"]["in_grades"] is False
+    assert body["draft"]["applied"] is False
+    assert body["draft"]["status"] == "pending_teacher"
+    client.post("/api/grades/draft/apply", json={"draft_id": draft["draft_id"]},
+                headers=_h(TEACHER))
+    body2 = client.get("/api/grades/my", params={"wallet": "stu:tzs001"},
+                        headers=_h(STUDENT)).json()
+    assert body2["draft"]["in_grades"] is True and body2["draft"]["applied"] is True
+    assert body2["draft"]["status"] == "synced" and body2["draft"]["grades_row_id"]
 
 
 # ===========================================================================

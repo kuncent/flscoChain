@@ -12,12 +12,15 @@
           钱包地址：<b>{{ wallet || '未连接' }}</b>
           · 系统自动采集你的链上活动，按 4 维加权计算实训成绩
         </div>
+        <div class="hero-sub hero-flow">
+          流程：<b>刷新我的实训分</b>（产生草稿）→ 教师在「学生成绩」点同步（入册）→ 综合成绩 = 实训 × 60% + 教师 × 40%
+        </div>
       </div>
       <div class="hero-right">
         <el-button type="primary" @click="loadData" :loading="loading">
           <el-icon><Refresh /></el-icon>&nbsp;刷新成绩
         </el-button>
-        <el-button @click="refreshDraft" :loading="draftLoading">同步实训草稿</el-button>
+        <el-button @click="refreshDraft" :loading="draftLoading">刷新我的实训分</el-button>
         <el-button @click="$router.push('/report')">
           <el-icon><Document /></el-icon>&nbsp;查看实训报告
         </el-button>
@@ -54,22 +57,37 @@
     </section>
 
     <!-- 系统实训草稿（P1-25：草稿与正式成绩分家，不影响综合分） -->
-    <section class="dq-card" v-if="wallet && draft !== null">
+    <section class="dq-card" v-if="wallet && draft">
       <div class="dq-card-title">
         系统实训草稿
         <span class="dq-tag muted">不计入综合分</span>
-        <span class="dq-tag warn" v-if="!grades.length">成绩册暂无记录</span>
+        <span class="dq-tag" :class="draft.applied ? '' : 'warn'">
+          {{ draft.applied ? '教师已同步入册' : '待教师同步' }}
+        </span>
+        <span class="dq-tag warn" v-if="draft.class_missing">本条未标班级，教师需逐条同步</span>
       </div>
-      <div class="draft-body" v-if="draft">
+      <div class="draft-body">
         <div class="draft-score">{{ Number(draft.training_score || 0).toFixed(1) }}</div>
         <div class="draft-meta">
-          <div>课程：{{ draft.course }} · 更新于 {{ formatTime(draft.updated_at) }}</div>
-          <div class="draft-tip">这是系统按你的链上活动实时算出的实训分草稿。它只在预览里存在，
-            需教师在「成绩册 · 系统草稿」里点同步后才会成为正式成绩（正式成绩才参与综合分）。</div>
+          <div>课程：{{ draft.course }} · 草稿更新于 {{ formatTime(draft.updated_at) }}</div>
+          <div v-if="draft.in_grades" class="draft-tip">
+            成绩册行更新于 {{ formatTime(draft.grades_updated_at) }}
+          </div>
+          <div class="draft-tip">{{ draft.status_text || '这是系统按你的链上活动实时算出的实训分草稿。它只在预览里存在，需教师在「成绩册 · 系统草稿」里点同步后才会成为正式成绩（正式成绩才参与综合分）。' }}</div>
         </div>
       </div>
       <div class="draft-calibers" v-if="walletCandidates.length > 1">
         已合并同一学生的多个身份口径：{{ walletCandidates.join(' / ') }}
+      </div>
+    </section>
+
+    <!-- 从没刷过草稿且成绩册为空：给出明确的下一步，而不是留一张只有标题的空卡 -->
+    <section class="dq-card" v-if="wallet && !draft && !grades.length">
+      <div class="dq-card-title">成绩还没开始生成</div>
+      <div class="draft-meta">
+        <div>① 先把实训做完：搭链教程 10 步、部署并调用合约、生态角色与兑换；</div>
+        <div>② 点右上<b>「刷新我的实训分」</b>，系统按你的链上活动算出实训草稿；</div>
+        <div>③ 教师在「学生成绩 · 系统实训草稿」点同步后，草稿才会变成<b>正式成绩</b>并参与综合分。</div>
       </div>
     </section>
 
@@ -223,7 +241,8 @@ const refreshDraft = async () => {
   draftLoading.value = true
   try {
     const res: any = await gradesApi.draftRefresh({ wallet: wallet.value })
-    ElMessage.success(`草稿已更新：实训 ${Number(res?.training_score ?? 0).toFixed(1)} 分（不影响综合分）`)
+    ElMessage.success(`实训分草稿已刷新：${Number(res?.training_score ?? 0).toFixed(1)} 分`
+      + (res?.class_missing ? '（该草稿未标班级，请告诉教师在草稿列表逐条同步）' : '（等待教师在成绩册点同步后计入综合分）'))
     await loadData()
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || '刷新草稿失败')
@@ -337,6 +356,11 @@ watch(wallet, (newWallet) => {
   b {
     color: #00e6c3;
   }
+}
+
+.hero-flow {
+  margin-top: 4px;
+  font-size: 12px;
 }
 
 .hero-right {

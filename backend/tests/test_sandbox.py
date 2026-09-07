@@ -252,3 +252,39 @@ def test_mttr_pending_without_resolution_action(client, monkeypatch):
         assert kpis["handle_rate"] == 0.0
     finally:
         _stop(client, rid)
+
+
+# ===========================================================================
+# P1-29：教师令牌无班级 → 回退「班级解析链」
+# ===========================================================================
+def test_teacher_token_without_class_falls_back_to_binding(client):
+    """令牌 class_id 为空不得把轮次写进「空班级桶」，须按绑定班级落地让学生看得见。"""
+    from app.db import get_conn
+    from app.roster import bind_teacher_class
+
+    ghost = {"user_id": "t9", "role_id": 3, "wallet": "t9", "class_id": "", "user_name": "空令牌老师"}
+    unbound = {"user_id": "t8", "role_id": 3, "wallet": "t8", "class_id": "", "user_name": "未绑班老师"}
+    with get_conn() as conn:
+        bind_teacher_class(conn, "t9", "c1", bound_by="adm")
+
+    r = client.post("/api/sandbox/scenarios", json={"scenario_type": "node_down"},
+                    headers=_h(ghost))
+    assert r.status_code == 200, r.text
+    assert r.json()["class_id"] == "c1", "P1-29：空令牌须回退解析链（绑定优先）"
+    rid = 0
+    try:
+        started = client.post("/api/sandbox/rounds/start",
+                              json={"scenario_id": int(r.json()["id"])}, headers=_h(ghost))
+        assert started.status_code == 200, started.text
+        rid = int(started.json()["round_id"])
+        act = client.get("/api/sandbox/rounds/active", headers=_h(STUDENT))
+        assert act.status_code == 200 and act.json()["round"], "本班学生须看到进行中的轮次"
+        assert int(act.json()["round"]["id"]) == rid
+        # 未绑定任何班级的教师仍为空班级（不得凭空拿到别人的班）
+        r2 = client.post("/api/sandbox/scenarios", json={"scenario_type": "node_down"},
+                         headers=_h(unbound))
+        assert r2.status_code == 200 and r2.json()["class_id"] == ""
+    finally:
+        if rid:
+            assert client.post(f"/api/sandbox/rounds/{rid}/stop",
+                               headers=_h(ghost)).status_code == 200

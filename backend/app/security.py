@@ -517,6 +517,7 @@ def resolve_wallet_candidates(conn, wallet: str, user_id: str = "") -> list[str]
     候选集只并入与请求身份直接相关的钱包：
       - 请求钱包原值；
       - 登录 user_id（JWT wallet=userId 口径）；
+      - 按规范推出的学生专属钱包别名 stu:{userId}（不依赖是否已落库）；
       - user_info 中登记的钱包（如学生 stu: 别名）；
       - **wallet_alias 表中该用户注册的全部别名**（P0-2）；
       - **该学生密钥库里的真实 0x 地址**（P0-3：链上 from_addr 就是这个值）。
@@ -544,6 +545,14 @@ def resolve_wallet_candidates(conn, wallet: str, user_id: str = "") -> list[str]
     if user_id:
         # JWT wallet 口径（userId）本身也是合法钱包口径（可能尚未落 user_info）
         _add(user_id)
+        # 学生专属钱包别名按规范必然属于本人（一人一钱包：stu:{user_id}），
+        # 即使 user_info / wallet_alias 尚未落库也要能命中 —— 早期成绩行与草稿的
+        # wallet 列存的就是这个别名，漏掉它会让教师同步时匹配不到目标行而另起一行。
+        try:
+            from .keystore import student_alias as _student_alias
+            _add(_student_alias(user_id))
+        except Exception:
+            pass
     # wallet/user_id 可能是 user_id：查其 user_info 登记的钱包一并纳入
     for uid in (user_id, raw):
         u = (uid or "").strip()

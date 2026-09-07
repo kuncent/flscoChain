@@ -177,7 +177,23 @@ class ActionReq(BaseModel):
 # 鉴权 / 归属助手
 # ===========================================================================
 def _class_of(user: dict) -> str:
-    return str(user.get("class_id") or "").strip()
+    """沙盘班级口径：优先 JWT 快照，快照为空时回退「班级解析链」。
+
+    教师令牌常因 SSO 不返班级而 class_id 为空（P1-29）。只认令牌时，教师建的
+    场景 / 轮次会全部落进「空班级桶」，而学生令牌有班级 → `/rounds/active`
+    永远命中不到，一堂演练课在沙盘上直接走不通。改与看板同一解析优先级：
+    显式绑定 → user_info → 成绩册派生。管理员解析链恒返回空串（全校视角），
+    学生令牌本就带班级，两者行为均不变。
+    """
+    cls = str(user.get("class_id") or "").strip()
+    if cls:
+        return cls
+    try:
+        from ..roster import resolve_class_scope
+        with get_conn() as conn:
+            return str(resolve_class_scope(conn, user).get("class_id") or "").strip()
+    except Exception:
+        return ""  # 表未建 / 库异常：降级为原「只看令牌」行为，不阻塞接口
 
 
 def _is_privileged(user: dict) -> bool:

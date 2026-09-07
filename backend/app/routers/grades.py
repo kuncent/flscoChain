@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 
 from ..db import get_conn, now, scope_where
 from ..roster import norm_class, resolve_class_scope
+from ..wallet_id import is_address
 from ..security import (
     BUILTIN_WALLETS,
     PRIVILEGED_ROLES,
@@ -108,6 +109,12 @@ def _pick_wallet(cur: str, new: str) -> str:
         return cur or ""
     if new.strip().lower() in BUILTIN_WALLETS and (cur or "").strip():
         return cur
+    # 「我的成绩」前端把登录 user_id 当 wallet 传（一人一钱包以账号为准），于是草稿
+    # 里带的可能是 UUID / stu: 别名。拿它覆盖成绩册行上已有的真实地址，会让「钱包」
+    # 列变成无法与区块链浏览器对账的账号 ID（教师按地址搜不到、导出后核不上）。
+    # 因此：行上已是真实地址时，只接受同样为真实地址的新值。
+    if is_address(cur or "") and not is_address(new):
+        return (cur or "").strip()
     return new
 
 
@@ -143,8 +150,8 @@ def _find_student_grade_row(
         return None
     params.append(course)
     return conn.execute(
-        "SELECT id, teacher_id, score, remark, class_id, school_id, student_id, wallet "
-        "FROM student_grades WHERE (" + " OR ".join(conds) + ") AND course=? "
+        "SELECT id, teacher_id, score, remark, class_id, school_id, student_id, wallet, "
+        "updated_at FROM student_grades WHERE (" + " OR ".join(conds) + ") AND course=? "
         "ORDER BY (COALESCE(teacher_id,'') IN ('system','')) ASC, updated_at DESC LIMIT 1",
         params,
     ).fetchone()
@@ -638,6 +645,16 @@ def my_grades(
                 ).fetchone()
             except Exception:
                 draft = None  # grade_draft 尚未创建（迁移未跑完）：不影响成绩返回
+        # 草稿回签：本条草稿是否已被教师同步进成绩册（与 with 同层，确保总是已绑定）
+        applied_row = None
+        if draft is not None:
+            d0 = dict(draft)
+            applied_row = _find_student_grade_row(
+                conn, wallet=str(d0.get("wallet") or w),
+                draft_user_id=str(d0.get("user_id") or my_uid),
+                student_id=str(d0.get("student_id") or ""),
+                course=str(d0.get("course") or TRAINING_COURSE),
+            )
 
     items = []
     for r in rows:
@@ -653,6 +670,26 @@ def my_grades(
     # 实时计算当前 wallet 的实训成绩（用于对比 / 预览）
     training_now, detail_now = _compute_training_score(w)
 
+    # 草稿状态回签（修「学生不知道成绩走到哪一步」）：草稿本身不产生综合分，必须
+    # 教师同步入册；此前学生只能靠“成绩记录空不空”猜，这里直接给出结论。
+    draft_out = _draft_payload(draft)
+    if draft_out is not None:
+        grades_ts = str(applied_row["updated_at"] if applied_row is not None else "")
+        draft_ts = str(draft_out.get("updated_at") or "")
+        draft_out["in_grades"] = applied_row is not None
+        # 草稿没班级时，「全部同步」的批量筛不到它（与 /grades/drafts 同一预警口径）
+        draft_out["class_missing"] = not str(draft_out.get("class_id") or "").strip()
+        # applied = 成绩册已有该生该课的行，且更新时间不早于本草稿（本次草稿已被采纳）
+        draft_out["applied"] = applied_row is not None and grades_ts >= draft_ts
+        draft_out["grades_row_id"] = int(applied_row["id"]) if applied_row is not None else None
+        draft_out["grades_updated_at"] = grades_ts
+        draft_out["status"] = "synced" if draft_out["applied"] else "pending_teacher"
+        draft_out["status_text"] = (
+            "已入册：教师已同步本草稿，正式成绩参与综合分" if draft_out["applied"]
+            else ("成绩册里那一行还是更早的快照：你刚刷新的部分尚待教师再同步一次"
+                  if applied_row is not None else "待教师同步为正式成绩（入册需教师动作，学生不可自助）")
+        )
+
     return {
         "wallet": w,
         "wallet_candidates": cands,
@@ -660,7 +697,7 @@ def my_grades(
         "total": len(items),
         "training_now": training_now,
         "detail_now": detail_now,
-        "draft": _draft_payload(draft),
+        "draft": draft_out,
         "note": "成绩册（grades）仅在教师录入/同步后产生；draft 为系统实时草稿，不计入综合分",
     }
 
@@ -710,6 +747,7 @@ def _wallet_owner(conn, wallet: str) -> Optional[dict]:
 def _refresh_draft(
     conn, wallet: str, user_id: str = "",
     *, student_id: str = "", student_name: str = "", course: str = TRAINING_COURSE,
+    class_hint: str = "",
 ) -> dict:
     """按 wallet 重算实训成绩并写入 grade_draft（UNIQUE(user_id, course)）。
 
@@ -717,6 +755,9 @@ def _refresh_draft(
     直接写进成绩册，一旦花名册里有该生真实学号，UPDATE 就会命中教师正式行，
     并把综合分重算成「教师分按 0 计」（在库副本上实测 84.3 → 0.6）。
     学号/姓名/班级口径以 user_info 为准（外部 SSO 有真实数据时优先用它）。
+
+    class_hint：调用者令牌里的班级快照，仅作最后一级回退（且只在本人自刷时用），
+    见下方班级回退链。
     """
     caller_uid = (user_id or "").strip()
     owner = _wallet_owner(conn, wallet)
@@ -724,7 +765,11 @@ def _refresh_draft(
     # 草稿归属 = 钱包主人；调用者只是操作人（教师代刷不得把自己写成被评价人）
     uid_key = owner_uid or caller_uid or (wallet or "").strip()
     cands = resolve_wallet_candidates(conn, wallet, uid_key)
-    training, detail = _compute_training_score(wallet)
+    # 钱包口径收敛：候选集里有真实地址就用它入库。前端传的是登录 user_id（UUID）时，
+    # 直接落库会让成绩册 / 草稿的「钱包」列变成账号 ID，教师无法与链上对账。
+    addr = next((c for c in cands if is_address(str(c))), "")
+    wallet_out = addr or (wallet or "").strip()
+    training, detail = _compute_training_score(wallet_out)
     detail_json = json.dumps(detail, ensure_ascii=False)
     ts = now()
 
@@ -734,10 +779,20 @@ def _refresh_draft(
             "SELECT student_id, name, class_id, school_id FROM user_info WHERE user_id=?",
             (uid_key,),
         ).fetchone()
-    sid = (student_id or (str(u["student_id"] or "") if u else "") or f"W{(wallet or '')[:10]}")
-    sname = (student_name or (str(u["name"] or "") if u else "") or f"学生_{(wallet or '')[:6]}")
-    class_id = str(u["class_id"] or "") if u else ""
+    sid = (student_id or (str(u["student_id"] or "") if u else "") or f"W{(wallet_out or '')[:10]}")
+    sname = (student_name or (str(u["name"] or "") if u else "") or f"学生_{(wallet_out or '')[:6]}")
     school_id = str(u["school_id"] or "") if u else ""
+    # 班级回退链：花名册 → 成绩册已有行 → 本人令牌快照。
+    # 三者都拿不到时草稿落进空班级桶，而教师端草稿列表按班级等值筛选 →
+    # 该生刷多少次草稿都不会出现在待同步列表里，正式成绩永远等不到。
+    class_id = norm_class(str(u["class_id"] or "")) if u else ""
+    if not class_id:
+        tgt = _find_student_grade_row(
+            conn, wallet=wallet_out, draft_user_id=uid_key, student_id=sid, course=course
+        )
+        class_id = norm_class(tgt["class_id"]) if tgt else ""
+    if not class_id and caller_uid and caller_uid == uid_key:
+        class_id = norm_class(class_hint)   # 教师代刷不得把教师的班级写进学生草稿
 
     existing = conn.execute(
         "SELECT id FROM grade_draft WHERE user_id=? AND course=?", (uid_key, course)
@@ -748,7 +803,7 @@ def _refresh_draft(
                SET wallet=?, student_id=?, student_name=?, class_id=?, school_id=?,
                    training_score=?, training_detail=?, updated_at=?
                WHERE id=?""",
-            (wallet, sid, sname, class_id, school_id, training, detail_json, ts, existing["id"]),
+            (wallet_out, sid, sname, class_id, school_id, training, detail_json, ts, existing["id"]),
         )
         draft_id, action = int(existing["id"]), "updated"
     else:
@@ -757,15 +812,17 @@ def _refresh_draft(
                (user_id, wallet, student_id, student_name, course,
                 class_id, school_id, training_score, training_detail, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (uid_key, wallet, sid, sname, course, class_id, school_id,
+            (uid_key, wallet_out, sid, sname, course, class_id, school_id,
              training, detail_json, ts, ts),
         )
         draft_id, action = int(cur.lastrowid), "created"
     return {
         "draft_id": draft_id, "action": action, "course": course,
-        "user_id": uid_key, "wallet": wallet, "wallet_candidates": cands,
+        "user_id": uid_key, "wallet": wallet_out, "wallet_candidates": cands,
         "student_id": sid, "student_name": sname,
         "class_id": class_id, "school_id": school_id,
+        # 班级为空 = 草稿会被教师端的本班筛选漏掉，界面必须把它当预警而不是一行注释
+        "class_missing": not class_id,
         "training_score": training, "detail": detail,
         # 操作人留痕：代刷（教师/管理员）时调用者与草稿归属不是同一个人，
         # 界面据此提示「已按钱包主人身份建档」，不假装是本人操作
@@ -792,6 +849,11 @@ def _apply_draft_to_grades(conn, draft: dict, operator: dict) -> dict:
     training = float(draft.get("training_score") or 0)
     detail_json = json.dumps(draft.get("training_detail") or {}, ensure_ascii=False)
     class_id = norm_class(str(draft.get("class_id") or ""))
+    if not class_id:
+        # 草稿本身没班级（花名册与成绩册都取不到）时，落到操作教师自己解析出的班级：
+        # “教师把这条草稿采纳进本班”正是它的语义。否则同步出的成绩行 class_id 为空，
+        # 在任何教师的本班成绩册里都不存在 → 教师分无从录入 → 学生综合分永远碜在草稿阶段。
+        class_id = _teacher_class_scope(conn, operator).get("class_id") or ""
     school_id = str(draft.get("school_id") or "")
     sid = str(draft.get("student_id") or "")
     sname = str(draft.get("student_name") or "")
@@ -806,7 +868,7 @@ def _apply_draft_to_grades(conn, draft: dict, operator: dict) -> dict:
         return {"id": None, "action": "rejected", "student_id": sid,
                 "reason": f"草稿身份（{draft_user}）与钱包 {wallet} 的归属账号「"
                           f"{(owner or {}).get('name') or owner_uid}」不一致，已拒绝同步："
-                          f"请学生本人到「我的成绩」点「同步实训草稿」后重新同步"}
+                          f"请学生本人到「我的成绩」点「刷新我的实训分」后重新同步"}
 
     row = _find_student_grade_row(
         conn, wallet=wallet, draft_user_id=draft_user, student_id=sid, course=course
@@ -821,16 +883,22 @@ def _apply_draft_to_grades(conn, draft: dict, operator: dict) -> dict:
 
     if row and _is_teacher_owned(row["teacher_id"]):
         manual = float(row["score"] or 0)
+        # 孤儿行补班级：教师行 class_id 为空时（旧版本无隐式写入遗留），这一行在
+        # 任何教师的本班列表里都看不到，教师想改分也找不到入口。只补空、不改动已有班级。
+        backfill_class = bool(class_id) and not str(row["class_id"] or "").strip()
         conn.execute(
             "UPDATE student_grades SET wallet=?, training_score=?, final_score=?, "
             "training_detail=?" + (", student_id=?" if better_sid else "") +
+            (", class_id=?" if backfill_class else "") +
             ", updated_at=? WHERE id=?",
             (new_wallet, training, _compute_final(training, manual), detail_json,
-             *((better_sid,) if better_sid else ()), ts, row["id"]),
+             *((better_sid,) if better_sid else ()),
+             *((class_id,) if backfill_class else ()), ts, row["id"]),
         )
         return {"id": int(row["id"]), "action": "training_only",
                 "student_id": better_sid or str(row["student_id"] or ""),
                 "reason": "该行是教师正式成绩，仅刷新实训维度，教师分与备注不变",
+                "class_id": class_id if backfill_class else str(row["class_id"] or ""),
                 "score": manual, "final_score": _compute_final(training, manual)}
 
     if row:
@@ -885,7 +953,8 @@ def refresh_draft(
     my_uid = (user.get("user_id") or "").strip()
     with get_conn() as conn:
         result = _refresh_draft(conn, w, my_uid, student_id=student_id.strip(),
-                                student_name=student_name.strip(), course=course)
+                                student_name=student_name.strip(), course=course,
+                                class_hint=str(user.get("class_id") or ""))
     result["grades_touched"] = False
     return result
 
@@ -939,8 +1008,15 @@ def list_drafts(
                     "note": "未解析到所属班级，暂不展示草稿"}
         sql = "SELECT * FROM grade_draft WHERE 1=1"
         params: list = []
+        # 无班级草稿一并带出并标记：它们是「学生刷了但教师永远看不到」的暗数据
+        # （SSO 未下发班级 / 花名册无该生时会产生），只按班级等值筛选会被静默丢掉，
+        # 学生就此拿不到正式成绩。空班级不是“别人的班”，展示给教师不跨班越权。
+        include_orphan = bool(teacher_class) and not str(class_id or "").strip()
         if teacher_class:
-            sql += " AND class_id=?"
+            if include_orphan:
+                sql += " AND (class_id=? OR COALESCE(class_id, '')='')"
+            else:
+                sql += " AND class_id=?"
             params.append(teacher_class)
         if course:
             sql += " AND course LIKE ?"
@@ -965,11 +1041,18 @@ def list_drafts(
                 "teacher" if tgt and _is_teacher_owned(tgt["teacher_id"])
                 else ("system" if tgt else "none")
             )
+            d["class_missing"] = not str(d.get("class_id") or "").strip()
+        if include_orphan:
+            rows.sort(key=lambda d: bool(d.get("class_missing")))  # 本班在前、无班级在后（稳定排序）
+    orphan_total = sum(1 for d in rows if d.get("class_missing"))
     return {
         "total": len(rows), "items": rows,
+        "orphan_total": orphan_total,
         "class_id": teacher_class, "class_source": class_source,
         "class_unbound": class_unbound, "hint": hint,
-        "note": "草稿不影响学生综合分；同步（/draft/apply）后才进入成绩册",
+        "note": "草稿不影响学生综合分；同步（/draft/apply）后才进入成绩册"
+                + (f"；其中 {orphan_total} 条未标班级，不会被「全部同步」批量带走，"
+                   "请逐条同步（同步时会自动归入你解析出的班级）" if orphan_total else ""),
     }
 
 

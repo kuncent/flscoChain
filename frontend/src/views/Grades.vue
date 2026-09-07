@@ -131,17 +131,24 @@
       <div class="dq-card-title">
         系统实训草稿
         <span class="dq-tag info">{{ drafts.length }} 条待同步</span>
+        <span class="dq-tag warn" v-if="draftsOrphan">含 {{ draftsOrphan }} 条未标班级</span>
         <span class="dq-tag muted" v-if="dupRows">成绩册重复行 {{ dupRows }} 条（已按主体去重）</span>
       </div>
       <div class="dc-note">
         {{ drafts.length ? '同步后才进入成绩册；已有教师正式行的只刷新实训维度，教师分与备注不会被改写。' : '暂无待同步草稿（学生未刷草稿或本班无学生）。' }}
+        <span class="dc-unbound" v-if="draftsOrphan">未标班级的草稿不会被「全部同步」带走，请逐条点「同步为成绩」（同步时自动归入你解析出的班级）。</span>
         <span class="dc-unbound" v-if="draftsUnbound">{{ draftsHint }}</span>
       </div>
       <el-table :data="drafts" v-loading="draftsLoading" stripe size="small" empty-text="暂无待同步草稿">
         <el-table-column type="index" label="#" width="48" />
         <el-table-column prop="student_id" label="学号" min-width="110" />
         <el-table-column prop="student_name" label="姓名" min-width="90" />
-        <el-table-column prop="class_id" label="班级" width="90" />
+        <el-table-column prop="class_id" label="班级" width="90">
+          <template #default="{ row }">
+            <span v-if="row.class_missing" class="dq-tag warn">未标</span>
+            <span v-else>{{ row.class_id }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="实训草稿分" width="110" align="center">
           <template #default="{ row }">
             <span class="score-cell training" :class="scoreClass(row.training_score)">{{ fmtScore(row.training_score) }}</span>
@@ -387,6 +394,7 @@ const drafts = ref<any[]>([])
 const draftsLoading = ref(false)
 const draftsHint = ref('')
 const draftsUnbound = ref(false)
+const draftsOrphan = ref(0)
 const applyingId = ref<number | null>(null)
 const applyingAll = ref(false)
 async function loadDrafts() {
@@ -396,8 +404,10 @@ async function loadDrafts() {
     drafts.value = res?.items || []
     draftsUnbound.value = !!res?.class_unbound
     draftsHint.value = res?.hint || ''
+    draftsOrphan.value = Number(res?.orphan_total || 0)
   } catch {
     drafts.value = []   // 草稿列表失败不影响成绩主列表
+    draftsOrphan.value = 0
   } finally {
     draftsLoading.value = false
   }
