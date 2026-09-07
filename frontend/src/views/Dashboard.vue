@@ -110,9 +110,9 @@
       <div class="pc-head">
         <div class="pc-title">
           <span class="pc-ico">📈</span>
-          {{ platformData.scope === 'class' ? '班级实训进度看板' :
-             platformData.scope === 'global' ? '全校实训进度概览' : '我的实训进度' }}
-          <span class="dq-tag" v-if="platformData.scope === 'class'">教师视角 · 班级 {{ platformData.class_id }}</span>
+          {{ platformData.scope === 'global' ? '全校实训进度概览' :
+             isTeacherBoard ? (platformData.scope === 'school' ? '本校实训进度看板' : '班级实训进度看板') : '我的实训进度' }}
+          <span class="dq-tag" v-if="isTeacherBoard">{{ teacherScopeText }}</span>
           <span class="dq-tag accent" v-else-if="platformData.scope === 'global'">管理员视角</span>
         </div>
         <el-button size="small" plain @click="loadPlatformProgress" :loading="platformLoading">
@@ -120,12 +120,12 @@
         </el-button>
       </div>
 
-      <!-- 教师：班级整体进度 -->
-      <template v-if="platformData.scope === 'class'">
+      <!-- 教师：本校（跨班）整体进度；未定学校时过渡为绑定班级 -->
+      <template v-if="isTeacherBoard">
         <div class="pc-stats" v-if="platformData.total_students">
           <div class="pcs-item">
             <div class="pcs-num dq-mono">{{ platformData.total_students }}</div>
-            <div class="pcs-label">班级人数</div>
+            <div class="pcs-label">{{ teacherPeopleLabel }}</div>
           </div>
           <div class="pcs-item">
             <div class="pcs-num accent dq-mono">{{ platformData.avg_done_steps }} / 10</div>
@@ -170,7 +170,7 @@
             </div>
           </div>
         </div>
-        <el-empty v-else description="暂无同班学生数据（学生登录后自动同步）" :image-size="80" />
+        <el-empty v-else :description="`暂无${platformData.scope === 'school' ? '本校' : '同班'}学生数据（学生登录后自动同步）`" :image-size="80" />
       </template>
 
       <!-- 管理员：全校概览 -->
@@ -468,9 +468,19 @@ const overview = ref<any>({})
 /* 成就概览：切钱包时强制重建 AchievementBadge（其内部自拉数据，用 key 触发重新加载） */
 const achvKey = ref(0)
 
-/* 平台实训进度看板（教师=班级 / 学生=个人+排名 / 管理员=全校） */
+/* 平台实训进度看板（教师=本校跨班 / 未定学校时过渡为班级、学生=个人+排名 / 管理员=全校） */
 const platformData = ref<any>(null)
 const platformLoading = ref(false)
+/** 教师视角：scope 可能是 school（成绩按学校归档）或 class（未定学校的过渡口径） */
+const isTeacherBoard = computed(() => ['school', 'class'].includes(String(platformData.value?.scope || '')))
+const teacherScopeText = computed(() => {
+  const d = platformData.value || {}
+  if (d.scope === 'school') {
+    return `教师视角 · 本校 ${d.school_name || d.school_id || ''} · ${d.class_count ?? 0} 个班级`
+  }
+  return d.class_id ? `教师视角 · 班级 ${d.class_id}（未定任教学校）` : '教师视角'
+})
+const teacherPeopleLabel = computed(() => (platformData.value?.scope === 'school' ? '本校人数' : '班级人数'))
 async function loadPlatformProgress() {
   platformLoading.value = true
   try {

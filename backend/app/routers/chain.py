@@ -32,9 +32,10 @@ from ..learning.alliance_roles import ROLES as ECO_ROLES, wallet_address
 from ..roster import (
     HINT_ROSTER_EMPTY,
     candidates_for_student,
+    class_allowed_in_scope,
     norm_class,
-    resolve_class_scope,
     roster_students,
+    teacher_scope,
 )
 from ..learning.tutorial_steps import TUTORIAL, ROLE_ENERGY_RULES  # noqa: F401  (数据保持从本模块可引用)
 from ..wallet_id import address_variants
@@ -257,18 +258,19 @@ def tutorial_progress_class(
     class_id: str = "",
     user: dict = Depends(require_role(1, 3)),
 ):
-    """班级搭链进度聚合（仅管理员 / 教师）。
+    """搭链进度聚合（仅管理员 / 教师），边界与成绩册同源：**按学校归档**。
 
-    - 参数 class_id 为空时：走 roster.resolve_class_scope 解析链（显式绑定 →
-      user_info → JWT 快照 → 成绩册派生）；管理员未指定班级返回全部学生
-    - 教师未确定班级时：明确返回 class_unbound + hint（P0-1：不再与“全班没人做”同形）
+    - 教师：默认返回**本校全部学生**（跨班不限，参数 class_id 为空时）——
+      与 roster.teacher_scope 一致；传 class_id 时必须落在本校，否则 403
+    - 未确定学校但确定了班级时：过渡期按本人绑定班级取数（scope_mode='class'）
+    - 两者都定不出：明确返回 class_unbound + hint（P0-1：不再与“全班没人做”同形）
+    - 管理员：返回全部学生（传 class_id 则收窄到该班）
     - 每生聚合 chain_tutorial_progress：done 步数、首个未 done 步骤（卡点）、
       平均步骤耗时（由 started_at/finished_at 时间戳差推导，表无耗时数值字段；
       解析失败或缺失时跳过，无可用样本则该指标为 None）
     SQL 风格仿照 auth.py class-students（逐生查询后 Python 聚合）。
     """
     _ensure_progress_table()
-    rid = int(user.get("role_id") or 0)
     x_user_id = user.get("user_id") or ""
 
     def _parse_ts(ts: str | None):
@@ -280,29 +282,31 @@ def tutorial_progress_class(
             return None
 
     with get_conn() as conn:
-        # 1) 定位当前用户自身班级（P0-1 统一解析链，与另两块看板同源）
-        scope = resolve_class_scope(conn, user)
+        # 1) 归档边界（P0-1 统一解析链；与成绩册 / 学生名单同源）
+        scope = teacher_scope(conn, user)
+        mode = str(scope.get("mode") or "self")
         my_class = norm_class(scope["class_id"])
-        # 越权防护：教师（rid=3）传入的 class_id 必须等于自身班级（绑定/成绩册），
-        # 不匹配返回 403；未传时用自己的班级。管理员（rid=1）不限。
+        # 越权防护：教师传入的 class_id 必须落在任教范围内（本校；过渡期为本人
+        # 绑定班级），不在范围内返回 403；未传时默认取整个范围内的人群。
         req_class = norm_class(class_id)
-        if rid == 3:
-            if req_class and req_class != my_class:
-                raise HTTPException(status_code=403, detail="教师仅能查看本人班级的搭链进度")
-            class_id = my_class
-        elif not req_class:
-            # 管理员未传 class_id：按自身 user_info 班级（通常为空 → 返回全部学生）
-            class_id = my_class
-        else:
-            class_id = req_class
-        # 2) 学生名单（role_id=4；教师限定同班，管理员可跨班）
+        if req_class and not class_allowed_in_scope(conn, scope, req_class):
+            raise HTTPException(
+                status_code=403,
+                detail="该班级不在你的任教范围内（成绩按学校归档），不能查看它的搭链进度",
+            )
+        # 取数范围：显式班级 > 过渡期本人班级 > 不限班（本校 / 全校）
+        class_id = req_class or (my_class if mode == "class" else "")
+        # 2) 学生名单（role_id=4；教师默认本校跨班，管理员可跨校）
         #    user_info 为空时降级用成绩册派生名单并标注来源（P0-1 / P0-4）
         roster_source = "empty"
-        if scope["class_unbound"]:
+        if mode == "self":
             students = []
         else:
             students, roster_source = roster_students(
-                conn, class_id, all_classes=(rid == 1 and not class_id)
+                conn,
+                class_id,
+                school_id=(str(scope.get("school_id") or "") if mode == "school" else ""),
+                all_classes=(mode == "all" and not req_class),
             )
         # 3) 逐生聚合进度（范本：auth.py class-students 进度统计段）。
         #    按生构造钱包候选集（P0-2）：user_info.wallet 可能是 userId / stu: 别名 /
@@ -363,8 +367,14 @@ def tutorial_progress_class(
         hints.append(HINT_ROSTER_EMPTY)
     return {
         "class_id": class_id,
-        "class_source": scope["class_source"],
-        "class_unbound": scope["class_unbound"],
+        "class_source": "query" if req_class else scope["class_source"],
+        "class_unbound": bool(scope.get("class_unbound", False)),
+        # 归档边界（新口径）：前端据此说“本校 N 人”而不是“本班 N 人”
+        "scope_mode": mode,
+        "school_id": scope.get("school_id", ""),
+        "school_name": scope.get("school_name", ""),
+        "school_source": scope.get("school_source", ""),
+        "school_unbound": bool(scope.get("school_unbound", False)),
         "roster_source": roster_source,
         "hints": hints,
         "hint": "；".join(hints),

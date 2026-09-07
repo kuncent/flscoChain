@@ -309,21 +309,23 @@ def init_db() -> None:
         )""")
         # -- 未来可扩展：users / classes / assignments / exam_results 表直接沿用同样租户字段即可 --
 
-        # 用户信息表（登录成功后持久化，用于教师按班级查看学生成绩 / 班级整体进度）
+        # 用户信息表（登录成功后持久化，用于教师查看**本校**学生成绩 / 整体进度）
+        # 列含义以 SSO 实测为准（勿按列名想当然，完整映射见 roster.SCHOOL_FIELD_MAP）：
+        #   username 存的是姓名、student_id 存的是登录账号，两者与字面意思相反。
         c.execute("""
         CREATE TABLE IF NOT EXISTS user_info (
-            user_id      TEXT PRIMARY KEY,         -- userId（学号/工号）
-            username     TEXT NOT NULL DEFAULT '',  -- 登录账号
+            user_id      TEXT PRIMARY KEY,         -- userId（UUID，不是学号）
+            username     TEXT NOT NULL DEFAULT '',  -- ※ 实测存姓名（非登录账号）
             name         TEXT NOT NULL DEFAULT '',  -- 姓名
             role_id      INTEGER NOT NULL DEFAULT 0,-- 1=管理员 3=教师 4=学生
             role_name    TEXT NOT NULL DEFAULT '',  -- 角色名
-            student_id   TEXT NOT NULL DEFAULT '',  -- 学号（学生）
-            class_id     TEXT NOT NULL DEFAULT '',  -- 班级 ID（学生所属班级 / 教师管理班级）
-            school_id    TEXT NOT NULL DEFAULT '',  -- 学校 ID
-            school_name  TEXT NOT NULL DEFAULT '',  -- 学校名称
-            college_id   TEXT NOT NULL DEFAULT '',  -- 学院 ID
-            major_id     TEXT NOT NULL DEFAULT '',  -- 专业 ID
-            wallet       TEXT NOT NULL DEFAULT '',  -- 学生链上钱包（默认 0xlearner）
+            student_id   TEXT NOT NULL DEFAULT '',  -- ※ 实测存登录账号（手机号 / 工号）
+            class_id     TEXT NOT NULL DEFAULT '',  -- 班级 ID（展示与筛选，不是权限边界）
+            school_id    TEXT NOT NULL DEFAULT '',  -- ★ 成绩归档边界（学校 ID）
+            school_name  TEXT NOT NULL DEFAULT '',  -- 学校名称（仅回显，比较用 ID）
+            college_id   TEXT NOT NULL DEFAULT '',  -- 学院 ID（SSO 常为 0=无，不参与归档）
+            major_id     TEXT NOT NULL DEFAULT '',  -- 专业 ID（同上，仅登记）
+            wallet       TEXT NOT NULL DEFAULT '',  -- 本人真实链上地址（一人一钱包）
             login_count  INTEGER NOT NULL DEFAULT 0,-- 累计登录次数
             last_login_at TEXT NOT NULL DEFAULT '', -- 最近登录时间
             created_at   TEXT NOT NULL DEFAULT '',
@@ -331,6 +333,8 @@ def init_db() -> None:
         )""")
         c.execute("CREATE INDEX IF NOT EXISTS idx_user_info_class ON user_info(class_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_user_info_role ON user_info(role_id)")
+        # 归档边界改成学校后，“取本校名单”是高频查询（学校列由在线迁移补上）
+        c.execute("CREATE INDEX IF NOT EXISTS idx_user_info_school ON user_info(school_id)")
 
         # 学习行为追踪（用于 I 项"综合拓展题"评分 & 学生行为分析）
         c.execute("""
@@ -367,6 +371,8 @@ def init_db() -> None:
         c.execute("CREATE INDEX IF NOT EXISTS idx_student_grades_student ON student_grades(student_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_student_grades_class ON student_grades(class_id)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_student_grades_teacher ON student_grades(teacher_id)")
+        # 成绩按学校归档：边界筛选与花名册回查都走 school_id，补一个索引避免全表扫
+        c.execute("CREATE INDEX IF NOT EXISTS idx_student_grades_school ON student_grades(school_id)")
 
         # === 学生成绩表增量列（在线迁移：ADD COLUMN 不支持 IF NOT EXISTS，需先查 PRAGMA） ===
         # wallet           学生链上钱包（与 learning_events/contracts 等关联，用于自动计算实训成绩）
@@ -567,17 +573,23 @@ def init_db() -> None:
         )""")
         c.execute("CREATE INDEX IF NOT EXISTS idx_wallet_alias_user ON wallet_alias(user_id)")
 
-        # class_teacher_bind：教师 → 班级 的人工绑定（P0-1）。
-        #   外部 SSO 对教师不返 classId（或返回 "0"），而三块学情看板都以
-        #   「教师所属班级」为过滤条件，无绑定时只能返回空列表。本表提供
+        # class_teacher_bind：教师 → 任教范围 的人工绑定（P0-1）。
+        #   外部 SSO 对教师不返 classId / schoolId（或返回 "0"），而看板与成绩册都以
+        #   「教师所属范围」为过滤条件，无绑定时只能返回空列表。本表提供
         #   一条不依赖 SSO 的绑定通道（教师自助 / 管理员代绑）。
+        #   school_id：成绩归档边界（本校可看 / 可改）；class_id：可选的单班聚焦。
         c.execute("""
         CREATE TABLE IF NOT EXISTS class_teacher_bind (
             teacher_user_id TEXT PRIMARY KEY,      -- 教师 userId
             class_id        TEXT NOT NULL DEFAULT '',
+            school_id       TEXT NOT NULL DEFAULT '',  -- 任教学校 ID（成绩按学校归档）
             bound_by        TEXT NOT NULL DEFAULT '',  -- 绑定操作人（本人或管理员）
             bound_at        TEXT NOT NULL DEFAULT ''
         )""")
+        # 在线迁移：旧库该表无 school_id 列（ADD COLUMN 不支持 IF NOT EXISTS）
+        _bind_cols = {row["name"] for row in c.execute("PRAGMA table_info(class_teacher_bind)")}
+        if "school_id" not in _bind_cols:
+            c.execute("ALTER TABLE class_teacher_bind ADD COLUMN school_id TEXT NOT NULL DEFAULT ''")
 
         # grade_draft：实训成绩草稿表（P1-8 / P1-25）。
         #   草稿原先与教师正式成绩同表（student_grades，teacher_id='system'），

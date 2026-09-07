@@ -9,12 +9,13 @@ export const authApi = {
     http.post('/auth/login', data),
   /** 会话校验：后端对 Bearer JWT 真实验签（不调用外部智云 SSO） */
   session: () => http.get('/auth/session'),
-  /** 班级学生列表（教师查看同班学生 + 实训进度概要） */
-  classStudents: () => http.get('/auth/class-students') as Promise<any>,
+  /** 班级学生列表（教师查看**本校**学生 + 进度概要；可选 class_id 聚焦到校内某班） */
+  classStudents: (classId = '') =>
+    http.get('/auth/class-students', { params: classId ? { class_id: classId } : {} }) as Promise<any>,
   /** 身份/班级自检（P0-1）：班级解析链来源 + 花名册来源 + 钱包候选集 + 自检项 */
   rosterStatus: () => http.get('/auth/roster-status') as Promise<any>,
-  /** 教师绑定任教班级（P0-1：SSO 不返班级时的自助入口；管理员可代绑） */
-  bindClass: (data: { class_id: string; teacher_user_id?: string }) =>
+  /** 教师绑定任教范围（**成绩按学校归档**：school_id 是硬边界，class_id 只是聚焦范围） */
+  bindClass: (data: { class_id?: string; school_id?: string; teacher_user_id?: string }) =>
     http.post('/auth/bind-class', data) as Promise<any>,
   /** 管理员认领历史共享钱包归属（P0-2：一人一钱包上线前的 0xlearner 等） */
   claimWalletAlias: (data: { alias: string; user_id: string }) =>
@@ -42,7 +43,7 @@ export const gradesApi = {
   /** 按 wallet 实时计算实训成绩明细（不入库，仅返回预览） */
   computeTraining: (data: { wallet: string; manual_score?: number }) =>
     http.post('/grades/compute-training', data),
-  /** 批量刷新所有已绑定 wallet 记录的实训成绩 + 综合成绩 */
+  /** 刷新任教范围内（本校 + 自己录入）的实训成绩 + 综合成绩 */
   refreshTraining: () => http.post('/grades/refresh-training'),
   /** 学生端：按 wallet 查看自己的成绩（含系统草稿 draft + 行来源 row_kind） */
   myGrades: (wallet: string) =>
@@ -50,7 +51,7 @@ export const gradesApi = {
   /** 刷新系统草稿（只写 grade_draft，**不进成绩册、不影响综合分**，P1-8 / P1-25） */
   draftRefresh: (data: { wallet: string; student_id?: string; student_name?: string; course?: string }) =>
     http.post('/grades/draft/refresh', null, { params: data }) as Promise<any>,
-  /** 教师端：查看待同步的系统草稿（含每条的目标行类型 target_row_kind） */
+  /** 教师端：查看待同步的系统草稿（范围 = 本校；含每条的目标行类型 target_row_kind） */
   drafts: (params: { class_id?: string; course?: string } = {}) =>
     http.get('/grades/drafts', { params }) as Promise<any>,
   /** 教师端：把草稿显式同步为正式成绩（成绩册唯一的系统写入通道，人工触发） */
@@ -71,7 +72,7 @@ export const chainApi = {
   resetProgress: (wallet = 'default') => http.post('/chain/tutorial/progress/reset', { wallet }) as Promise<any>,
   /** 组织-节点-角色矩阵（4 逻辑节点 ↔ 6 联盟组织 + 角色职责摘要，公开只读） */
   roleMatrix: () => http.get('/chain/tutorial/rolematrix') as Promise<any>,
-  /** 班级搭链进度聚合（教师/管理员；classId 为空时后端按 JWT 身份定位班级） */
+  /** 搭链进度聚合（教师/管理员；**按学校归档**——classId 为空时后端返回本校全部学生） */
   classProgress: (classId = '') =>
     http.get('/chain/tutorial/progress/class', { params: classId ? { class_id: classId } : {} }) as Promise<any>,
 }
