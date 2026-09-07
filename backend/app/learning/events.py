@@ -45,23 +45,36 @@ class EventType:
     ECO_BADGE_EXCHANGE = "eco_badge_exchange"        # 勋章 / 骑行券兑换（eco.py /badges/exchange）
     BADGE_TYPE_ADD = "badge_type_add"                # 新增勋章类型（eco.py /badges/types）
     BADGE_MINT = "badge_mint"                        # 联盟角色铸造勋章（eco.py /badges/mint）
+    ECO_ENERGY_BURN = "eco_energy_burn"              # 能量国库销毁（eco.py /treasury/burn）
     REPORT_VIEW = "report_view"                      # 查看 / 下载实训报告（report.py 3 处端点）
 
 
-def track(event_type: str, target: str = "", ref_id: str = "", wallet: str = "", extra: dict | None = None) -> None:
+def track(event_type: str, target: str = "", ref_id: str = "", wallet: str = "",
+          extra: dict | None = None, user_id: str = "") -> None:
     """统一学习行为埋点写入（签名与历史各路由的 _track 完全一致）。
 
     - 参数化 SQL + db 全局锁，风格与 db.init_db 一致；
     - 失败只记日志不抛出：埋点不阻塞业务请求（兼容旧 DB 无 learning_events 表）。
+    - user_id（可选）：登录账号归属。wallet 存的是**当时操作的钱包**（学生扮演
+      联盟节点时就是机构钱包，全班共用），仅靠它无法回答“这件事是谁做的”；
+      需按人统计的维度（如报告 E 项角色体验）必须同时落 user_id。
+      旧库无该列时退回不带 user_id 的写入（不影响业务）。
     """
+    payload = json.dumps(extra or {}, ensure_ascii=False)
     try:
         with _DB_LOCK, get_conn() as conn:
-            conn.execute(
-                "INSERT INTO learning_events(wallet,event_type,target,ref_id,extra,created_at) "
-                "VALUES(?,?,?,?,?,?)",
-                (wallet, event_type, target, ref_id,
-                 json.dumps(extra or {}, ensure_ascii=False), now()),
-            )
+            try:
+                conn.execute(
+                    "INSERT INTO learning_events(wallet,event_type,target,ref_id,extra,created_at,user_id) "
+                    "VALUES(?,?,?,?,?,?,?)",
+                    (wallet, event_type, target, ref_id, payload, now(), (user_id or "").strip()),
+                )
+            except Exception:
+                conn.execute(
+                    "INSERT INTO learning_events(wallet,event_type,target,ref_id,extra,created_at) "
+                    "VALUES(?,?,?,?,?,?)",
+                    (wallet, event_type, target, ref_id, payload, now()),
+                )
     except Exception:
         logger.warning("learning_events 埋点写入失败 event_type=%s", event_type, exc_info=True)
 

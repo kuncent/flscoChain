@@ -8,14 +8,30 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
+from ..alliance_contracts import ENERGY_TOKEN_NAME, latest_deployed
 from ..config import settings
 from ..chain_client import get_chain_client
 from ..db import get_conn, now
 from .files import validate_upload, _ensure_uploads_meta
+# 能量余额口径与绿色资产市场 / 联盟页兑换完全一致（同一事实源：业务账本优先，
+# 链上余额只读回退；写路径前先把账本回填到链上）
+from .eco import _get_energy_ledger_balance, _sync_chain_balance
 from ..security import assert_actor_wallet, get_current_user
 from ..tx_decoder import compile_source
+from ..wallet_id import address_variants, to_address
 
 router = APIRouter(prefix="/api/nft", tags=["nft"])
+
+
+def _same_wallet(a: str, b: str) -> bool:
+    """两个钱包口径是否同一账户（地址化后的唯一可靠比较）。
+
+    历史行可能还是别名 / stu: 前缀，直接字符串比较会把「自己买自己的 NFT」
+    漏判成两个不同的人（能量从自己账户扣、又流回自己账户）。
+    """
+    if not a or not b:
+        return False
+    return to_address(a) == to_address(b)
 
 STANDARD_FILE = {"ERC721": "ERC721.sol", "ERC1155": "ERC1155.sol"}
 
@@ -25,7 +41,7 @@ class MintReq(BaseModel):
     title: str
     description: str = ""
     image_url: Optional[str] = None
-    author: str = "0xlearner"
+    author: str = ""   # 留空 = 按 JWT 本人钱包（真实地址）；不再默认 0xlearner 别名
     price: str = "0"
     # 发行数量：ERC1155 半同质化特性——同一 tokenId 可一次铸造多份；ERC721 唯一性——恒为 1（后端强制）
     amount: int = 1
@@ -48,9 +64,13 @@ def mint(req: MintReq, user: dict = Depends(get_current_user)):
             raise HTTPException(400, "ERC1155 发行数量不能超过 10000")
     req.author = assert_actor_wallet(user, req.author, "author")  # 铸造者身份从 JWT 解析
     # 铸造权限分级：居民须先获得联盟链生态身份（选择联盟角色）才能铸造数字资产
+    # （兼容未迁移的历史别名行：地址 + 原值两套口径一起比）
     with get_conn() as conn:
+        variants = [v.lower() for v in address_variants(req.author)] or [req.author.lower()]
         sel = conn.execute(
-            "SELECT role_key FROM eco_role_selections WHERE wallet=?", (req.author,)
+            f"SELECT role_key FROM eco_role_selections "
+            f"WHERE lower(wallet) IN ({','.join('?' * len(variants))})",
+            variants,
         ).fetchone()
     if not sel:
         raise HTTPException(403, "请先在「绿色低碳联盟链」页面选择联盟角色身份，再铸造数字资产")
@@ -161,32 +181,48 @@ def buy(req: BuyReq, user: dict = Depends(get_current_user)):
             raise HTTPException(404, "nft not found")
     # 当前持有人（转售后 owner 会变更，不能再用固定 author 当卖家）
     seller_wallet = nft["owner"] or nft["author"]
-    if seller_wallet == req.buyer:
+    if _same_wallet(seller_wallet, req.buyer):
         raise HTTPException(400, "不能购买自己持有的 NFT")
     # 价格以链上登记记录为唯一事实源（不信任客户端传入，防篡改）；
     # 支付货币统一为绿色能量（GreenEnergy）：平台唯一流通货币，与绿色资产市场结算口径自洽 ——
     # 学生能量来自业务角色凭证发放，其他 ERC20 仅限管理员发行且不向学生流通，
     # 若允许任意代币支付，买家无币可付、卖家也无法选择收款币种。
     price = int(nft["price"] or 0)
-    with get_conn() as conn:
-        ge = conn.execute(
-            "SELECT address FROM tokens WHERE lower(name)='greenenergy' OR upper(symbol)='GE' LIMIT 1"
-        ).fetchone()
-    if not ge:
+    # 取址必须与联盟页发行 / 兑换同一口径（deployed_contracts 最新一份）：
+    # tokens 表只是「钱包展示的流通代币登记」，历史上只在启动 seed 时写一次，
+    # GreenEnergy 一旦被重新部署就会指向作废地址（实测：居民钱包有 270 点能量，
+    # 市场付款却被告知「当前 0」，报告 C 项「成交 +5」结构性拿不到）。
+    # 故：先取最新部署且链上有代码的那一份，tokens 仅作兜底。
+    ge_addr, _ = latest_deployed(ENERGY_TOKEN_NAME)
+    if not ge_addr:
+        with get_conn() as conn:
+            ge = conn.execute(
+                "SELECT address FROM tokens WHERE lower(name)=? OR upper(symbol)=? "
+                "ORDER BY created_at DESC LIMIT 1",
+                (ENERGY_TOKEN_NAME.lower(), "GE"),
+            ).fetchone()
+        ge_addr = (ge["address"] if ge else "")
+    if not ge_addr:
         raise HTTPException(400, "GreenEnergy 合约未部署，无法完成支付")
-    req.token_contract = ge["address"]
+    req.token_contract = ge_addr
     req.price = str(price)
     c = get_chain_client()
     tx_hash = ""
     # 1. 绿色能量支付（买方 → 卖方）：先查余额友好提示，再真实 transfer
     ge_abi = _load_abi(req.token_contract)
     if price > 0:
+        # 先「账本 → 链上」回填，再以链上 balanceOf 为购买力事实源：
+        # 本地沙盒链重启后 GreenEnergy 是一份新合约（人人余额 0），
+        # 不回填就会把「账上有 270 点能量的居民」判成「余额不足」，
+        # 导致 NFT 市场永远成交不了（报告 C 项「交易 +5」结构性拿不到）。
+        _sync_chain_balance(req.buyer)
         bal_r = c.call_contract(req.token_contract, "balanceOf",
                                 [c.resolve_account(req.buyer)], req.buyer, ge_abi)
         try:
             bal = int(str(bal_r.get("result", "0")))
         except (TypeError, ValueError):
-            bal = 0
+            # 链上返回非数值（mock 链 / 异常节点）→ 回落账本净额（与市场 / 兑换同一口径）
+            bal = _get_energy_ledger_balance(req.buyer)
         if bal < price:
             raise HTTPException(400, f"绿色能量不足：需要 {price}，当前 {bal}")
         r = c.call_contract(req.token_contract, "transfer",

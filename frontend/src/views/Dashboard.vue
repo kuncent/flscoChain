@@ -11,7 +11,7 @@
             区块链实训平台 · 联盟链方向
           </div>
           <h1 class="hero-title">
-            你好，<span class="grad">同学</span> 👋
+            你好，<span class="grad">{{ greetName }}</span> 👋
             <span class="hero-title-sub dq-mono">实训进度 {{ learnPercent }}%</span>
           </h1>
           <p class="hero-desc">从零搭建一条绿色低碳联盟链：启动节点 → 部署合约 → 6 角色运营 → 资产兑换 → 链上验证</p>
@@ -453,11 +453,14 @@ import { onBusEvent } from '@/api/events'
 import { chainApi, explorerApi, authApi, missionsApi, learningApi } from '@/api'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import { useWalletStore } from '@/stores/wallets'
 import CountUp from '@/components/CountUp.vue'
 import AchievementBadge from '@/components/AchievementBadge.vue'
 
 const app = useAppStore()
 const auth = useAuthStore()
+/** 本人钱包地址（顶栏未收敛时的回落）：不再用 userId / 0xlearner 当钱包口径 */
+const wallets = useWalletStore()
 const route = useRoute()
 const router = useRouter()
 const overview = ref<any>({})
@@ -724,8 +727,9 @@ async function loadCloudSteps() {
   // 服务端持久化完成步骤（chain_tutorial_progress 表）—— 换设备可续学
   try {
     // 读键口径与 loadMicroTaskVerify 保持一致：优先 currentWallet（与后端写键一致），
-    // 登录用户 ID 仅作降级兜底；两处不一致会导致服务端进度合并不上
-    const wallet = app.currentWallet || auth.user?.userId || '0xlearner'
+    // 本人链上地址仅作降级兜底；两处不一致会导致服务端进度合并不上
+    const wallet = app.currentWallet || wallets.myAddress
+    if (!wallet) return
     const p = await chainApi.progress(wallet)
     if (p && Array.isArray(p.steps)) {
       p.steps.forEach((s: { step: number; done?: boolean }) => { if (s.done) localSet.add(s.step) })
@@ -808,6 +812,10 @@ onActivated(refreshCompleted)
  *
  * 设计：不阻塞 Dashboard 渲染 — 页面首访时 Vite 异步编译组件 + SSO 网络往返
  * 叠加会导致长时间空白。改为后台静默登录，登录完成后刷新数据，用户无感。
+ *
+ * 安全（P1-27）：JWT 出现在 URL 上就会进浏览器历史 / Referer / 反向代理访问日志，
+ * 所以 **读到就立刻抹掉**（放在登录请求之前），而不是等成功后才清；
+ * 登录失败时也不能把 token 留在地址栏里。服务端侧另有 nginx 日志脱敏兜底。
  */
 onMounted(async () => {
   const ssoToken =
@@ -815,11 +823,15 @@ onMounted(async () => {
     (route.query.token as string) ||
     ''
   if (!ssoToken) return
+  // 先清 URL（search + hash 两处），再做网络请求
   try {
-    const u = await auth.loginByToken(ssoToken)
-    // 清理 URL 上的 token（hash 与 search 都清）
     const cleanUrl = window.location.origin + window.location.pathname + window.location.hash.split('?')[0]
     window.history.replaceState(null, '', cleanUrl)
+  } catch {
+    /* 某些沙箱环境禁止改历史，忽略即可，不影响登录 */
+  }
+  try {
+    const u = await auth.loginByToken(ssoToken)
     ElMessage.success(`欢迎回来，${u.name || u.username}`)
     // 登录成功后静默刷新数据（用新身份重新拉取 overview / platformProgress）
     await loadOverview()
@@ -856,6 +868,15 @@ const currentStepIndex = computed(() => {
 })
 const learnPercent = computed(() => Math.round((learnedCount.value / pathSteps.value.length) * 100))
 const remainingSteps = computed(() => Math.max(0, pathSteps.value.length - learnedCount.value))
+
+/* 问候语按登录身份区分：教师 / 管理员不能再被叫「同学」（原写死为同学，
+   教师登录看到自己组织的班级看板却被称呼为学生，身份错乱）。
+   职能判定统一走 auth store 的 isTeacher / isAdmin，不在页面里写角色名单。 */
+const greetName = computed(() => {
+  if (auth.isAdmin) return '管理员'
+  if (auth.isTeacher) return '老师'
+  return auth.displayName || '同学'
+})
 
 /* ---------- 今日任务（自适应：根据当前阶段推荐 或 展示 L5 高级实战 10 微任务） ---------- */
 /* 高级实战 10 微任务：把 45 分钟的大场景拆成 10 个可交付的小步骤（每步 3~5 分钟） */
@@ -943,7 +964,8 @@ async function loadMicroTaskVerify() {
   if (!l4Done.value) return
   try {
     // 读键口径与 loadCloudSteps 保持一致：优先 currentWallet（与后端写键一致）
-    const wallet = app.currentWallet || auth.user?.userId || '0xlearner'
+    const wallet = app.currentWallet || wallets.myAddress
+    if (!wallet) return
     const res: any = await missionsApi.curriculum(wallet)
     const data = res?.items ? res : (res?.data ?? {})
     const map: Record<string, { verified: boolean; progress: string }> = {}

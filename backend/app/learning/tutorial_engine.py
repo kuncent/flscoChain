@@ -7,8 +7,10 @@
 
 迁移说明（移动代码不改行为）：
 - _match_command / _upsert_step_state / _try_docker_compose / _ensure_progress_table /
-  _auto_create_grade_draft / CMD_REGISTRY / _exec_command 及「教学模式」模拟输出
+  CMD_REGISTRY / _exec_command 及「教学模式」模拟输出
   均自 chain.py 原样迁入，逐行保留；
+- 例外：_auto_create_grade_draft 已按 P1-25 改造（满 10 步只刷 grade_draft 草稿，
+  不再写 student_grades 成绩册），行为不再与迁移前等价；
 - 唯一允许的响应增量：/tutorial/exec 与 /tutorial/command 响应新增 source 字段
   （"real" = 真实 docker / 链上执行；"simulated" = 教学模式模拟输出），
   既有字段一律不变。
@@ -21,6 +23,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import subprocess
 import time
@@ -30,72 +33,57 @@ from typing import Any, Dict, List, Optional
 from ..config import settings
 from ..chain_client import get_chain_client, FiscoRpcClient
 from ..db import get_conn, now
-from ..security import assert_actor_wallet
+from ..security import (
+    assert_actor_wallet,
+    lower_wallet_in,
+    resolve_wallet_candidates,
+)
 from ..tx_decoder import compile_source
+from ..wallet_id import address_variants, to_address
 from .tutorial_steps import TUTORIAL
+# 联盟合约链上发行白名单 / 构造参数 / 能量代币登记已收口至 alliance_contracts
+# （与 seed.py / eco 部署接口共用，避免“改一处漏一处”）
+from ..alliance_contracts import DEFAULT_CTOR_ARGS, grant_issuers, sync_energy_token
 # 学习行为埋点统一收口至本包 events（EventType 常量 + track 唯一写入实现）
 from .events import EventType, track as _track
 # 任务 #21：五级验证流水线（记录模式：L4 复用本模块执行结果）+ 事件总线（步骤完成推送）
 from .. import verifier
 from ..events_bus import BusEvent, publish as bus_publish
 
+logger = logging.getLogger(__name__)
+
 
 def _auto_create_grade_draft(student_id: str, student_name: str, wallet: str) -> None:
-    """训练完成自动建成绩草稿：学生完成全部 10 步后，自动在 student_grades
-    建一条草稿记录（score=0），实训成绩按钱包实时计算，教师后续只需录入评分。
+    """训练满 10 步后自动刷新**系统草稿**（P1-25：只写 grade_draft，不再进成绩册）。
 
-    - 仅当携带学生身份（X-User-Id）且该 wallet 10 步全部完成时触发
-    - 按 (student_id, course='区块链实训') 唯一约束 upsert，不覆盖教师已录的 score
+    - 仅当携带学生身份（X-User-Id，本参数名为 student_id 但传的是 userId）且该生
+      10 步全部完成时触发
+    - 草稿与教师正式成绩彻底分离：教师分 / 备注不再被系统隐式改写
+      （旧实现在 student_grades 里 UPDATE，会连教师行的 wallet 一起改写的事故从此不会发生）
+    - 教师 / 管理员在 /api/grades/drafts 看到后显式 apply 才落成绩册
+    - 完成度按钱包候选集统计（P0-2：同一学生的进度可能落在 userId / stu: 别名 /
+      真实地址几个口径下，单值等值会算不出「满 10 步」）
     """
     if not student_id or not wallet:
         return
     _ensure_progress_table()
     with get_conn() as conn:
+        cands = resolve_wallet_candidates(conn, wallet, student_id)
+        h, lp = lower_wallet_in(cands)
         done_count = conn.execute(
-            "SELECT COUNT(*) AS c FROM chain_tutorial_progress WHERE wallet=? AND done=1",
-            (wallet,),
+            "SELECT COUNT(DISTINCT step) AS c FROM chain_tutorial_progress "
+            "WHERE lower(wallet) IN (" + h + ") AND done=1",
+            lp,
         ).fetchone()["c"]
-        # 从 user_info 表查询学生的 class_id / school_id（教师按班级过滤成绩时需要）
-        uinfo = conn.execute(
-            "SELECT class_id, school_id FROM user_info WHERE user_id=?",
-            (student_id,),
-        ).fetchone()
     if done_count < len(TUTORIAL):
-        return  # 未完成全部步骤，不建草稿
-    class_id = uinfo["class_id"] if uinfo else ""
-    school_id = uinfo["school_id"] if uinfo else ""
-    # 实时计算实训成绩（懒导入，避免循环引用）
-    from ..routers.grades import _compute_training_score, _compute_final
-    training, detail = _compute_training_score(wallet)
-    final = _compute_final(training, 0)  # 草稿阶段教师评分=0
-    detail_json = json.dumps(detail, ensure_ascii=False)
-    ts = now()
-    course = "区块链实训"
-    with get_conn() as conn:
-        existing = conn.execute(
-            "SELECT id, score FROM student_grades WHERE student_id=? AND course=?",
-            (student_id, course),
-        ).fetchone()
-        if existing:
-            # 已有记录：仅刷新实训成绩，保留教师已录的 score 与备注
-            cur_score = existing["score"] or 0
-            new_final = _compute_final(training, cur_score)
-            conn.execute(
-                "UPDATE student_grades SET wallet=?, training_score=?, final_score=?, "
-                "training_detail=?, class_id=COALESCE(NULLIF(?, ''), class_id), "
-                "school_id=COALESCE(NULLIF(?, ''), school_id), updated_at=? WHERE id=?",
-                (wallet, training, new_final, detail_json, class_id, school_id, ts, existing["id"]),
-            )
-        else:
-            conn.execute(
-                "INSERT INTO student_grades(student_id, student_name, course, score, wallet, "
-                "training_score, final_score, training_detail, teacher_id, teacher_name, "
-                "class_id, school_id, remark, created_at, updated_at) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (student_id, student_name or student_id, course, 0, wallet,
-                 training, final, detail_json, "", "", class_id, school_id,
-                 "训练完成自动建草稿，请教师录入评分", ts, ts),
-            )
+        return  # 未完成全部步骤，不刷草稿
+    # 实时计算实训成绩（懒导入，避免循环引用）；失败不再静默吞掉（P0-4 同族）
+    try:
+        from ..routers.grades import _refresh_draft
+        with get_conn() as conn:
+            _refresh_draft(conn, wallet, student_id, student_name=student_name or "")
+    except Exception:
+        logger.exception("训练完成后的成绩草稿刷新失败 user_id=%s wallet=%s", student_id, wallet)
 
 # deploy/ 目录路径（用于真实 docker-compose 操作）
 DEPLOY_DIR = settings.base_dir.parent.parent / "deploy"
@@ -166,17 +154,37 @@ def _upsert_step_state(
     user_id: str = "", class_id: str = "",
     cmd_idx: int | None = None,
 ):
+    """写入 / 推进某钱包某步骤的教程进度。
+
+    进度表的 wallet 是**资产/归属口径**，统一写真实链上地址（不含冒号、连字符），
+    与 eco_* 台账、JWT、前端选择器同源；解析不出地址的值（临时测试钱包、
+    'default'）保持原值，避免把不同口径写成空。
+    """
     _ensure_progress_table()
+    wallet = to_address(wallet) or wallet
     ts = now()
+    marks, mp = lower_wallet_in(list(address_variants(wallet)))
     with get_conn() as conn:
-        exists = conn.execute(
-            "SELECT id FROM chain_tutorial_progress WHERE wallet=? AND step=?",
-            (wallet, step),
-        ).fetchone()
+        # 双口径命中旧行（迁移前的别名行），命中多条时优先推进已是真实地址的那行，
+        # 剩下的交给 normalize_asset_wallets 按 (done, finished_at) 取优合并
+        hits = conn.execute(
+            f"SELECT id, wallet FROM chain_tutorial_progress "
+            f"WHERE lower(wallet) IN ({marks}) AND step=?",
+            (*mp, step),
+        ).fetchall()
+        exists = next(
+            (h for h in hits if str(h["wallet"] or "").strip().lower() == wallet),
+            hits[0] if hits else None,
+        )
         if exists:
             # 动态构建更新字段（cmd_idx 单独推进，done 由最后一条命令触发）
             sets = []
             params = []
+            old_w = str(exists["wallet"] or "").strip().lower()
+            if old_w != wallet and len(hits) == 1:
+                # 旧口径行自愈：改写为真实地址（仅在不会撞 UNIQUE(wallet, step) 时）
+                sets.append("wallet=?")
+                params.append(wallet)
             if finished:
                 sets.append("done=?")
                 params.append(done)
@@ -198,9 +206,9 @@ def _upsert_step_state(
                     sets.append("started_at=COALESCE(started_at, ?)")
                     params.append(ts)
             if sets:
-                params += [wallet, step]
+                params.append(exists["id"])
                 conn.execute(
-                    f"UPDATE chain_tutorial_progress SET {', '.join(sets)} WHERE wallet=? AND step=?",
+                    f"UPDATE chain_tutorial_progress SET {', '.join(sets)} WHERE id=?",
                     params,
                 )
         else:
@@ -538,7 +546,7 @@ def exec_step_impl(payload: dict, user: dict) -> dict:
                         "INSERT INTO deployed_contracts(address,name,abi,bytecode,source,deployer,tx_hash,standard,created_at) "
                         "VALUES(?,?,?,?,?,?,?,?,?)",
                         (r["address"], "GreenEnergy", _json.dumps(comp["abi"]), comp["bytecode"], ge_src,
-                         "0xadmin", r["tx_hash"], "ERC20", now()),
+                         to_address("0xadmin") or "0xadmin", r["tx_hash"], "ERC20", now()),
                     )
                 # 行为埋点：把编译/部署事件记到学生钱包名下（on-chain deployer 仍为
                 # 0xadmin 以保留 6 角色 mint 白名单的 owner 权限，但学习归属归学生）
@@ -612,12 +620,13 @@ def exec_step_impl(payload: dict, user: dict) -> dict:
         ok = ok and ("失败" not in output[:30] and "请先执行" not in output[:30])
     _upsert_step_state(wallet, step, 1 if ok else 0, output=output[:8000], finished=ok,
                        user_id=x_user_id or "", class_id=class_id)
-    # 训练完成自动建成绩草稿：成功完成任一步后尝试建草稿（内部会校验是否 10 步全完成）
+    # 训练完成自动刷成绩草稿：成功完成任一步后尝试刷草稿（内部会校验是否 10 步全完成）
     if ok and x_user_id:
         try:
             _auto_create_grade_draft(x_user_id, student_name, wallet)
         except Exception:
-            pass  # 草稿创建失败不影响训练主流程
+            # 草稿异常不阻断训练主流程，但必须留痕（P0-4：不再静默吞掉）
+            logger.exception("成绩草稿链路异常 step=%s user_id=%s", step, x_user_id)
     return {"ok": ok, "step": step, "commands": item["commands"], "output": output, "source": source}
 
 
@@ -856,7 +865,66 @@ def _build_command_registry():
     }
 
 
+def _shown_pattern(cmd_text: str) -> str:
+    """把 UI 展示的整条命令转成「容忍空格数量差异」的匹配正则。
+
+    展示清单里有命令含连续多个空格（如 log/log_*  | grep），学生手敲时通常只打
+    一个空格，故按词切分后用 \\s+ 连接，避免「照着屏幕敲仍然判语法错误」。
+    """
+    toks = [re.escape(t) for t in (cmd_text or "").strip().split()]
+    return r"^\s*" + r"\s+".join(toks) + r"\s*$" if toks else r"^\s*$"
+
+
+def _matches(pattern: str, text: str) -> bool:
+    try:
+        return bool(re.match(pattern, (text or "").strip(), re.MULTILINE | re.DOTALL))
+    except re.error:
+        return False
+
+
+def _align_registry_with_tutorial(reg: dict) -> None:
+    """把命令注册表补齐到与 TUTORIAL[step].commands 展示清单一一对应（就地修改）。
+
+    为什么必须做（P0：10 步教程一步都做不完）：步骤完成判定是
+    「new_idx >= len(commands) - 1」，而注册表历史上只覆盖展示清单的一部分且下标
+    错位（Step 1 展示 5 条只注册 3 条，其中 start_all.sh 注册为 cmd_index=2，
+    展示下标其实是 4）。学生照屏幕清单逐条执行时：未注册的 cat/openssl/nc/tail
+    一律判 syntax error，已注册的命令最多把进度推到 cmd_index=2 → 进度永久封顶
+    3/5，D 项 10 分、满 10 步的成绩草稿、相关成就全部结构性不可达。
+
+    做法（不改任何既有正则，故 Step 6-10 的真实链上执行分支与输出完全不变）：
+    ① 反向认领：某注册条目的任一正则能整条匹配某条展示命令，就把它的 cmd_index
+       收敛到该展示下标，使「顺序校验」与屏幕清单同序；
+    ② 补空位：没被任何条目认领的展示命令，补一条整条文本精确匹配的定义。
+    """
+    for item in TUTORIAL:
+        step = item.get("step")
+        shown = item.get("commands") or []
+        defs = reg.get(step) or []
+        claimed: set[int] = set()
+        for d in defs:
+            for i, text in enumerate(shown):
+                if i in claimed:
+                    continue
+                if any(_matches(p, text) for p in d.get("patterns") or []):
+                    d["cmd_index"] = i
+                    claimed.add(i)
+                    break
+        for i, text in enumerate(shown):
+            if i in claimed:
+                continue
+            defs.append({
+                "cmd_index": i,
+                "patterns": [_shown_pattern(text)],
+                "syntax_hint": f"语法格式：{text}\n按清单逐条执行本条命令",
+                "type": "shell",
+            })
+        defs.sort(key=lambda d: int(d.get("cmd_index") or 0))
+        reg[step] = defs
+
+
 CMD_REGISTRY = _build_command_registry()
+_align_registry_with_tutorial(CMD_REGISTRY)
 
 
 def _match_command(cmd_input: str, step: int) -> dict:
@@ -1347,7 +1415,10 @@ def _exec_command_impl(cmd_input: str, step: int, wallet: str, c) -> dict:
                 r = c.deploy_contract(
                     "GreenEnergy", comp["abi"], comp["bytecode"], ge_src,
                     "0xadmin", "ERC20",
-                    ctor_args=[1000000],
+                    # 创世初始供应 = 0（与 seed / eco 一键部署同一口径）：能量不存在
+                    # “创世预挖给部署方”，传正数会让链上 totalSupply 恒大于能量流水
+                    # 累计发行量，能量国库的通胀审计（Σ 流水 == 发行 － 销毁）永远对不上。
+                    ctor_args=DEFAULT_CTOR_ARGS.get("GreenEnergy", [0]),
                 )
                 import json as _json
                 with get_conn() as conn:
@@ -1356,12 +1427,33 @@ def _exec_command_impl(cmd_input: str, step: int, wallet: str, c) -> dict:
                         "INSERT INTO deployed_contracts(address,name,abi,bytecode,source,deployer,tx_hash,standard,created_at) "
                         "VALUES(?,?,?,?,?,?,?,?,?)",
                         (r["address"], "GreenEnergy", _json.dumps(comp["abi"]), comp["bytecode"], ge_src,
-                         "0xadmin", r["tx_hash"], "ERC20", now()),
+                         to_address("0xadmin") or "0xadmin", r["tx_hash"], "ERC20", now()),
                     )
+                # 部署后必须同步链上发行白名单（与 seed.py / eco 部署接口同一收口）：
+                # GreenEnergy.mint 受 onlyIssuer 限制，新实例的 owner 只有 0xadmin；不授权
+                # 则 5 个业务节点钱包全部 revert。而全平台取合约的口径是
+                # 「按 created_at DESC 取最新一份」，于是不授权的后果不止本步骤的
+                # mint 失败，还会把绿色低碳联盟页的能量发放（全班）一起打死，并且
+                # 每次都在链上留下 revert 交易（报告 P 项扣分、监听器异常告警）。
+                grant = grant_issuers(c, r["address"], comp["abi"], "GreenEnergy",
+                                      operator="0xadmin")
+                _granted = grant.get("granted") or []
+                _failed = grant.get("failed") or []
+                # 能量代币登记同步：新实例必须同时接管「能量钱包余额」与「市场结算币种」，
+                # 否则钱包页 / NFT 市场仍读旧地址（学生联盟页有能量、付款显示 0）。
+                sync_energy_token(r["address"], owner=to_address("0xadmin") or "0xadmin")
                 _track(EventType.CONTRACT_COMPILE_OK, target="GreenEnergy",
                        ref_id=r.get("tx_hash", ""), wallet=wallet,
-                       extra={"deployer_onchain": "0xadmin", "address": r["address"]})
+                       extra={"deployer_onchain": "0xadmin", "address": r["address"],
+                              "issuers_granted": _granted, "issuers_failed": _failed})
                 mode_label = "FISCO-BCOS 节点" if isinstance(c, FiscoRpcClient) else "EVM 链"
+                if _granted or grant.get("enforcement") == "legacy":
+                    issuer_line = (f"# 5 业务角色（metro/bus/bike/takeout/recycle）mintRole 白名单已同步"
+                                   f"（{len(_granted)}/5 笔授权上链"
+                                   + (f"，失败 {len(_failed)} 笔，可重跑本步补授）" if _failed else "）"))
+                else:
+                    issuer_line = ("# ⚠️ 发行白名单同步失败：链上 mint 会被拒（GE: not issuer），"
+                                   "请重跑本条 deploy")
                 output = (
                     f"contract address: {r['address']}\n"
                     f"transaction hash: {r['tx_hash']}\n"
@@ -1369,7 +1461,8 @@ def _exec_command_impl(cmd_input: str, step: int, wallet: str, c) -> dict:
                     f"gas used:         {r.get('gas_used', 0)}\n"
                     f"standard:         ERC20 (GreenEnergy)\n"
                     f"\n# GreenEnergy 已部署到{mode_label}\n"
-                    f"# 5 业务角色（metro/bus/bike/takeout/recycle）mintRole 白名单已同步\n"
+                    f"# 平台唯一流通货币（GE）已切到新地址，能量钱包与市场结算同步\n"
+                    f"{issuer_line}\n"
                     f"# 下一步：[console] getTransactionReceipt {r['tx_hash']}"
                 )
                 return {"ok": True, "output": output, "error_type": None}
@@ -1457,7 +1550,18 @@ def _exec_command_impl(cmd_input: str, step: int, wallet: str, c) -> dict:
         except Exception as e:
             return {"ok": False, "output": f"调用异常: {e}", "error_type": "call"}
 
-    # 兑底
+    # 展示清单补齐项（由 _align_registry_with_tutorial 生成，历史注册表未覆盖）：
+    # 本地无 docker / FISCO 节点环境时回显本步「预期输出」的观测要点，
+    # 避免终端只打印一句兜底文本、学生看不到该核验什么。既有分支已 return 的
+    # 命令不会走到这里，因此不改变任何原有输出。
+    _t_item = next((s for s in TUTORIAL if s.get("step") == step), None)
+    if _t_item and any((cmd_input or "").strip() == (c or "").strip() for c in _t_item.get("commands") or []):
+        return {"ok": True, "output": (
+            "# 教学模式：命令已通过语法与顺序校验（本地无 docker / FISCO 节点环境，输出为观测要点）\n"
+            + str(_t_item.get("expected") or "(命令已执行)")
+        ), "error_type": None}
+
+    # 兜底
     return {"ok": True, "output": "(命令已执行)", "error_type": None}
 
 
@@ -1468,7 +1572,7 @@ def _infer_command_source(step: int, cmd_input: str, result: dict) -> str:
       Step 9 真实编译部署 / 回执查询、Step 10 真实合约调用，及这些路径上的
       call / deploy / compile / prerequisite 类失败）
     - "simulated"：「教学模式」硬编码模拟输出（Step 1-5 全部、Step 6 cat 规则表、
-      Step 8 进程/证书/端口检查）、语法级拒绝、注释行、兑底分支
+      Step 8 进程/证书/端口检查）、语法级拒绝、注释行、兜底分支
     """
     et = result.get("error_type")
     if et == "syntax":
@@ -1570,10 +1674,13 @@ def exec_command_impl(payload: dict, user: dict) -> dict:
     if step > 1:
         prev_item = next((s for s in TUTORIAL if s["step"] == step - 1), None)
         if prev_item:
+            # 双口径读（原别名 + 真实地址）：存量行可能尚未跑过迁移脚本
+            marks, mp = lower_wallet_in(list(address_variants(wallet)))
             with get_conn() as conn:
                 prev = conn.execute(
-                    "SELECT done FROM chain_tutorial_progress WHERE wallet=? AND step=?",
-                    (wallet, step - 1),
+                    f"SELECT done FROM chain_tutorial_progress "
+                    f"WHERE lower(wallet) IN ({marks}) AND step=?",
+                    (*mp, step - 1),
                 ).fetchone()
             if not prev or not prev["done"]:
                 return {
@@ -1588,10 +1695,12 @@ def exec_command_impl(payload: dict, user: dict) -> dict:
                 }
 
     # 3) 读取该步骤命令执行进度（cmd_idx：已完成到第几条，-1 表示尚未开始）
+    _marks, _mp = lower_wallet_in(list(address_variants(wallet)))
     with get_conn() as conn:
         prog = conn.execute(
-            "SELECT cmd_idx FROM chain_tutorial_progress WHERE wallet=? AND step=?",
-            (wallet, step),
+            f"SELECT cmd_idx FROM chain_tutorial_progress "
+            f"WHERE lower(wallet) IN ({_marks}) AND step=?",
+            (*_mp, step),
         ).fetchone()
     cur_idx = int(prog["cmd_idx"]) if prog else -1
 
@@ -1635,7 +1744,8 @@ def exec_command_impl(payload: dict, user: dict) -> dict:
                     student_name = unquote(student_name)
                 _auto_create_grade_draft(x_user_id, student_name, wallet)
             except Exception:
-                pass
+                # 草稿异常不阻断命令主流程，但必须留痕（P0-4：不再静默吞掉）
+                logger.exception("成绩草稿链路异常 step=%s user_id=%s", step, x_user_id)
         # 任务 #21：记录模式流水线（L4 复用本模块执行结果，不重复执行）
         _stages = [
             verifier.stage_skipped("compile", "教程命令无独立编译阶段（Step 9 编译校验已在执行内完成）"),

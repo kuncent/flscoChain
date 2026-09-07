@@ -157,6 +157,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { achievementApi } from '@/api'
+import { fmtDateTime } from '@/utils/time'
 import CountUp from './CountUp.vue'
 
 const props = withDefaults(defineProps<{
@@ -242,15 +243,7 @@ function difficultyTagType(difficulty: string): 'success' | 'warning' | 'danger'
 }
 
 function formatTime(timestamp: string | number): string {
-  if (!timestamp) return ''
-  const date = new Date(timestamp)
-  return date.toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  return timestamp ? fmtDateTime(timestamp, '') : ''
 }
 
 function showDetail(item: any) {

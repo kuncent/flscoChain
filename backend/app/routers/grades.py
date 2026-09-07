@@ -13,23 +13,38 @@
 
 接口：
   GET    /api/grades/list                 成绩列表（含实训/教师/综合 3 项）
-  GET    /api/grades/stats                按课程聚合统计
+  GET    /api/grades/stats                按课程聚合统计（按 主体+课程 去重，P0-2）
   POST   /api/grades/upsert               新增 / 更新（按 学号+课程 唯一；含 wallet 自动算实训成绩）
   DELETE /api/grades/{id}                 删除一条
   POST   /api/grades/compute-training     按 wallet 实时计算实训成绩明细（不入库，仅返回）
   POST   /api/grades/refresh-training     批量重算所有记录的实训成绩（教师一键刷新）
+  POST   /api/grades/draft/refresh        刷新系统草稿（写 grade_draft，不进成绩册）
+  GET    /api/grades/drafts               教师查看待同步草稿
+  POST   /api/grades/draft/apply          教师显式把草稿同步为正式成绩
 """
 from __future__ import annotations
 
 import json
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 from urllib.parse import unquote
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..db import get_conn, now, scope_where
-from ..security import ensure_own_wallet, require_role, get_current_user, PRIVILEGED_ROLES
+from ..roster import norm_class, resolve_class_scope
+from ..security import (
+    BUILTIN_WALLETS,
+    PRIVILEGED_ROLES,
+    ensure_own_wallet,
+    get_current_user,
+    identifying_wallets,
+    is_placeholder_student_id,
+    lower_wallet_in,
+    principal_of,
+    require_role,
+    resolve_wallet_candidates,
+)
 # 实训成绩原始计数统一由 learning.events.aggregate 聚合（单一事实源，只计数不含公式）
 from ..learning.events import aggregate as aggregate_training_counts
 
@@ -60,11 +75,107 @@ TRAINING_WEIGHTS = {
     "alliance_gov":   0.25,  # 联盟治理（角色切换 / NFT 铸造 / 转账 / 治理参与）
 }
 
+# 系统自动草稿默认课程名（与历史写入口径一致）
+TRAINING_COURSE = "区块链实训"
 
-def _require_teacher(user: dict = Depends(require_role(1, 3))) -> Tuple[int, str, str]:
-    """校验当前登录身份是否可访问成绩模块（基于 JWT 角色：1 管理员 / 3 教师）；
-    返回 (roleId, userId, userName)。"""
-    return int(user.get("role_id") or 0), (user.get("user_id") or ""), (user.get("user_name") or "")
+# 系统生成行的 teacher_id 取值：'system'（报告/草稿链路）与 ''（教程满步建行链路）。
+# 除此之外，一行就是教师亲手录入的正式成绩——系统一律不得改写（P1-25）。
+SYSTEM_TEACHER_IDS = ("system", "")
+
+
+def _is_teacher_owned(teacher_id: Any) -> bool:
+    """一行成绩是否属于教师亲手录入（系统不得覆写，P1-25 写保护判定）。"""
+    return str(teacher_id if teacher_id is not None else "").strip() not in SYSTEM_TEACHER_IDS
+
+
+def _is_synthetic_sid(sid: str, wallet: str = "") -> bool:
+    """该学号是不是系统合成的占位值（'W' + 钱包前缀，见 _refresh_draft）。
+
+    占位学号只携带钱包信息、不携带人的信息，匹配 / 覆盖时都得降级处理。
+    判定规则收口到 security.is_placeholder_student_id —— 与花名册排名、一次性
+    归并脚本共用一条口径，不再各写一份截断规则（旧实现只认 10 位，会漏
+    `W0xlearner` / `Wstu:0ae778` 这类别名截断）。
+    """
+    return is_placeholder_student_id(sid, wallet)
+
+
+def _pick_wallet(cur: str, new: str) -> str:
+    """成绩行的 wallet 只朝「更能唯一指人」的方向收敛。
+
+    草稿带的是共享演示钱包（0xlearner 等）时，绝不覆盖行上已有的真实地址。
+    """
+    if not (new or "").strip():
+        return cur or ""
+    if new.strip().lower() in BUILTIN_WALLETS and (cur or "").strip():
+        return cur
+    return new
+
+
+def _find_student_grade_row(
+    conn, *, wallet: str, draft_user_id: str, student_id: str, course: str
+):
+    """在成绩册里定位「该生该课」的目标行（P0-2 + P1-25 共用口径）。
+
+    不能只按 student_id 等值匹配：草稿在 user_info 缺失时学号会退化成合成值
+    （'W' + 钱包前 10 位），而教师行里存的是真实学号，两者不相等 → 同步时会
+    另起一行，把 P0-2 的「一人多行」重新造一遍。因此匹配口径为：
+      - 钱包：identifying_wallets（候选集去掉未认领的共享演示钱包）；
+      - 学号：草稿学号 + 草稿 user_id；但当钱包口径已能指人时，**不拿合成
+        占位学号去匹配**（所有 0xlearner 用户的占位学号都长得一样）。
+    排序：教师正式行优先，否则教师分会被留在旧行、另起一行系统分。
+    """
+    wkeys = identifying_wallets(conn, wallet, draft_user_id)
+    synthetic_sid = f"W{(wallet or '')[:10]}"
+    skeys = [
+        s for s in (str(student_id or ""), str(draft_user_id or ""))
+        if s and not (wkeys and s == synthetic_sid)
+    ]
+    conds: list[str] = []
+    params: list = []
+    if wkeys:
+        h, lc = lower_wallet_in(wkeys)
+        conds.append(f"lower(COALESCE(wallet, '')) IN ({h})")
+        params += lc
+    if skeys:
+        conds.append("student_id IN (" + ",".join("?" * len(skeys)) + ")")
+        params += skeys
+    if not conds:
+        return None
+    params.append(course)
+    return conn.execute(
+        "SELECT id, teacher_id, score, remark, class_id, school_id, student_id, wallet "
+        "FROM student_grades WHERE (" + " OR ".join(conds) + ") AND course=? "
+        "ORDER BY (COALESCE(teacher_id,'') IN ('system','')) ASC, updated_at DESC LIMIT 1",
+        params,
+    ).fetchone()
+
+
+def _require_teacher(user: dict = Depends(require_role(1, 3))) -> dict:
+    """校验当前登录身份是否可访问成绩模块（基于 JWT 角色：1 管理员 / 3 教师）。
+
+    P0-1：直接返回 JWT 身份上下文（而不是 (rid, uid, uname) 三元组），班级
+    解析链 resolve_class_scope 需要载荷里的 class_id 快照作为备胎口径。
+    """
+    return user
+
+
+def _teacher_class_scope(conn, user: dict) -> dict:
+    """教师看成绩册的班级范围（P0-1）：返回 {class_id, class_source, class_unbound, hint}。
+
+    管理员不限制（class_source='all'）；教师未解析出班级时 **不自作主张看全部**，
+    而是回退到「只看自己录入的行」（避免越权 + 避免静默空列表）。
+    """
+    rid = int(user.get("role_id") or 0)
+    if rid == 1:
+        return {"class_id": "", "class_source": "all",
+                "class_unbound": False, "hint": ""}  # 管理员：不限班级
+    scope = resolve_class_scope(conn, user)
+    return {
+        "class_id": scope["class_id"],
+        "class_source": scope["class_source"],
+        "class_unbound": bool(scope["class_unbound"]),
+        "hint": scope["hint"],
+    }
 
 
 # ===========================================================================
@@ -196,28 +307,38 @@ def list_grades(
     """成绩列表查询（教师 / 管理员可见）。
 
     权限规则：
-      - 教师（roleId=3）：默认只看自己班级的学生成绩；不传 class_id 时自动按
-        user_info 表中教师的 class_id 过滤，避免越权看到其他班级
+      - 教师（roleId=3）：默认只看自己班级的学生成绩；班级经 P0-1 解析链
+        （显式绑定 → user_info → JWT 快照 → 成绩册派生）得出；全部落空时
+        不越权看全部，改为只返回自己录入过的行，并标 class_unbound + hint
       - 管理员（roleId=1）：可查看全部班级成绩
 
     每行包含：实训成绩(training_score) + 教师评分(score) + 综合成绩(final_score) +
               实训明细(training_detail, JSON 字符串)
+    另为每行标 `row_kind`（P1-25）：teacher=教师正式行 / system=系统行（可被同步覆写）。
     """
-    rid, uid, _uname = teacher
+    user = teacher
+    rid = int(user.get("role_id") or 0)
+    uid = user.get("user_id") or ""
     sql = "SELECT * FROM student_grades WHERE 1=1"
     params: list = []
-    # 教师角色自动按班级过滤：若前端未显式传 class_id，则查 user_info 取教师所属班级
-    if rid == 3 and not class_id:
-        teacher_class = ""
-        if uid:
-            with get_conn() as conn:
-                row = conn.execute(
-                    "SELECT class_id FROM user_info WHERE user_id=?", (uid,)
-                ).fetchone()
-                if row:
-                    teacher_class = row["class_id"] or ""
-        if teacher_class:
-            class_id = teacher_class
+    class_unbound = False
+    class_source = ""
+    hint = ""
+    # 教师角色自动按班级过滤：若前端未显式传 class_id，走 P0-1 解析链取教师所属班级
+    if class_id:
+        class_source = "query"
+    else:
+        with get_conn() as conn:
+            scope = _teacher_class_scope(conn, user)
+        class_source = scope["class_source"]
+        class_unbound = scope["class_unbound"]
+        hint = scope["hint"]
+        if rid == 3:
+            if scope["class_id"]:
+                class_id = scope["class_id"]
+            elif class_unbound:
+                # 未绑定班级：只看自己录入的行（不越权、也不静默返回空）
+                sql += " AND COALESCE(teacher_id, '') = ?"; params.append(uid)
     if student_id:
         sql += " AND student_id = ?"; params.append(student_id)
     if student_name:
@@ -225,8 +346,10 @@ def list_grades(
     if course:
         sql += " AND course LIKE ?"; params.append(f"%{course}%")
     if class_id:
-        sql += " AND class_id = ?"; params.append(class_id)
-    sql += " ORDER BY course ASC, student_id ASC"
+        sql += " AND class_id = ?"; params.append(norm_class(class_id))
+    # 同一学生多口径行（P0-2）：教师正式行排在前，系统行紧随，便于界面分组识别
+    sql += " ORDER BY course ASC, student_id ASC, " \
+           "(COALESCE(teacher_id,'') IN ('system','')) ASC, updated_at DESC"
     with get_conn() as conn:
         rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
     # 解析 training_detail JSON 便于前端使用
@@ -237,54 +360,106 @@ def list_grades(
             r["training_detail"] = {}
         # 兜底解码旧数据中 URL 编码的 teacher_name（历史录入未解码导致乱码）
         r["teacher_name"] = _decode_name(r.get("teacher_name") or "")
-    return {"total": len(rows), "items": rows}
+        # P1-25：行归属标记（前端据此区分“系统草稿”与“教师正式成绩”）
+        r["row_kind"] = "teacher" if _is_teacher_owned(r.get("teacher_id")) else "system"
+    return {
+        "total": len(rows), "items": rows,
+        "class_id": norm_class(class_id or ""),
+        "class_source": class_source,
+        "class_unbound": class_unbound,
+        "hint": hint,
+    }
 
 
 @router.get("/stats")
-def grades_stats(teacher = Depends(_require_teacher)):
+def grades_stats(teacher=Depends(_require_teacher)):
     """按课程聚合：实训 / 教师 / 综合 三项的平均分 + 人数。
 
-    教师默认只统计自己班级的成绩，管理员统计全部。
+    教师默认只统计自己班级的成绩（班级经 P0-1 解析链），管理员统计全部。
+
+    P0-2 去重：同一**人**可能同时存在教师正式行与系统草稿行（一人一钱包上线前
+    草稿学号是 `W{wallet[:10]}` 造出来的，与教师填的真实学号不是同一个字符串，
+    而 UNIQUE(student_id, course) 恰好允许它们共存），直接 AVG 会把一个人算两次、
+    并把草稿分混进均值。此处先按主体（security.principal_of：钱包/学号反查到的
+    稳定 userId）去重，身份查不出时才退回学号；同时返回
+    `total_rows` / `duplicate_rows`，让“重复行”在数字上可见而不是静默影响结论。
     """
-    rid, uid, _uname = teacher
-    teacher_class = ""
-    if rid == 3 and uid:
-        with get_conn() as conn:
-            row = conn.execute(
-                "SELECT class_id FROM user_info WHERE user_id=?", (uid,)
-            ).fetchone()
-            if row:
-                teacher_class = row["class_id"] or ""
-    if teacher_class:
-        sql = """
-            SELECT
-                course,
-                COUNT(*)                   AS cnt,
-                ROUND(AVG(training_score), 2)  AS avg_training,
-                ROUND(AVG(score), 2)           AS avg_manual,
-                ROUND(AVG(final_score), 2)     AS avg_final
-            FROM student_grades
-            WHERE class_id=?
-            GROUP BY course
-            ORDER BY course ASC
-        """
-        params: list = [teacher_class]
-    else:
-        sql = """
-            SELECT
-                course,
-                COUNT(*)                   AS cnt,
-                ROUND(AVG(training_score), 2)  AS avg_training,
-                ROUND(AVG(score), 2)           AS avg_manual,
-                ROUND(AVG(final_score), 2)     AS avg_final
-            FROM student_grades
-            GROUP BY course
-            ORDER BY course ASC
-        """
-        params = []
+    user = teacher
+    rid = int(user.get("role_id") or 0)
+    uid = user.get("user_id") or ""
+    teacher_class, class_unbound, hint, class_source = "", False, "", ""
     with get_conn() as conn:
+        scope = _teacher_class_scope(conn, user)   # 管理员：class_source='all'、不限制
+        teacher_class = scope["class_id"]
+        class_unbound = scope["class_unbound"]
+        hint = scope["hint"]
+        class_source = scope["class_source"]
+        sql = (
+            "SELECT course, student_id, wallet, teacher_id, class_id, score, "
+            "training_score, final_score, updated_at FROM student_grades"
+        )
+        params: list = []
+        conds: list = []
+        if teacher_class:
+            conds.append("class_id=?")
+            params.append(teacher_class)
+        elif class_unbound:
+            # 未绑定班级：只统计自己录入的行（不越权汇总全校）
+            conds.append("COALESCE(teacher_id, '')=?")
+            params.append(uid)
+        if conds:
+            sql += " WHERE " + " AND ".join(conds)
         rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
-    return {"items": rows}
+
+        def _key(r: dict) -> tuple:
+            """聚合主键：(课程, 本人稳定主体)；身份查不出时退回学号。"""
+            p = principal_of(conn, str(r.get("wallet") or ""), str(r.get("student_id") or ""))
+            return (str(r.get("course") or ""),
+                    p or ("sid:" + str(r.get("student_id") or "")))
+
+        def _rank(r: dict) -> tuple:
+            """有效行排序键：教师行 > 系统行；同层取更新时间最新。"""
+            return (
+                1 if _is_teacher_owned(r.get("teacher_id")) else 0,
+                str(r.get("updated_at") or ""),
+            )
+
+        picked: dict[tuple, dict] = {}
+        duplicate_rows = 0
+        for r in rows:
+            key = _key(r)
+            cur = picked.get(key)
+            if cur is None:
+                picked[key] = r
+                continue
+            duplicate_rows += 1
+            if _rank(r) > _rank(cur):
+                picked[key] = r
+    groups: dict[str, list[dict]] = {}
+    for r in picked.values():
+        groups.setdefault(str(r.get("course") or ""), []).append(r)
+    items = []
+    for course in sorted(groups):
+        rs = groups[course]
+        n = len(rs) or 1
+        items.append({
+            "course": course,
+            "cnt": len(rs),                                   # 去重后的人数
+            "avg_training": round(sum(float(r["training_score"] or 0) for r in rs) / n, 2),
+            "avg_manual": round(sum(float(r["score"] or 0) for r in rs) / n, 2),
+            "avg_final": round(sum(float(r["final_score"] or 0) for r in rs) / n, 2),
+            "teacher_rows": sum(1 for r in rs if _is_teacher_owned(r.get("teacher_id"))),
+        })
+    return {
+        "items": items,
+        "total_rows": len(rows),
+        "duplicate_rows": duplicate_rows,
+        "class_id": teacher_class,
+        "class_source": class_source,
+        "class_unbound": class_unbound,
+        "hint": hint,
+        "note": "统计口径：按 (课程, 学生主体) 去重后的有效行（教师行优先于系统行）",
+    }
 
 
 # ===========================================================================
@@ -312,9 +487,16 @@ def compute_training(req: ComputeTrainingReq, _=Depends(_require_teacher)):
 @router.post("/upsert")
 def upsert_grade(
     req: GradeUpsertReq,
-    auth_ctx: Tuple[int, str, str] = Depends(_require_teacher),
+    user: dict = Depends(_require_teacher),
 ):
-    rid, uid, uname = auth_ctx
+    """教师录入 / 更新成绩（教师主动写成绩册，是唯一能产生「教师正式行」的入口）。
+
+    命中同 (学号, 课程) 的系统行（teacher_id 为 system/''）时直接接管并改写；
+    已存在的其他教师行同样按「后录入者覆盖」的旧语义保留（不改现有业务行为）。
+    """
+    rid = int(user.get("role_id") or 0)
+    uid = user.get("user_id") or ""
+    uname = user.get("user_name") or ""
     ts = now()
     # 自动计算实训成绩 + 综合成绩（若提供了 wallet）
     training_score, detail = _compute_training_score(req.wallet.strip())
@@ -399,6 +581,11 @@ def my_grades(
     身份校验：学生仅能查询自己钱包（钱包从 JWT 取，必须与登录身份一致）；
     教师 / 管理员可查任意钱包。返回该 wallet 关联的所有成绩记录 +
     实时计算的实训成绩明细；若该 wallet 尚未有成绩记录，则实时计算并返回预览（不入库）。
+
+    P0-2：成绩行按**钱包候选集** `lower(wallet) IN (...)` 取（教师录分时可能用 userId /
+    stu: 别名 / 真实地址任一口径，单值匹配会“明明有成绩却看不到”）；候选集查不到时
+    再按学号兼容一次（旧行 wallet 为空只填了学号）。
+    P1-25：另外返回系统草稿 `draft`（存于 grade_draft，不混入成绩册）。
     """
     w = wallet.strip()
     if not w:
@@ -409,18 +596,48 @@ def my_grades(
     # （命中本人归属行 + 未登记归属旧行，见 db.scope_where）；教师/管理员
     # 传 None 不过滤，保持全局视图，避免特权视角"丢数据"。
     # 注：student_grades 租户列由 db.init_db 在线迁移补齐（旧行 DEFAULT ''）。
-    scope_uid = (user.get("user_id") or "").strip() or None
+    my_uid = (user.get("user_id") or "").strip()
+    scope_uid = my_uid or None
     if int(user.get("role_id") or 0) in PRIVILEGED_ROLES:
         scope_uid = None
     sc, sp = scope_where("student_grades", user_id=scope_uid)
 
     with get_conn() as conn:
+        cands = resolve_wallet_candidates(conn, w, my_uid)
+        h, lc = lower_wallet_in(cands)
+        # 学号口径兼容（旧行 wallet 为空 / 教师只填了学号）
+        sid_h, sid_p = "", []
+        if scope_uid:
+            ur = conn.execute(
+                "SELECT student_id FROM user_info WHERE user_id=?", (scope_uid,)
+            ).fetchone()
+            sid = str(ur["student_id"] or "") if ur else ""
+            if sid:
+                sid_h, sid_p = "?", [sid]
+        where = f"(lower(wallet) IN ({h})"
+        params: list = list(lc)
+        if sid_h:
+            where += f" OR (COALESCE(wallet, '') = '' AND student_id IN ({sid_h}))"
+            params += sid_p
+        where += ")"
+        if sc:
+            where += " AND " + sc
+            params += list(sp)
         rows = conn.execute(
-            "SELECT * FROM student_grades WHERE wallet=?"
-            + (" AND " + sc if sc else "")
-            + " ORDER BY course ASC",
-            (w, *sp),
+            "SELECT * FROM student_grades WHERE " + where + " ORDER BY course ASC",
+            params,
         ).fetchall()
+        draft = None
+        if lc:
+            try:
+                draft = conn.execute(
+                    "SELECT * FROM grade_draft "
+                    "WHERE user_id=? OR lower(wallet) IN (" + h + ") "
+                    "ORDER BY updated_at DESC LIMIT 1",
+                    (my_uid, *lc),
+                ).fetchone()
+            except Exception:
+                draft = None  # grade_draft 尚未创建（迁移未跑完）：不影响成绩返回
 
     items = []
     for r in rows:
@@ -429,6 +646,8 @@ def my_grades(
             item["training_detail"] = json.loads(item.get("training_detail") or "{}")
         except (TypeError, json.JSONDecodeError):
             item["training_detail"] = {}
+        # P1-25：学生也能看出哪一行是教师正式评过的分、哪一行还只是系统算的实训分
+        item["row_kind"] = "teacher" if _is_teacher_owned(item.get("teacher_id")) else "system"
         items.append(item)
 
     # 实时计算当前 wallet 的实训成绩（用于对比 / 预览）
@@ -436,80 +655,379 @@ def my_grades(
 
     return {
         "wallet": w,
+        "wallet_candidates": cands,
         "grades": items,
         "total": len(items),
         "training_now": training_now,
         "detail_now": detail_now,
+        "draft": _draft_payload(draft),
+        "note": "成绩册（grades）仅在教师录入/同步后产生；draft 为系统实时草稿，不计入综合分",
     }
 
 
 # ===========================================================================
-# 报告→成绩闭环：按 wallet 自动创建/更新成绩草稿
+# 实训成绩草稿（P1-8 / P1-25）：草稿只写 grade_draft，成绩册只由教师动作产生
 # ===========================================================================
-@router.post("/auto-draft")
-def auto_draft_grade(
+def _draft_payload(row: Any) -> Optional[dict]:
+    """grade_draft 行 → 响应体（training_detail 解析成对象）。"""
+    if row is None:
+        return None
+    d = dict(row)
+    try:
+        d["training_detail"] = json.loads(d.get("training_detail") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        d["training_detail"] = {}
+    return d
+
+
+def _wallet_owner(conn, wallet: str) -> Optional[dict]:
+    """该钱包归属的登录账号（user_info 行），学生行优先。
+
+    存在意义：草稿（grade_draft）的身份**必须跟着钱包主人走，而不是跟着调用者走**。
+    实测缺陷：教师在自己账号上代学生刷新草稿时，uid_key 取的是调用者（教师），
+    于是落出一条 user_id=教师 / student_name=老师1号 而 wallet=学生地址的假草稿；
+    教师点「全班同步」就会把真实学生的成绩行改名。
+    """
+    if not wallet:
+        return None
+    cands = resolve_wallet_candidates(conn, wallet, "")
+    if not cands:
+        return None
+    h, params = lower_wallet_in(cands)
+    rows = conn.execute(
+        "SELECT user_id, name, role_id, student_id, class_id, school_id, wallet FROM user_info "
+        f"WHERE lower(user_id) IN ({h}) OR lower(wallet) IN ({h}) OR lower(username) IN ({h})",
+        (*params, *params, *params),
+    ).fetchall()
+    if not rows:
+        return None
+    for r in rows:                     # 成绩草稿只服务学生评价 → 学生行优先
+        if int(r["role_id"] or 0) == 4:
+            return dict(r)
+    return dict(rows[0])
+
+
+def _refresh_draft(
+    conn, wallet: str, user_id: str = "",
+    *, student_id: str = "", student_name: str = "", course: str = TRAINING_COURSE,
+) -> dict:
+    """按 wallet 重算实训成绩并写入 grade_draft（UNIQUE(user_id, course)）。
+
+    本函数**绝不触碰 student_grades** —— 这正是它存在的全部意义：旧实现把草稿
+    直接写进成绩册，一旦花名册里有该生真实学号，UPDATE 就会命中教师正式行，
+    并把综合分重算成「教师分按 0 计」（在库副本上实测 84.3 → 0.6）。
+    学号/姓名/班级口径以 user_info 为准（外部 SSO 有真实数据时优先用它）。
+    """
+    caller_uid = (user_id or "").strip()
+    owner = _wallet_owner(conn, wallet)
+    owner_uid = str((owner or {}).get("user_id") or "")
+    # 草稿归属 = 钱包主人；调用者只是操作人（教师代刷不得把自己写成被评价人）
+    uid_key = owner_uid or caller_uid or (wallet or "").strip()
+    cands = resolve_wallet_candidates(conn, wallet, uid_key)
+    training, detail = _compute_training_score(wallet)
+    detail_json = json.dumps(detail, ensure_ascii=False)
+    ts = now()
+
+    u = None
+    if uid_key:
+        u = conn.execute(
+            "SELECT student_id, name, class_id, school_id FROM user_info WHERE user_id=?",
+            (uid_key,),
+        ).fetchone()
+    sid = (student_id or (str(u["student_id"] or "") if u else "") or f"W{(wallet or '')[:10]}")
+    sname = (student_name or (str(u["name"] or "") if u else "") or f"学生_{(wallet or '')[:6]}")
+    class_id = str(u["class_id"] or "") if u else ""
+    school_id = str(u["school_id"] or "") if u else ""
+
+    existing = conn.execute(
+        "SELECT id FROM grade_draft WHERE user_id=? AND course=?", (uid_key, course)
+    ).fetchone()
+    if existing:
+        conn.execute(
+            """UPDATE grade_draft
+               SET wallet=?, student_id=?, student_name=?, class_id=?, school_id=?,
+                   training_score=?, training_detail=?, updated_at=?
+               WHERE id=?""",
+            (wallet, sid, sname, class_id, school_id, training, detail_json, ts, existing["id"]),
+        )
+        draft_id, action = int(existing["id"]), "updated"
+    else:
+        cur = conn.execute(
+            """INSERT INTO grade_draft
+               (user_id, wallet, student_id, student_name, course,
+                class_id, school_id, training_score, training_detail, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (uid_key, wallet, sid, sname, course, class_id, school_id,
+             training, detail_json, ts, ts),
+        )
+        draft_id, action = int(cur.lastrowid), "created"
+    return {
+        "draft_id": draft_id, "action": action, "course": course,
+        "user_id": uid_key, "wallet": wallet, "wallet_candidates": cands,
+        "student_id": sid, "student_name": sname,
+        "class_id": class_id, "school_id": school_id,
+        "training_score": training, "detail": detail,
+        # 操作人留痕：代刷（教师/管理员）时调用者与草稿归属不是同一个人，
+        # 界面据此提示「已按钱包主人身份建档」，不假装是本人操作
+        "operator_user_id": caller_uid,
+        "identity_corrected": bool(owner_uid and caller_uid and owner_uid != caller_uid),
+    }
+
+
+def _apply_draft_to_grades(conn, draft: dict, operator: dict) -> dict:
+    """把一条系统草稿同步进成绩册（教师显式动作，P1-25 唯一的草稿 → 成绩通道）。
+
+    写保护（按目标行的 teacher_id 判定，系统不再有任何隐式改写路径）：
+      - 教师正式行：只刷新实训维度（wallet / training_score / training_detail），
+        综合分用**该行自己的**教师分重算 —— 绝不把教师分当作 0；
+      - 系统行（teacher_id ∈ system/''）：整行接管，归属转给操作教师；
+      - 无匹配行：新建一行（教师分=0，待教师录入评分）。
+    目标行按身份（钱包候选集 + 学号）而非单一学号匹配，见 _find_student_grade_row。
+    """
+    uid = operator.get("user_id") or ""
+    uname = operator.get("user_name") or ""
+    ts = now()
+    wallet = str(draft.get("wallet") or "")
+    course = str(draft.get("course") or TRAINING_COURSE)
+    training = float(draft.get("training_score") or 0)
+    detail_json = json.dumps(draft.get("training_detail") or {}, ensure_ascii=False)
+    class_id = norm_class(str(draft.get("class_id") or ""))
+    school_id = str(draft.get("school_id") or "")
+    sid = str(draft.get("student_id") or "")
+    sname = str(draft.get("student_name") or "")
+    draft_user = str(draft.get("user_id") or "")
+
+    # 身份兜底（修「全班同步一次，学生姓名被改写成教师姓名」）：草稿的 user_id 必须
+    # 就是该钱包的主人。历史错配草稿（旧版本教师代刷产物）一旦被同步，会把真实
+    # 学生的成绩行改名 —— 宁可拒绝同步并给出可执行指引，也不静默改写。
+    owner = _wallet_owner(conn, wallet)
+    owner_uid = str((owner or {}).get("user_id") or "")
+    if draft_user and owner_uid and draft_user != owner_uid:
+        return {"id": None, "action": "rejected", "student_id": sid,
+                "reason": f"草稿身份（{draft_user}）与钱包 {wallet} 的归属账号「"
+                          f"{(owner or {}).get('name') or owner_uid}」不一致，已拒绝同步："
+                          f"请学生本人到「我的成绩」点「同步实训草稿」后重新同步"}
+
+    row = _find_student_grade_row(
+        conn, wallet=wallet, draft_user_id=draft_user, student_id=sid, course=course
+    )
+    # 真实学号可以补进占位行（收敛 P0-2）；反过来绝不拿占位值盖掉真值
+    better_sid = (
+        sid if (row and sid and not _is_synthetic_sid(sid, wallet)
+                and _is_synthetic_sid(str(row["student_id"] or ""), wallet))
+        else ""
+    )
+    new_wallet = _pick_wallet(str(row["wallet"] or "") if row else "", wallet)
+
+    if row and _is_teacher_owned(row["teacher_id"]):
+        manual = float(row["score"] or 0)
+        conn.execute(
+            "UPDATE student_grades SET wallet=?, training_score=?, final_score=?, "
+            "training_detail=?" + (", student_id=?" if better_sid else "") +
+            ", updated_at=? WHERE id=?",
+            (new_wallet, training, _compute_final(training, manual), detail_json,
+             *((better_sid,) if better_sid else ()), ts, row["id"]),
+        )
+        return {"id": int(row["id"]), "action": "training_only",
+                "student_id": better_sid or str(row["student_id"] or ""),
+                "reason": "该行是教师正式成绩，仅刷新实训维度，教师分与备注不变",
+                "score": manual, "final_score": _compute_final(training, manual)}
+
+    if row:
+        manual = float(row["score"] or 0)
+        conn.execute(
+            """UPDATE student_grades
+               SET student_name=?, wallet=?, training_score=?, final_score=?, training_detail=?,
+                   teacher_id=?, teacher_name=?, class_id=?, school_id=?, updated_at=?
+                   """
+            + (", student_id=?" if better_sid else "")
+            + """ WHERE id=?""",
+            (sname, new_wallet, training, _compute_final(training, manual), detail_json,
+             uid, uname, class_id or row["class_id"] or "", school_id or row["school_id"] or "",
+             ts, *((better_sid,) if better_sid else ()), row["id"]),
+        )
+        return {"id": int(row["id"]), "action": "adopted",
+                "student_id": better_sid or str(row["student_id"] or ""),
+                "score": manual, "final_score": _compute_final(training, manual)}
+
+    manual = 0.0
+    cur = conn.execute(
+        """INSERT INTO student_grades
+           (student_id, student_name, course, score, wallet,
+            training_score, final_score, training_detail,
+            teacher_id, teacher_name, class_id, school_id, remark,
+            created_at, updated_at)
+           VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (sid, sname, course, wallet, training, _compute_final(training, manual), detail_json,
+         uid, uname, class_id, school_id, "由系统草稿同步生成，待教师录入评分", ts, ts),
+    )
+    return {"id": int(cur.lastrowid), "action": "created", "score": manual,
+            "final_score": _compute_final(training, manual)}
+
+
+@router.post("/draft/refresh")
+def refresh_draft(
     wallet: str = Query(..., description="学生链上钱包地址"),
-    student_id: str = Query("", description="学号（可选，为空则用 wallet 前 10 位）"),
+    student_id: str = Query("", description="学号（可选，为空则取 user_info）"),
     student_name: str = Query("", description="学生姓名（可选）"),
-    course: str = Query("区块链实训", description="课程名称"),
+    course: str = Query(TRAINING_COURSE, description="课程名称"),
     user: dict = Depends(get_current_user),
 ):
-    """报告生成时自动为学生创建/更新成绩草稿（打通 report→grades）。
+    """刷新**系统草稿**（写 grade_draft，不进成绩册）。
 
-    闭环逻辑：学生完成实训 → 查看/下载报告 → 系统自动按 wallet 计算实训成绩
-    → 写入 student_grades 作为草稿（teacher_id='system', score=0 待教师录入）。
-    身份校验：学生仅能为自己钱包生成草稿（钱包必须与 JWT 身份一致）；教师/管理员不受限。
+    由前端「我的成绩」页主动点击触发；查看报告等 GET 接口不再隐式写库（P1-8）。
+    身份校验：学生仅能刷新本人钱包；教师 / 管理员不受限。
     """
     w = wallet.strip()
     if not w:
         raise HTTPException(400, "wallet 必填")
-    ensure_own_wallet(user, w)  # 学生仅能写本人钱包，教师/管理员不受限
-
-    sid = student_id.strip() or f"W{w[:10]}"
-    sname = student_name.strip() or f"学生_{w[:6]}"
-    ts = now()
-
-    training_score, detail = _compute_training_score(w)
-    detail_json = json.dumps(detail, ensure_ascii=False)
-    # 草稿阶段 teacher_score=0，等教师录入后更新
-    final_score = _compute_final(training_score, 0)
-
+    ensure_own_wallet(user, w)
+    my_uid = (user.get("user_id") or "").strip()
     with get_conn() as conn:
-        existing = conn.execute(
-            "SELECT id FROM student_grades WHERE student_id=? AND course=?",
-            (sid, course),
-        ).fetchone()
-        if existing:
-            conn.execute(
-                """UPDATE student_grades
-                   SET wallet=?, training_score=?, final_score=?,
-                       training_detail=?, updated_at=?
-                   WHERE id=?""",
-                (w, training_score, final_score, detail_json, ts, existing["id"]),
-            )
-            grade_id = existing["id"]
-            action = "updated"
-        else:
-            cur = conn.execute(
-                """INSERT INTO student_grades
-                   (student_id, student_name, course, score, wallet,
-                    training_score, final_score, training_detail,
-                    teacher_id, teacher_name, class_id, school_id, remark,
-                    created_at, updated_at)
-                   VALUES (?, ?, ?, 0, ?, ?, ?, ?, 'system', '系统自动', '', '', '实训报告自动生成草稿', ?, ?)""",
-                (sid, sname, course, w, training_score, final_score, detail_json, ts, ts),
-            )
-            grade_id = cur.lastrowid
-            action = "created"
+        result = _refresh_draft(conn, w, my_uid, student_id=student_id.strip(),
+                                student_name=student_name.strip(), course=course)
+    result["grades_touched"] = False
+    return result
 
+
+# 向后兼容：/auto-draft 名称保留但行为已改（不再写 student_grades）
+@router.post("/auto-draft", deprecated=True)
+def auto_draft_grade(
+    wallet: str = Query(..., description="学生链上钱包地址"),
+    student_id: str = Query("", description="学号（可选，为空则取 user_info）"),
+    student_name: str = Query("", description="学生姓名（可选）"),
+    course: str = Query(TRAINING_COURSE, description="课程名称"),
+    user: dict = Depends(get_current_user),
+):
+    """**已废弃**：等价于 /draft/refresh。旧版会把草稿写进 student_grades 并
+    覆盖教师正式分（P1-25 事故源），现统一改写 grade_draft；`id` 字段从此指
+    草稿行 id，正式成绩请用 /draft/apply 由教师显式产生。"""
+    out = refresh_draft(wallet=wallet, student_id=student_id,
+                        student_name=student_name, course=course, user=user)
+    out["deprecated"] = True
+    out["table"] = "grade_draft"
+    return out
+
+
+@router.get("/drafts")
+def list_drafts(
+    class_id: Optional[str] = Query(None, description="按班级筛选（教师默认本班）"),
+    course: Optional[str] = Query(None, description="按课程模糊筛选"),
+    teacher=Depends(_require_teacher),
+):
+    """教师端：查看待同步的系统草稿（P1-25）。
+
+    草稿不再混在成绩册里，教师在这里单独看到「系统算了但还没采纳」的列表，
+    逐条（或让 /draft/apply 按班级批量）同步为正式成绩。
+    班级范围经 P0-1 解析链；未绑定班级时返回空列表 + class_unbound + hint。
+    """
+    user = teacher
+    with get_conn() as conn:
+        scope = _teacher_class_scope(conn, user)
+        teacher_class = scope["class_id"]
+        class_source = scope["class_source"]
+        class_unbound = scope["class_unbound"]
+        hint = scope["hint"]
+        if class_id:
+            teacher_class = norm_class(class_id)
+            class_source = "query"
+            class_unbound = False
+            hint = ""
+        elif class_unbound:
+            return {"total": 0, "items": [], "class_id": "", "class_source": class_source,
+                    "class_unbound": True, "hint": hint,
+                    "note": "未解析到所属班级，暂不展示草稿"}
+        sql = "SELECT * FROM grade_draft WHERE 1=1"
+        params: list = []
+        if teacher_class:
+            sql += " AND class_id=?"
+            params.append(teacher_class)
+        if course:
+            sql += " AND course LIKE ?"
+            params.append(f"%{course}%")
+        sql += " ORDER BY class_id ASC, student_id ASC, updated_at DESC"
+        rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+
+        # 标记每条草稿在成绩册里的目标行归属：教师行（只刷实训）/ 系统行 / 无行
+        for d in rows:
+            try:
+                d["training_detail"] = json.loads(d.get("training_detail") or "{}")
+            except (TypeError, json.JSONDecodeError):
+                d["training_detail"] = {}
+            tgt = _find_student_grade_row(
+                conn, wallet=str(d.get("wallet") or ""),
+                draft_user_id=str(d.get("user_id") or ""),
+                student_id=str(d.get("student_id") or ""),
+                course=str(d.get("course") or TRAINING_COURSE),
+            )
+            d["target_grade_id"] = int(tgt["id"]) if tgt else None
+            d["target_row_kind"] = (
+                "teacher" if tgt and _is_teacher_owned(tgt["teacher_id"])
+                else ("system" if tgt else "none")
+            )
     return {
-        "id": grade_id,
-        "action": action,
-        "wallet": w,
-        "training_score": training_score,
-        "final_score": final_score,
-        "detail": detail,
+        "total": len(rows), "items": rows,
+        "class_id": teacher_class, "class_source": class_source,
+        "class_unbound": class_unbound, "hint": hint,
+        "note": "草稿不影响学生综合分；同步（/draft/apply）后才进入成绩册",
     }
+
+
+@router.post("/draft/apply")
+def apply_draft(
+    req: dict = Body(...),
+    teacher=Depends(_require_teacher),
+):
+    """教师显式把草稿同步为正式成绩（P1-25：成绩册唯一的系统写入通道，且需人工触发）。
+
+    请求体：`{"draft_id": 12}` 或 `{"user_id": "tzs001", "course": "区块链实训"}`，
+    或 `{"class_id": "...", "all": true}` 批量同步本班草稿。
+    写保护见 _apply_draft_to_grades：教师正式行永远只刷实训维度，不会被清零。
+    """
+    user = teacher
+    draft_id = req.get("draft_id")
+    uid = str(req.get("user_id") or "").strip()
+    course = str(req.get("course") or TRAINING_COURSE)
+    do_all = bool(req.get("all"))
+    results: list[dict] = []
+    with get_conn() as conn:
+        if do_all:
+            scope = _teacher_class_scope(conn, user)
+            teacher_class = scope["class_id"]
+            class_unbound = scope["class_unbound"]
+            want_class = norm_class(str(req.get("class_id") or "")) or teacher_class
+            if class_unbound and not want_class:
+                raise HTTPException(400, "未绑定班级，不能批量同步；请先调用 /api/auth/bind-class")
+            sql = "SELECT * FROM grade_draft WHERE 1=1"
+            params: list = []
+            if want_class:
+                sql += " AND class_id=?"
+                params.append(want_class)
+            drafts = conn.execute(sql, params).fetchall()
+        else:
+            if draft_id:
+                one = conn.execute(
+                    "SELECT * FROM grade_draft WHERE id=?", (int(draft_id),)).fetchone()
+            elif uid:
+                one = conn.execute(
+                    "SELECT * FROM grade_draft WHERE user_id=? AND course=?",
+                    (uid, course)).fetchone()
+            else:
+                raise HTTPException(400, "需提供 draft_id，或 user_id + course，或 all=true")
+            if not one:
+                raise HTTPException(404, "草稿不存在（可先调用 /api/grades/draft/refresh）")
+            drafts = [one]
+        for d in drafts:
+            payload = _draft_payload(d) or {}
+            applied = _apply_draft_to_grades(conn, payload, user)
+            applied["draft_id"] = payload.get("id")
+            applied.setdefault("student_id", payload.get("student_id"))
+            applied["training_score"] = payload.get("training_score")
+            results.append(applied)
+    rejected = sum(1 for r in results if r.get("action") == "rejected")
+    return {"synced": len(results) - rejected, "rejected": rejected, "items": results,
+            "note": "教师正式行仅刷新实训维度（action=training_only），教师分与备注不变；"
+                    "身份与钱包归属不一致的草稿会被拒绝（action=rejected）"}
 
 
 # ===========================================================================

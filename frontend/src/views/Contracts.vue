@@ -29,13 +29,23 @@
             <span class="std-badge custom" v-else>自定义</span>
           </template>
         </el-table-column>
+        <!-- 链上状态：后端按 has_code 实测。本地链实例重置后旧部署记录已无代码，
+             不标注会被误认为「可继续调用」，进而产生在监听器里可见的异常调用。 -->
+        <el-table-column label="链上状态" width="110">
+          <template #default="{ row }">
+            <span v-if="row.live === false" class="dq-tag error" title="当前链实例上已无该合约代码（后端重启会重置 EVM 状态），调用会失败；请到合约 IDE 重新部署">已失效</span>
+            <span v-else class="dq-tag" title="合约代码在当前链上，可正常调用">在链</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="deployer" label="部署者" min-width="180">
           <template #default="{ row }"><span class="dq-mono dim">{{ short(row.deployer) }}</span></template>
         </el-table-column>
         <el-table-column prop="tx_hash" label="交易哈希" min-width="180">
           <template #default="{ row }"><span class="dq-mono dim">{{ short(row.tx_hash) }}</span></template>
         </el-table-column>
-        <el-table-column prop="created_at" label="部署时间" width="170" />
+        <el-table-column label="部署时间" width="170">
+          <template #default="{ row }"><span class="dq-mono dim">{{ fmtDateTime(row.created_at) }}</span></template>
+        </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" @click="$router.push('/interfaces?addr=' + row.address)">接口调试</el-button>
@@ -56,6 +66,7 @@
 <script setup lang="ts">
 import { ref, onActivated, onMounted } from 'vue'
 import { contractApi } from '@/api'
+import { fmtDateTime } from '@/utils/time'
 import EmptyIllustration from '@/components/EmptyIllustration.vue'
 
 const list = ref<any[]>([])

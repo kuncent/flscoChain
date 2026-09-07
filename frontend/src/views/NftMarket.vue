@@ -133,6 +133,13 @@
       </div>
     </div>
 
+    <!-- 绿色资产池：职能口径提示（发行方 / 国库无市场职能） -->
+    <div v-if="filter === 'green' && !canGreenTrade" class="dq-tip" style="margin-top:12px">
+      <span class="dt-label">职能提示:</span>
+      当前钱包身份不具备「二级市场交易」职能（联盟发行节点与能量国库不下场做市），绿色资产仅可浏览；
+      如需购买请切回「我的钱包」（普通用户 · 低碳居民）。自己已挂牌的资产仍可在此下架收回。
+    </div>
+
     <!-- 绿色资产列表（随业务类型子筛选联动） -->
     <div class="grid green-grid" v-if="filter === 'green'" v-loading="loading">
       <div class="dq-card green-card" v-for="g in greenFiltered" :key="g.id">
@@ -154,6 +161,7 @@
           </div>
           <div class="g-meta">
             <span class="dq-tag muted">{{ g.standard }}</span>
+            <span v-if="(g.quantity || 1) > 1" class="dq-tag info">{{ g.quantity }} 份</span>
             <span class="dq-mono dim">ID: {{ g.token_id }}</span>
             <span class="dq-mono dim g-time">{{ formatTime(g.created_at) }}</span>
           </div>
@@ -162,11 +170,12 @@
               v-if="!isMine(g)"
               size="small"
               type="primary"
-              :disabled="greenBalance < g.price_energy"
+              :disabled="!canGreenTrade || greenBalance < g.price_energy"
+              :title="canGreenTrade ? '' : '仅居民（需求方）可在二级市场购买'"
               :loading="buyingId === g.id"
               @click="buyGreen(g)"
             >
-              {{ greenBalance >= g.price_energy ? '购买' : `需 ${g.price_energy} 能量` }}
+              {{ greenBuyText(g) }}
             </el-button>
             <el-button
               v-else
@@ -302,7 +311,9 @@
             <template #default="{ row }"><span class="dq-mono dim">{{ short(row.to_addr) }}</span></template>
           </el-table-column>
           <el-table-column prop="price" label="价格" width="100" />
-          <el-table-column prop="created_at" label="时间" width="170" />
+          <el-table-column label="时间" width="170">
+            <template #default="{ row }"><span class="dq-mono dim">{{ fmtDateTime(row.created_at) }}</span></template>
+          </el-table-column>
         </el-table>
       </div>
     </el-drawer>
@@ -328,12 +339,14 @@
 import { ref, onActivated, onMounted, reactive, computed, watch } from 'vue'
 import { nftApi, ecoApi } from '@/api'
 import { useAppStore } from '@/stores/app'
+import { useWalletStore } from '@/stores/wallets'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Picture, Promotion, User } from '@element-plus/icons-vue'
 import CountUp from '@/components/CountUp.vue'
 import EmptyIllustration from '@/components/EmptyIllustration.vue'
 import TxTimeline from '@/components/TxTimeline.vue'
+import { fmtDateTime, fmtDateTimeBrief, nowText } from '@/utils/time'
 
 const app = useAppStore()
 const route = useRoute()
@@ -350,6 +363,28 @@ const txRecords = ref<any[]>([])  // 本地持久化的交易流水
 const buyingId = ref<number | null>(null)
 const delistingId = ref<number | null>(null)
 const greenBalance = ref(0)  // 当前钱包绿色能量余额（用于购买按钮可用性判断）
+/** 当前钱包的职能能力位（唯一口径 = 后端 /roles/duties，前端不自写角色名单）：
+ *  绿色资产市场的挂牌 / 购买是**居民之间**的二级市场流转，
+ *  联盟发行节点与能量国库不得下场做市（否则发行方既能增发又能回收）。 */
+const caps = ref<string[]>([])
+const canGreenTrade = computed(() => caps.value.includes('market.trade'))
+/** 本页操作钱包：只认顶栏的真实链上地址（未收敛完时回落登录本人地址）。
+ *  不再写死 '0xlearner'：那是密钥库内部别名，既读不到本人资产也会被当成
+ *  一个独立账户建号（资产 / 进度串页）。 */
+const wallets = useWalletStore()
+const opWallet = computed(() => app.currentWallet || wallets.myAddress)
+const loadIdentity = async () => {
+  try {
+    const r: any = await ecoApi.rolesDuties(opWallet.value)
+    caps.value = r?.identity?.capabilities || []
+  } catch { caps.value = [] }
+}
+/** 购买按钮文案：先按职能判定再按余额判定（不给出可点但必 403 的按钮） */
+const greenBuyText = (g: any): string => {
+  if (!canGreenTrade.value) return '仅居民可购买'
+  if (greenBalance.value < g.price_energy) return `需 ${g.price_energy} 能量`
+  return (g.quantity || 1) > 1 ? `购买 ${g.quantity} 份` : '购买'
+}
 /** 两个数据源首次加载完成标记：静默加载时 loading 恒为 false，
  * 必须用它门禁空提示，否则「暂无」插画会在数据返回前闪现 */
 const greenLoaded = ref(false)
@@ -402,8 +437,8 @@ const myOwned = computed(() => {
   const greenOwned = greenList.value.filter(isMine).length
   return nftOwned + greenOwned
 })
-/** 挂牌时间精简展示（去掉年份与秒，如 08-06 10:59） */
-const formatTime = (t?: string) => (t ? t.slice(5, 16) : '')
+/** 挂牌时间精简展示（MM-DD HH:mm，同样走统一工具，避开原始 ISO 串里的 T 与微秒） */
+const formatTime = (t?: string) => fmtDateTimeBrief(t, '')
 
 /** 绿色资产按业务类型子筛选后的在售列表（数据源已含全部在售项，不发额外请求） */
 const greenFiltered = computed(() =>
@@ -441,7 +476,7 @@ const timelineList = computed(() => {
       token: n.title || '未命名',
       gas: '460000',
       tx_hash: `mint_${n.token_id}_${n.contract_address || 'def'}`,
-      time: n.created_at || new Date().toISOString().slice(0, 19).replace('T', ' '),
+      time: n.created_at ? fmtDateTime(n.created_at) : nowText(),
       status: 'ok',
     })
   }
@@ -457,8 +492,8 @@ const timelineList = computed(() => {
       amount: String(isGreen ? t.price_energy : (t.price || '')),
       token: isGreen ? `${t.asset_name} · 能量支付` : `NFT #${t.token_id} · 能量支付`,
       gas: '210000',
-      tx_hash: t.tx_hash || `trade_${t.id}_${t.created_at}`,
-      time: t.created_at || '-',
+      tx_hash: t.tx_hash || `trade_${t.id}`,
+      time: fmtDateTime(t.created_at),
       status: 'ok',
     })
     if (t.tx_hash) seenTx.add(String(t.tx_hash))
@@ -501,13 +536,17 @@ const load = async (silent = false) => {
 /** 加载当前钱包绿色能量余额（购买按钮可用性判断） */
 const loadGreenBalance = async () => {
   try {
-    const r: any = await ecoApi.energyBalance(app.currentWallet || '0xlearner')
+    const r: any = await ecoApi.energyBalance(opWallet.value)
     greenBalance.value = Number(r?.balance ?? r ?? 0)
   } catch { greenBalance.value = 0 }
 }
 
-/** 购买绿色资产：GreenEnergy 转账 + NFT 转移 */
+/** 购买绿色资产：GreenEnergy 转账 + NFT 转移（仅具备市场职能的居民） */
 const buyGreen = async (g: any) => {
+  if (!canGreenTrade.value) {
+    ElMessage.warning('二级市场买卖是居民职能：联盟发行节点与国库账户不参与做市')
+    return
+  }
   if (greenBalance.value < g.price_energy) {
     ElMessage.warning(`绿色能量不足：需要 ${g.price_energy}，当前 ${greenBalance.value}`)
     return
@@ -521,8 +560,8 @@ const buyGreen = async (g: any) => {
   } catch { return }
   buyingId.value = g.id
   try {
-    const r: any = await ecoApi.marketBuy(app.currentWallet || '0xlearner', g.id)
-    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const r: any = await ecoApi.marketBuy(opWallet.value, g.id)
+    const now = nowText()
     txRecords.value.push({
       kind: `绿色资产购买`,
       from: app.currentWallet,
@@ -555,7 +594,7 @@ const delistGreen = async (g: any) => {
   } catch { return }
   delistingId.value = g.id
   try {
-    await ecoApi.marketCancel(g.id, app.currentWallet || '0xlearner')
+    await ecoApi.marketCancel(g.id, opWallet.value)
     ElMessage.success('已下架')
     load(true)
   } catch (e: any) {
@@ -593,7 +632,7 @@ const doMint = async () => {
       title: mintForm.title.trim(),
       description: mintForm.description,
       image_url: mintForm.image_url || null,
-      author: app.currentWallet || '0xlearner',
+      author: opWallet.value,
       price: String(mintForm.price || 0),
       amount,
     })
@@ -615,7 +654,7 @@ const doMint = async () => {
 
 const doBuy = async () => {
   const r: any = await nftApi.buy(buy)
-  const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+  const now = nowText()
   txRecords.value.push({
     kind: '数字 NFT 购买',
     from: buy.buyer,
@@ -646,7 +685,7 @@ const loadAll = () => {
     filter.value = 'nft'
   }
   txRecords.value = loadTxRecords()
-  load(true); loadGreenBalance(); loadServerTrades()
+  load(true); loadGreenBalance(); loadServerTrades(); loadIdentity()
   // 交易时间线需要数字 NFT 铸造记录作为数据源：当前选项卡为绿色资产时额外懒加载一次（静默）
   if (filter.value === 'green' && !list.value.length) {
     nftApi.list('')

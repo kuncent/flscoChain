@@ -400,7 +400,9 @@ def check_wallet_whitelist(ctx: dict) -> tuple:
     通过条件（任一）：
     1. keystore.has_account 已注册（链上已有账户）；
     2. 与当前登录身份钱包一致（新学生钱包首次使用时惰性注册，不能误拦）；
-    3. 内置演示别名（DEMO_ALIASES）。
+    3. 内置演示别名（DEMO_ALIASES）；
+    4. **真实链上地址**能反查到密钥库已注册账户（资产口径地址化后，前端提交
+       的就是地址；若只比别名，切到机构钱包部署会被 L3 误拦）。
     """
     p = ctx.get("payload") or {}
     uc = ctx.get("user_ctx") or {}
@@ -411,10 +413,17 @@ def check_wallet_whitelist(ctx: dict) -> tuple:
         from .keystore import DEMO_ALIASES, has_account
     except Exception:
         return True, "keystore 模块不可用，白名单校验降级放行"
-    if w == (uc.get("wallet") or ""):
+    from .wallet_id import alias_of, is_address, to_address
+    wl = w.lower()
+    own = str(uc.get("wallet") or "")
+    if w == own or (is_address(wl) and wl == to_address(own).lower()):
         return True, f"钱包 {w} 为当前登录身份钱包（白名单通过）"
     if w in DEMO_ALIASES or has_account(w):
         return True, f"钱包 {w} 在白名单（演示别名 / keystore 已注册）"
+    if is_address(wl):
+        al = alias_of(wl)
+        if al and has_account(al):
+            return True, f"钱包 {w} 在白名单（密钥库账户 {al} 的真实地址）"
     return False, f"钱包 {w} 不在白名单（keystore 未注册且非当前身份）"
 
 

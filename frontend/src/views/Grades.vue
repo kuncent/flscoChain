@@ -27,6 +27,17 @@
       </div>
     </section>
 
+    <!-- 班级 / 名单口径提示（P0-1：看板“恒空”的真话在这里说清 + 自助绑定入口） -->
+    <section class="dq-card scope-card" v-if="scopeHint">
+      <div class="sc-body">
+        <span class="dq-tag warn">{{ scopeHint }}</span>
+        <span class="sc-src" v-if="scope">班级来源：{{ classSourceLabel }}
+          · 名单来源：{{ scope.roster_source === 'user_info' ? '花名册' : (scope.roster_source === 'grade_book' ? '成绩册派生' : '暂无') }}
+          · {{ scope.roster_count ?? 0 }} 人</span>
+      </div>
+      <el-button size="small" type="primary" plain @click="openBind">绑定任教班级</el-button>
+    </section>
+
     <!-- 闭环说明 -->
     <section class="dq-card loop-card">
       <div class="loop-flow">
@@ -115,6 +126,49 @@
       </el-table>
     </section>
 
+    <!-- 系统实训草稿（P1-25：草稿不自动进成绩册，必须教师显式同步） -->
+    <section class="dq-card draft-card">
+      <div class="dq-card-title">
+        系统实训草稿
+        <span class="dq-tag info">{{ drafts.length }} 条待同步</span>
+        <span class="dq-tag muted" v-if="dupRows">成绩册重复行 {{ dupRows }} 条（已按主体去重）</span>
+      </div>
+      <div class="dc-note">
+        {{ drafts.length ? '同步后才进入成绩册；已有教师正式行的只刷新实训维度，教师分与备注不会被改写。' : '暂无待同步草稿（学生未刷草稿或本班无学生）。' }}
+        <span class="dc-unbound" v-if="draftsUnbound">{{ draftsHint }}</span>
+      </div>
+      <el-table :data="drafts" v-loading="draftsLoading" stripe size="small" empty-text="暂无待同步草稿">
+        <el-table-column type="index" label="#" width="48" />
+        <el-table-column prop="student_id" label="学号" min-width="110" />
+        <el-table-column prop="student_name" label="姓名" min-width="90" />
+        <el-table-column prop="class_id" label="班级" width="90" />
+        <el-table-column label="实训草稿分" width="110" align="center">
+          <template #default="{ row }">
+            <span class="score-cell training" :class="scoreClass(row.training_score)">{{ fmtScore(row.training_score) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="目标行" width="130">
+          <template #default="{ row }">
+            <span class="dq-tag" :class="targetTag(row.target_row_kind).cls">{{ targetTag(row.target_row_kind).text }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="updated_at" label="更新时间" min-width="170">
+          <template #default="{ row }">{{ fmt(row.updated_at) }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="110" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" size="small"
+                       :loading="applyingId === row.id" @click="onApplyDraft(row)">同步为成绩</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div class="dc-foot" v-if="drafts.length">
+        <el-button type="success" plain size="small" :loading="applyingAll" @click="onApplyAll">
+          全部同步为本班成绩
+        </el-button>
+      </div>
+    </section>
+
     <!-- 筛选 -->
     <section class="dq-card filter-card">
       <el-form :inline="true" size="small" :model="filter">
@@ -194,7 +248,7 @@
         <el-table-column prop="class_id" label="班级" width="100" />
         <el-table-column prop="teacher_name" label="录入教师" min-width="90" />
         <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip />
-        <el-table-column prop="updated_at" label="更新时间" min-width="150">
+        <el-table-column prop="updated_at" label="更新时间" min-width="170">
           <template #default="{ row }">{{ fmt(row.updated_at) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
@@ -247,14 +301,28 @@
         <el-button type="primary" :loading="dlg.saving" @click="onSave">保存</el-button>
       </template>
     </el-dialog>
+    <!-- 绑定任教班级（P0-1：SSO 不给教师返班级时的显式入口） -->
+    <el-dialog v-model="bindDlg.visible" title="绑定任教班级" width="440px" align-center>
+      <el-form label-width="80px" size="default">
+        <el-form-item label="班级 ID">
+          <el-input v-model="bindDlg.class_id" placeholder="如 c1 / 2024 级 1 班" @keyup.enter="onBindClass" />
+        </el-form-item>
+      </el-form>
+      <div class="bd-tip">外部 SSO 不返班级时在这里定一次；班级学生、搭链进度、成绩册三块看板都以它为准。</div>
+      <template #footer>
+        <el-button @click="bindDlg.visible = false">取消</el-button>
+        <el-button type="primary" :loading="bindDlg.saving" @click="onBindClass">保存绑定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Refresh, Search, InfoFilled } from '@element-plus/icons-vue'
 import { gradesApi, chainApi, authApi } from '@/api'
+import { fmtDateTime } from '@/utils/time'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -263,6 +331,110 @@ const loading = ref(false)
 const refreshing = ref(false)
 const rows = ref<any[]>([])
 const stats = ref<any[]>([])
+const dupRows = ref(0)
+
+/* ---------- 班级 / 花名册口径自检（P0-1） ---------- */
+const scope = ref<any>(null)
+const bindDlg = reactive({ visible: false, class_id: '', saving: false })
+const CLASS_SOURCE_TEXT: Record<string, string> = {
+  bind: '显式绑定', user_info: '登录信息', jwt: '登录载荷', grade_book: '成绩册派生',
+  all: '管理员（全校）', class_unbound: '未解析到',
+}
+const classSourceLabel = computed(() => CLASS_SOURCE_TEXT[String(scope.value?.class_source || '')] || (scope.value?.class_source || '—'))
+const scopeHint = computed(() => {
+  const s = scope.value
+  if (!s) return ''
+  if (s.class_unbound) return s.hint || '未解析到所属班级，看板只能看到你本人录入的行'
+  if (s.roster_source === 'grade_book') {
+    return '花名册（user_info）里还没有学生记录，当前名单由成绩册派生，不代表全班人数'
+  }
+  if (s.roster_source === 'empty') return '该班级暂无任何学生记录（花名册与成绩册都为空）'
+  if (s.user_info_registered === false) return '本账号登录信息未落库（user_info 无记录），班级口径可能不准，建议绑定任教班级'
+  return ''
+})
+async function loadScope() {
+  try {
+    scope.value = await authApi.rosterStatus()
+    if (scope.value?.class_id && !filter.class_id) filter.class_id = String(scope.value.class_id)
+  } catch {
+    scope.value = null   // 自检失败不阻断成绩主流程
+  }
+}
+function openBind() {
+  bindDlg.class_id = String(scope.value?.class_id || filter.class_id || '')
+  bindDlg.visible = true
+}
+async function onBindClass() {
+  const cid = bindDlg.class_id.trim()
+  if (!cid) {
+    ElMessage.warning('班级 ID 不能为空（“0”不是班级）')
+    return
+  }
+  bindDlg.saving = true
+  try {
+    const res: any = await authApi.bindClass({ class_id: cid })
+    ElMessage.success(`已绑定班级：${res?.class_id || cid}`)
+    bindDlg.visible = false
+    filter.class_id = String(res?.class_id || cid)
+    await Promise.all([loadScope(), loadAll(), loadDrafts(), loadChainProgress()])
+  } finally {
+    bindDlg.saving = false
+  }
+}
+
+/* ---------- 系统草稿与显式同步（P1-25） ---------- */
+const drafts = ref<any[]>([])
+const draftsLoading = ref(false)
+const draftsHint = ref('')
+const draftsUnbound = ref(false)
+const applyingId = ref<number | null>(null)
+const applyingAll = ref(false)
+async function loadDrafts() {
+  draftsLoading.value = true
+  try {
+    const res: any = await gradesApi.drafts(filter.class_id ? { class_id: filter.class_id } : {})
+    drafts.value = res?.items || []
+    draftsUnbound.value = !!res?.class_unbound
+    draftsHint.value = res?.hint || ''
+  } catch {
+    drafts.value = []   // 草稿列表失败不影响成绩主列表
+  } finally {
+    draftsLoading.value = false
+  }
+}
+function targetTag(kind: string): { text: string; cls: string } {
+  if (kind === 'teacher') return { text: '教师行·只刷实训', cls: '' }
+  if (kind === 'system') return { text: '系统行·将接管', cls: 'warn' }
+  return { text: '新建行', cls: 'muted' }
+}
+async function onApplyDraft(row: any) {
+  applyingId.value = row.id
+  try {
+    const res: any = await gradesApi.draftApply({ draft_id: row.id })
+    const it = res?.items?.[0]
+    ElMessage.success(it?.reason || `已同步：${it?.action || 'ok'}（综合 ${fmtScore(it?.final_score)}）`)
+    await Promise.all([loadAll(), loadDrafts()])
+  } finally {
+    applyingId.value = null
+  }
+}
+async function onApplyAll() {
+  try {
+    await ElMessageBox.confirm(
+      `确认把本班 ${drafts.value.length} 条系统草稿同步为正式成绩？教师已评分的行只会刷新实训维度。`,
+      '批量同步草稿',
+      { type: 'warning', confirmButtonText: '全部同步', cancelButtonText: '取消' }
+    )
+  } catch { return }
+  applyingAll.value = true
+  try {
+    const res: any = await gradesApi.draftApply({ all: true, class_id: filter.class_id || undefined })
+    ElMessage.success(`已同步 ${res?.synced ?? 0} 条草稿`)
+    await Promise.all([loadAll(), loadDrafts()])
+  } finally {
+    applyingAll.value = false
+  }
+}
 
 /* ---------- 搭链进度 · 班级看板（chain_tutorial_progress 聚合） ---------- */
 const chainProgress = ref<any>(null)
@@ -310,6 +482,9 @@ async function loadAll() {
     ])
     rows.value = listRes?.items || []
     stats.value = statsRes?.items || []
+    dupRows.value = Number(statsRes?.duplicate_rows ?? 0)
+    // 后端未绑班级时会回退为“只看自己录入的行”，此处沿用其班级口径
+    if (!filter.class_id && listRes?.class_id) filter.class_id = String(listRes.class_id)
   } finally {
     loading.value = false
   }
@@ -323,12 +498,14 @@ function resetFilter() {
   loadAll()
 }
 
-/* ---------- 实训明细转可读结构 ---------- */
+/* ---------- 实训明细转可读结构 ----------
+   指标名必须全部覆盖：没登在这里的 key 会在 popover 里直接露出英文下划线名
+   （曾漏 tutorial_done / energy_issue / eco_market_trade，教师看到半中半英的明细无法解读）。 */
 const _DETAIL_META: Record<string, { name: string; metrics: Record<string, string> }> = {
-  chain_setup:  { name: '链搭建',     metrics: { ide_open_builtin: '打开内置合约', ide_save_project: '保存工程' } },
+  chain_setup:  { name: '链搭建',     metrics: { ide_open_builtin: '打开内置合约', ide_save_project: '保存工程', tutorial_done: '搭链步骤完成' } },
   contract_dev: { name: '合约开发',   metrics: { contract_compile_ok: '编译成功', deployed_contracts: '已部署合约' } },
   chain_verify: { name: '链上验证',   metrics: { interface_invoke: '接口调用', contract_calls: '合约调用', transactions: '链上交易' } },
-  alliance_gov: { name: '联盟治理',   metrics: { eco_role_switch: '角色切换', nft_mint: 'NFT 铸造', nft_trade: 'NFT 交易', erc20_transfer: 'ERC20 转账', report_view: '报告查看' } },
+  alliance_gov: { name: '联盟治理',   metrics: { eco_role_switch: '角色切换', energy_issue: '能量发放', nft_mint: 'NFT 铸造', nft_trade: 'NFT 交易', eco_market_trade: '绿色市场成交', erc20_transfer: 'ERC20 转账', report_view: '报告查看' } },
 }
 function detailRows(detail: any) {
   if (!detail || typeof detail !== 'object') return []
@@ -491,19 +668,14 @@ function fmtScore(s: any): string {
   return Number(s).toFixed(1)
 }
 function fmt(ts: any): string {
-  if (!ts) return '—'
-  try {
-    const d = new Date(ts.endsWith('Z') ? ts : ts.replace(' ', 'T'))
-    if (isNaN(d.getTime())) return String(ts)
-    const p = (n: number) => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
-  } catch {
-    return String(ts)
-  }
+  // 后端写的是 UTC naive ISO（utcnow().isoformat()），统一交给共享工具换算成本地时间
+  return ts ? fmtDateTime(ts, '—') : '—'
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await loadScope()      // 先定班级口径，再拉列表/草稿（看板的班级范围依赖它）
   loadAll()
+  loadDrafts()
   loadChainProgress()
 })
 </script>
@@ -606,6 +778,34 @@ onMounted(() => {
   border: 1px solid rgba(255, 207, 77, 0.25);
   padding: 2px 8px; border-radius: 4px;
 }
+
+/* ---------- 班级 / 名单口径提示（P0-1） ---------- */
+.scope-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 18px;
+  border-color: rgba(255, 207, 77, 0.28);
+  background:
+    linear-gradient(135deg, rgba(255,207,77,0.07) 0%, rgba(255,207,77,0.02) 100%),
+    var(--dq-grad-panel);
+  .sc-body { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+  .sc-src { font-size: 11px; color: var(--dq-text-dimmer); }
+  :deep(.el-button) { flex-shrink: 0; }
+}
+
+/* ---------- 系统实训草稿（P1-25） ---------- */
+.draft-card { padding: 16px 18px; }
+.dc-note {
+  margin: 4px 0 10px; font-size: 12px; color: var(--dq-text-dimmer); line-height: 1.7;
+  .dc-unbound {
+    display: inline-block; margin-left: 6px;
+    color: var(--dq-warn);
+    background: rgba(255, 207, 77, 0.08);
+    border: 1px solid rgba(255, 207, 77, 0.25);
+    padding: 1px 8px; border-radius: 4px;
+  }
+}
+.dc-foot { margin-top: 10px; display: flex; justify-content: flex-end; }
+.bd-tip { margin: 6px 0 2px; font-size: 12px; color: var(--dq-text-dimmer); line-height: 1.7; }
 
 .filter-card { padding: 14px 18px 0; }
 .filter-card :deep(.el-form-item) { margin-bottom: 14px; }

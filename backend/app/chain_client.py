@@ -36,6 +36,7 @@ from rlp.sedes import Binary, List as RlpList, big_endian_int
 
 from .config import settings
 from . import keystore as ks
+from . import wallet_id as wid
 from .db import get_conn
 # 任务 #21：出块/部署成功点发事件（publish 内部经 call_soon_threadsafe 线程安全，永不抛异常）
 from . import events_bus
@@ -45,6 +46,8 @@ GAS_LIMIT = 8_000_000
 
 # 任务 #20：内存交易列表上限（有界 deque，防长期运行内存无限增长）
 _TX_MEM_MAX = 1000
+# P0-3：多地址并集查询的口径上限（候选集理论上 ≤ 6 个，封顶防参数爆炸）
+_ADDR_QUERY_MAX = 8
 # 任务 #20：同步交易等待出块的汇聚窗口（秒）：窗口内并发到齐的交易合并进同一块。
 # 窗口过后仍未出块则主动 flush，保证单笔交易最坏延迟可控。
 _AGGREGATE_WINDOW_CAP = 0.4
@@ -99,6 +102,33 @@ class ChainClient:
     def get_tx(self, tx_hash: str) -> Optional[Transaction]: ...
     def list_txs(self, limit: int = 50, offset: int = 0) -> List[Transaction]: ...
     def list_txs_by_address(self, addr: str, limit: Optional[int] = None, offset: int = 0) -> List[Transaction]: ...
+    def list_txs_by_addresses(self, addrs: List[str], limit: Optional[int] = None,
+                              offset: int = 0) -> List[Transaction]:
+        """多地址并集查询（P0-3：报告链上交易按钱包候选集取数）。
+
+        一人一钱包上线前后，同一学生的事务可能分散在 userId / stu: 别名 / 密钥库
+        真实地址 / 已认领的历史演示钱包多个口径下，单地址查询会恒 0 或系统性少算。
+        本方法在基础接口上统一实现（三种链后端均适用）：逐个地址调
+        list_txs_by_address 后按 hash 去重、按时间降序归并，再应用分页。
+
+        分页正确性：任一地址的新近 limit 条并集必然包含全局新近 limit 条的
+        全部候选（每条交易至少在它命中的那个地址的结果集内），因此结果与
+        「一次 SQL IN 查询」同序同集（非 0 地址候选自然为空集，不影响结果）。
+        """
+        seen: dict[str, Transaction] = {}
+        for a in [x for x in (addrs or []) if (x or "").strip()][:_ADDR_QUERY_MAX]:
+            try:
+                part = self.list_txs_by_address(a, limit=limit, offset=0) or []
+            except Exception:
+                part = []  # 单个口径查询失败（地址非法等）不影响其余口径
+            for t in part:
+                key = (t.hash or "").lower()
+                if key and key not in seen:
+                    seen[key] = t
+        merged = sorted(seen.values(), key=lambda x: (x.timestamp, x.block_number), reverse=True)
+        start = int(offset or 0)
+        return merged[start:] if limit is None else merged[start:start + int(limit)]
+
     def deploy_contract(self, name, abi, bytecode, source, deployer, standard=None, ctor_args=None) -> Dict: ...
     def call_contract(self, address, method, args, caller, abi) -> Dict: ...
     def send_tx(self, from_addr, to_addr, value, data="") -> Dict: ...
@@ -427,10 +457,27 @@ class RealEvmChainClient(ChainClient):
         if a in self._alias_to_addr:
             return self._alias_to_addr[a]
         # 已是真实地址（42 位 0x 开头）：直接返回，含创世账户与合约地址
-        if a.startswith("0x") and len(a) == 42:
+        if wid.is_address(a):
+            # 但私钥/账户可能还没注册（进程重启后仅预热了 DEMO_ALIASES）：
+            # 资产钱包现在统一以真实地址落库与发起调用，若此处不回填，
+            # eth-tester 会因为「账户未 add_account」直接拒签，mint/transfer 全崩。
+            self._ensure_address_account(a)
             return a
         # 未知别名：生成/读取专属独立账户（持久化到密钥库）
         return self._ensure_alias_account(a)
+
+    def _ensure_address_account(self, addr: str) -> str:
+        """按真实地址反查其别名并在本实例补齐私钥注册（幂等，找不到就原样返回）。"""
+        a = (addr or "").strip().lower()
+        if not a or a in self._acct_keys:
+            return a
+        alias = wid.alias_of(a)
+        if alias and not wid.is_address(alias):
+            try:
+                return self._ensure_alias_account(alias)
+            except Exception:
+                return a
+        return a
 
     # ---------- 代码检查 ----------
     def has_code(self, address: str) -> bool:
@@ -758,14 +805,21 @@ class RealEvmChainClient(ChainClient):
             receipt["transaction_hash"], block_number, sender, addr, "0", calldata, receipt,
             method=method, parsed_args=parsed, output=_hex(receipt.get("output", "")),
         )
-        return {
-            "ok": True, "readonly": False,
+        # 回执 status=0 表示合约 revert：链上状态未改变，绝不能当作成功返回
+        # （否则上层会把「没发生的发行/转账」记进业务账本，账链必然对不上）
+        ok = int(receipt.get("status", 1) or 0) == 1
+        out = {
+            "ok": ok, "readonly": False,
             "tx_hash": _hex(receipt["transaction_hash"]), "block_number": block_number,
             "gas_used": int(receipt.get("gas_used", 0)),
-            "status": "success" if int(receipt.get("status", 1)) == 1 else "reverted",
-            "result": "tx success", "logs": tx_obj.logs,
+            "status": "success" if ok else "reverted",
+            "result": "tx success" if ok else "",
+            "logs": tx_obj.logs,
             "method": method, "args": args,
         }
+        if not ok:
+            out["error"] = "链上交易被合约拒绝（revert），状态未变更——通常是调用方无该操作的链上权限或余额不足"
+        return out
 
     # ---------- 转账 ----------
     def send_tx(self, from_addr, to_addr, value, data=""):
@@ -1212,7 +1266,14 @@ class FiscoRpcClient(ChainClient):
         a = alias.strip().lower()
         if a in self._alias_to_addr:
             return self._alias_to_addr[a]
-        if a.startswith("0x") and len(a) == 42:
+        if wid.is_address(a):
+            # 真实地址入口（资产台账统一口径）：补齐 地址→私钥 映射，否则签名处
+            # self._acct_keys.get(from_addr) 取不到私钥会抛「未知账户，无对应私钥」。
+            alias2 = wid.alias_of(a)
+            if alias2 and not wid.is_address(alias2) and alias2 not in self._alias_to_addr:
+                addr, pk = ks.get_or_create_account(alias2)
+                self._alias_to_addr[alias2] = addr
+                self._acct_keys[addr] = pk
             return a
         # 未知别名：从密钥库生成/读取其专属独立账户（持久化），杜绝共享账户串扰
         addr, pk = ks.get_or_create_account(a)
@@ -1446,14 +1507,19 @@ class FiscoRpcClient(ChainClient):
                     method=method, parsed_args={"method": method, "args": args},
                     output=receipt.get("output", ""),
                 )
-                return {
-                    "ok": True, "readonly": False, "tx_hash": tx_hash,
+                st_ok = int(receipt.get("status", "0x1"), 16) == 1
+                out = {
+                    "ok": st_ok, "readonly": False, "tx_hash": tx_hash,
                     "block_number": block_number,
                     "gas_used": int(receipt.get("gasUsed", "0x0"), 16),
-                    "status": "success" if int(receipt.get("status", "0x1"), 16) == 1 else "reverted",
-                    "result": "tx success", "logs": tx_obj.logs,
+                    "status": "success" if st_ok else "reverted",
+                    "result": "tx success" if st_ok else "",
+                    "logs": tx_obj.logs,
                     "method": method, "args": args,
                 }
+                if not st_ok:
+                    out["error"] = "链上交易被合约拒绝（revert），状态未变更——通常是调用方无该操作的链上权限或余额不足"
+                return out
             except Exception as e:
                 raise RuntimeError(f"FISCO 调用失败: {e}") from e
 

@@ -86,7 +86,10 @@ http.interceptors.request.use((config) => {
       config.headers['X-User-Name'] = encodeURIComponent(user.name || user.username || '')
       config.headers['X-Role-Id'] = String(user.roleId ?? '')
       config.headers['X-Class-Id'] = String(user.classId ?? '')
-      config.headers['X-Wallet'] = user.userId || localStorage.getItem('wallet') || '0xlearner'
+      // 钱包头只带**真实链上地址**（顶栏当前操作钱包 → 登录下发的本人地址），
+      // userId 仅作最后兜底；不再写死 0xlearner（公共演示别名，会串账号）
+      config.headers['X-Wallet'] =
+        localStorage.getItem('wallet') || user.wallet || user.userId || ''
     }
   }
   return config

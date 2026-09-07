@@ -48,7 +48,9 @@
             <el-table-column prop="status" label="状态" width="100">
               <template #default="{ row }"><span class="dq-tag">{{ row.status }}</span></template>
             </el-table-column>
-            <el-table-column prop="created_at" label="时间" width="170" />
+            <el-table-column label="时间" width="170">
+              <template #default="{ row }"><span class="dq-mono dim">{{ fmtDateTime(row.created_at) }}</span></template>
+            </el-table-column>
           </el-table>
           <EmptyIllustration
             v-else
@@ -119,7 +121,9 @@
             <el-table-column prop="status" label="状态" width="100">
               <template #default="{ row }"><span class="abn-tag">{{ row.status }}</span></template>
             </el-table-column>
-            <el-table-column prop="created_at" label="时间" width="170" />
+            <el-table-column label="时间" width="170">
+              <template #default="{ row }"><span class="dq-mono dim">{{ fmtDateTime(row.created_at) }}</span></template>
+            </el-table-column>
           </el-table>
           <div v-else class="empty-tip">暂无异常调用，链上运行健康</div>
         </div>
@@ -255,6 +259,7 @@ import { PieChart } from 'echarts/charts'
 import { LegendComponent, TooltipComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
 import { contractApi, monitorApi, ecoApi, sandboxApi } from '@/api'
+import { fmtDateTime } from '@/utils/time'
 // 任务 #21：SSE 推送触发刷新（与既有拉取逻辑叠加，不替换）
 import { onBusEvent } from '@/api/events'
 import { useAuthStore } from '@/stores/auth'

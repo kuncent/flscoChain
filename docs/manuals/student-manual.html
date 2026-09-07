@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>区块链联盟链实训平台 · 学生使用手册</title>
+<link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<section class="page cover">
+  <div class="cover-inner">
+    <div class="brand">FISCO CHAIN · TRAINING PLATFORM</div>
+    <h1>学生使用手册<br><span style="color:#00e6c3">从零完成绿色低碳联盟链实训</span></h1>
+    <div class="sub">搭链 · 合约开发 · 联盟治理 · 链上验证 · 实训报告拿高分</div>
+    <div class="glow">适用角色：实训学生（roleId = 4）</div>
+    <div class="meta" style="margin-top:16mm">
+      <div><b>FISCOChain 联盟链实训平台</b>产品版本 · 当前部署环境（EVM 真实链）</div>
+      <div><b>学生使用手册 v1.0</b>编写依据 · 真机实操体验 + 服务端评分逻辑核对</div>
+      <div><b>完成目标</b>独立走完 4 阶段 10 步实训，生成并导出实训报告</div>
+      <div><b>评分口径</b>报告九维 A~I（100 分）+ 成绩册四维（实训 60% / 教师 40%）</div>
+    </div>
+    <p class="small muted" style="margin-top:12mm">
+      本手册中的每一个分值、每一条按钮路径，均按平台当前实现核对；文中标注 <span class="tag tag--w">已知问题</span> 的部分，
+      对应《产品与逻辑问题建议清单》中的编号，供你判断"分数为什么和预期不一样"。
+    </p>
+  </div>
+</section><section class="page"><div class="hdr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>HOW TO USE THIS MANUAL</span></div><div class="kicker">READ FIRST</div><h2>怎么用这本手册</h2><div class="grid3">
+    <div class="card"><h4>10 分钟上手</h4><p class="small">读第 <b>02</b>、<b>03</b> 章：会登录、认得界面、知道实训主线要做什么。</p></div>
+    <div class="card"><h4>完成整份实训</h4><p class="small">按第 <b>04 → 09</b> 章顺序操作，每章末尾都有"验收点"，做完就能在报告里看到对应分数。</p></div>
+    <div class="card"><h4>把分数拉满</h4><p class="small">直接看第 <b>10</b> 章高分攻略：按"性价比"排序的冲刺清单 + 常见失分点。</p></div>
+  </div><h2>目录</h2><ul class="toc">
+    <li><span class="no">01</span><span class="tt">平台认知：你在实训什么</span><span class="pg">能力地图 · 三件套身份</span></li>
+    <li><span class="no">02</span><span class="tt">快速开始：登录与界面</span><span class="pg">SSO 登录 · 导航 · 顶栏</span></li>
+    <li><span class="no">03</span><span class="tt">实训主线总览（L1 → L9）</span><span class="pg">推荐顺序 · 每步对应分值</span></li>
+    <li><span class="no">04</span><span class="tt">阶段一 · 云桌面搭链 10 步</span><span class="pg">命令速查表 · 验收 · 探索加分</span></li>
+    <li><span class="no">05</span><span class="tt">阶段二 · 合约 IDE / 合约管理 / 接口调试</span><span class="pg">A 项 · H 项 · I 项</span></li>
+    <li><span class="no">06</span><span class="tt">阶段二 · ERC20 钱包与 NFT 市场</span><span class="pg">B 项 · C 项</span></li>
+    <li><span class="no">07</span><span class="tt">阶段三 · 绿色低碳联盟链实战</span><span class="pg">E 项 · F 项 · G 项</span></li>
+    <li><span class="no">08</span><span class="tt">阶段四 · 链上验证与证据留存</span><span class="pg">监听器 · 区块链浏览器</span></li>
+    <li><span class="no">09</span><span class="tt">生成并导出实训报告</span><span class="pg">九维评分表 · 扣分 · 等级</span></li>
+    <li><span class="no">10</span><span class="tt">高分攻略与冲刺清单</span><span class="pg">性价比排序 · 失分点</span></li>
+    <li><span class="no">11</span><span class="tt">成绩构成与教师评分闭环</span><span class="pg">60% + 40% 怎么算</span></li>
+    <li><span class="no">12</span><span class="tt">成就中心 · 常见问题 · 术语表</span><span class="pg">FAQ 与故障排查</span></li>
+  </ul><div class="note note--warn">
+    <span class="t">开工前先确认三件事</span>
+    ① 你拿到的是<b>学生账号</b>（实训 SSO 下发的学号形如 <code>19898800030</code>），不是教师账号；② 能打开平台地址并看到登录页；
+    ③ 登录后顶栏"链状态"显示 <b>链运行中</b>。任何一项不满足，请先看第 12 章 FAQ，不要硬做。
+  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>02 / 36</span></div></section><section class="page"><div class="hdr"><span>第 01 章 · 平台认知</span><span>CHAPTER 01 · ORIENTATION</span></div><div class="kicker">CHAPTER 01</div><h2>你在实训什么：一条"绿色低碳联盟链"的完整生命周期</h2><p class="lead">这不是模拟沙盘。你敲的命令、部署的合约、发放的能量，都会真实写进一条链（EVM 或 FISCO-BCOS 联盟链），
+  并在<b>实训报告</b>里被服务端按真实行为数据重新计算。所以"做完"和"做对"都会被记录，"假装做"不会被认可。</p><h3><span class="num">1.1</span>业务故事：能量从哪来、到哪去</h3><div class="flow">
+    <div class="n"><b>STEP 01</b>联盟搭链<br>4 节点 PBFT<br>6 组织接入</div>
+    <div class="n"><b>STEP 02</b>合约上线<br>能量 / 证书<br>勋章三合约</div>
+    <div class="n"><b>STEP 03</b>发放能量<br>地铁公交单车<br>外卖回收</div>
+    <div class="n"><b>STEP 04</b>兑换资产<br>植树证书<br>勋章 / 骑行券</div>
+    <div class="n"><b>STEP 05</b>市场流通<br>挂牌出售<br>能量结算</div>
+    <div class="n"><b>STEP 06</b>链上验证<br>交易 / 区块<br>报告交付</div>
+  </div><p>三份生态合约就是这条业务链的"法律"：<span class="tag tag--p">GreenEnergy · ERC20</span>绿色能量代币，由联盟节点发行；
+  <span class="tag tag--p">PlantCertificate · ERC721</span>植树证书，每份唯一、不可复制；
+  <span class="tag tag--p">EcoBadge · ERC1155</span>生态勋章与骑行券，可批量铸造与流转。
+  兑换资产消耗的能量会回收到管理员国库并销毁，形成"发放 → 累积 → 兑换 → 流通 → 回收"的闭环。</p><h3><span class="num">1.2</span>能力地图：4 阶段 10 步</h3><table>
+    <thead><tr><th style="width:20mm">阶段</th><th>你要做的事</th><th style="width:46mm">主要平台模块</th><th class="c" style="width:26mm">对应报告分</th></tr></thead>
+    <tbody>
+      <tr><td><b>阶段 1</b><br><span class="small muted">链底层搭建</span></td><td>用官方脚本生成 4 节点联盟链、核验证书与端口、接入控制台、部署能量代币</td><td>云桌面 · 搭链教程（10 步）</td><td class="c">D 10 分</td></tr>
+      <tr><td><b>阶段 2</b><br><span class="small muted">业务合约开发</span></td><td>阅读内置合约源码 → 编译 → 部署 ERC20/ERC721/ERC1155 → 调用接口 → 转账</td><td>合约 IDE · 合约管理 · 接口调试 · 能量钱包</td><td class="c">A 20 · B 15<br>H 5 · I 5</td></tr>
+      <tr><td><b>阶段 3</b><br><span class="small muted">联盟治理与运营</span></td><td>切换 6 个联盟角色发放能量，兑换证书/勋章/骑行券，并在绿色资产市场挂牌成交</td><td>绿色低碳联盟链 · 绿色资产市场</td><td class="c">C 10 · E 10<br>F 10 · G 15</td></tr>
+      <tr><td><b>阶段 4</b><br><span class="small muted">链上验证</span></td><td>用监听器和区块链浏览器回看自己的每一笔调用，确认链上真实生效</td><td>调用监听器 · 区块链浏览器</td><td class="c">证据留存<br>（计入 B / D）</td></tr>
+    </tbody>
+  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>03 / 36</span></div></section><section class="page"><div class="hdr"><span>第 01 章 · 平台认知</span><span>CHAPTER 01 · ORIENTATION</span></div><h3><span class="num">1.3</span>三件套身份：账号、操作钱包、联盟角色</h3><div class="grid3">
+    <div class="card"><h4>① 登录账号</h4><p class="small">SSO 学生账号（你的学号，如 <code>19898800030</code>）。决定你能看到哪些菜单、你的成绩归属。</p></div>
+    <div class="card"><h4>② 当前操作钱包</h4><p class="small">顶栏"当前操作钱包"。登录后默认切到<b>你的专属钱包</b>（形如 <code>stu:&lt;你的ID&gt;</code>）。你写的每一条链上数据都挂在它下面。</p></div>
+    <div class="card"><h4>③ 联盟角色</h4><p class="small">在"绿色低碳联盟链"页选择：管理员 / 地铁 / 公交 / 单车 / 外卖 / 回收。角色 = <b>能量发行权</b>，与钱包是两回事。</p></div>
+  </div><h3><span class="num">1.4</span>你在哪个页面做的事，会被记进哪一项分</h3><table>
+    <thead><tr><th style="width:34mm">你操作的页面</th><th style="width:44mm">平台会记下的数据</th><th class="c" style="width:22mm">报告评分项</th><th class="c">分值</th></tr></thead>
+    <tbody>
+      <tr><td>云桌面 · 搭链 10 步</td><td>步骤完成标记、终端命令记录</td><td class="c mono">D</td><td class="c"><b>10</b></td></tr>
+      <tr><td>合约 IDE</td><td>编译通过的合约（含标准模板与自写）</td><td class="c mono">A / I</td><td class="c"><b>20 + 3</b></td></tr>
+      <tr><td>接口调试</td><td>函数调用与交易哈希</td><td class="c mono">H / I</td><td class="c"><b>5 + 2</b></td></tr>
+      <tr><td>我的钱包 / NFT 市场</td><td>你本人钱包发起的转账、铸造、成交</td><td class="c mono">B / C</td><td class="c"><b>15 + 10</b></td></tr>
+      <tr><td>绿色低碳联盟链</td><td>角色使用、能量发行、兑换与购卖</td><td class="c mono">E / F / G</td><td class="c"><b>10 + 10 + 15</b></td></tr>
+      <tr><td>监听器 / 区块链浏览器</td><td>链上回执与事件监听记录</td><td class="c mono">验证加分</td><td class="c">证据留存</td></tr>
+    </tbody>
+  </table><div class="note note--bad">
+    <span class="t">最容易踩的坑：换了钱包，数据就"分家"了</span>
+    平台按<b>当前操作钱包</b>记录行为。如果你在实训中途把顶栏钱包切到 <code>0xadmin</code> 或同学的钱包，
+    之后产生的合约、能量、交易就<b>不再计入你自己的报告</b>。整份实训请<b>始终使用"我的钱包"</b>；
+    需要联盟角色权限时，用"选择角色"而不是"切换钱包"。当前版本已把“你的数据”收口为<b>钱包候选集并集</b>
+    （真实地址 / 用户 ID / <code>stu:</code> 别名 / 学号，见 7.3 说明），不会再出现"做了不加分"；
+    但<b>换了钱包就换了一个业务主体</b>这件事依旧成立（建议清单 <b>P0-2</b> 的设计部分）。
+  </div><div class="kicker">CHAPTER 02</div><h2>登录与界面导览</h2><h3><span class="num">2.1</span>登录</h3><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>04 / 36</span></div></section><section class="page"><div class="hdr"><span>第 02 章 · 快速开始</span><span>CHAPTER 02 · GET STARTED</span></div><ol class="steps">
+    <li>打开平台地址，进入登录页：左侧是“链网节点星球”动画，右侧自上而下是<b>链网状态面板</b>与<b>登录卡片</b>，页面底部是一条滚动的区块条。</li>
+    <li>输入老师下发的<b>账号</b>与<b>密码</b>，点击<b>登录</b>。平台会通过实训 SSO 校验，成功后自动签发 24 小时会话。</li>
+    <li>登录成功后自动进入<b>总览</b>页；顶栏右侧出现你的姓名与"学生"角色标签。</li>
+    <li>24 小时内刷新页面会自动恢复会话，不必重复登录；过期后重新登录即可。</li>
+  </ol><figure>
+    <img src="../assets/screenshots/manual/S00-login.png" alt="登录页">
+    <figcaption>图 2-1 登录页：账号 + 密码登录。面板里只有“<b>链模式</b>”一项来自后端真实探测；<b>块高、出块周期、沙盒 TPS 柱与底部区块条是前端装饰动画</b>
+    （块高用 <code>19,840,000 + 随机数</code> 起步后自行 +1），<b>不要用它判断链是否活着</b>，真实块高看登录后的侧边栏与区块链浏览器（建议清单 P2-12）。</figcaption>
+  </figure><div class="note note--bad">
+    <span class="t">登录失败时，先看提示是哪一句</span>
+    当前版本已把三类失败分开（建议清单 <b>P1-4</b> 已修）：
+    ① <b>「用户名或密码错误」等 SSO 原文</b> —— 是你的账号密码问题，用小写、无空格重新输入一次；
+    ② <b>「SSO 登录接口 HTTP 4xx/5xx」</b> —— 统一身份认证服务返回异常，不是你的密码错；
+    ③ <b>「无法连接 SSO 服务」</b> —— 后端与 SSO 之间的网络不通。
+    遇到 ②③ 把<b>账号名 + 时间点</b>发给老师报修；不要连续反复尝试，以免账号被风控锁定。
+  </div><h3><span class="num">2.2</span>界面导览</h3><table>
+    <thead><tr><th style="width:34mm">区域</th><th>作用</th><th style="width:52mm">实训中你要看它什么</th></tr></thead>
+    <tbody>
+      
+      
+      
+      
+      
+    </tbody>
+  <tr><td><b>左侧导航</b></td><td>按 4 阶段分组：链底层搭建 / 业务合约开发 / 联盟治理与运营 / 链上验证 / 成就中心，底部固定"生成实训报告"</td><td>实训顺序就是它的顺序</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>05 / 36</span></div></section><section class="page"><div class="hdr"><span>第 02 章 · 快速开始</span><span>CHAPTER 02 · GET STARTED</span></div><table>
+    <thead><tr><th style="width:34mm">区域</th><th>作用</th><th style="width:52mm">实训中你要看它什么</th></tr></thead>
+    <tbody>
+      
+      
+      
+      
+      
+    </tbody>
+  <tr><td><b>左下"当前链状态"</b></td><td>引擎（EVM / FISCO / 沙盒）、块高、<b>整体学习进度</b></td><td>块高在涨 = 链活着；这里的进度现在是<b>你的真实进度</b>（每 15 秒与切页时从后端拉一次），与总览页应一致</td></tr><tr><td><b>顶栏中部</b></td><td>当前阶段提示、快捷键（<code>?</code>）、生成实训报告入口</td><td>随时可一键跳报告</td></tr><tr><td><b>顶栏"当前操作钱包"</b></td><td>下拉可切换"我的钱包"或联盟角色钱包</td><td>整份实训保持"我的钱包"（见 1.3）</td></tr><tr><td><b>右上头像</b></td><td>姓名 / 角色 / 退出登录</td><td>换账号前先退出，避免数据写错钱包</td></tr></table><h3><span class="num">2.3</span>总览页：你的进度仪表盘</h3><p>总览页从上到下依次是：欢迎卡（实训进度 %、当前步骤、已部署合约数、链上交易数）→ 实训链状态 → <b>我的实训进度</b>（10 步完成情况 + 学习行为数）→ 学习路径卡片（4 阶段 10 步，含每步目标与验收）→ 成就与积分。</p><figure>
+    <img src="../assets/screenshots/manual/S01-dashboard.png" alt="学生总览页">
+    <figcaption>图 2-2 学生总览：实训进度、链状态、学习路径与成就入口集中在同一页，开工前 / 收工前各看一次。</figcaption>
+  </figure><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>06 / 36</span></div></section><section class="page"><div class="hdr"><span>第 03 章 · 实训主线</span><span>CHAPTER 03 · MAIN PATH</span></div><div class="kicker">CHAPTER 03</div><h2>实训主线 L1 → L9：按这个顺序做，分数不会漏</h2><p class="lead">报告页把学习路径拆成 L1~L9 九个节点，每个节点直接对应一组分值。下表是"做什么 → 在哪个页面 → 拿多少分"的完整映射，也是你交作业前的自检表。</p><table>
+    <thead><tr><th style="width:11mm">序</th><th style="width:38mm">节点</th><th>关键动作（做到什么程度算完成）</th><th style="width:24mm">页面</th><th class="c" style="width:17mm">分值</th></tr></thead>
+    <tbody>
+      <tr><td class="c">L1</td><td><b>搭链教程</b></td><td>云桌面 10 步全部打勾（命令需按顺序逐条输入，粘贴被禁用）</td><td>云桌面</td><td class="c"><span class="score">D 10</span></td></tr>
+      <tr><td class="c">L2</td><td><b>合约部署</b></td><td>至少部署 1 份；ERC20 / ERC721 / ERC1155 各 1 份才能拿满</td><td>合约 IDE</td><td class="c"><span class="score">A 20</span></td></tr>
+      <tr><td class="c">L3</td><td><b>接口调试 / 真学</b></td><td>看内置源码 ≥3 次、真实编译 ≥1 次、接口调试调用 ≥1 次</td><td>合约管理 · 接口调试</td><td class="c"><span class="score g">I 5</span></td></tr>
+      <tr><td class="c">L4</td><td><b>ERC20 交易</b></td><td>转账 / mint / 授权累计满 10 笔链上交易</td><td>能量钱包</td><td class="c"><span class="score g">B 15</span></td></tr>
+      <tr><td class="c">L5</td><td><b>NFT 铸造与交易</b></td><td>铸造 ≥1 件 + 市场成交 ≥1 笔（绿色市场成交同样计入）</td><td>绿色资产市场</td><td class="c"><span class="score">C 10</span></td></tr>
+      <tr><td class="c">L6</td><td><b>生态合约激活</b></td><td>GreenEnergy / PlantCertificate / EcoBadge 三份都在链上可调用</td><td>合约管理 · 绿色低碳联盟链</td><td class="c"><span class="score">H 5</span></td></tr>
+      <tr><td class="c">L7</td><td><b>6 角色体验</b></td><td>依次选择管理员 / 地铁 / 公交 / 单车 / 外卖 / 回收（≥4 个拿 8 分，6 个 10 分）</td><td>绿色低碳联盟链</td><td class="c"><span class="score b">E 10</span></td></tr>
+      <tr><td class="c">L8</td><td><b>能量发放多样性</b></td><td>用 ≥3 种不同角色各成功发放 1 次能量</td><td>绿色低碳联盟链</td><td class="c"><span class="score b">F 10</span></td></tr>
+      <tr><td class="c">L9</td><td><b>资产兑换多样性</b></td><td>兑换勋章 + 骑行券；兑换 ≥1（理想 2）种树种证书；发放角色 ≥4</td><td>绿色低碳联盟链 · 市场</td><td class="c"><span class="score b">G 15</span></td></tr>
+    </tbody>
+  </table><div class="grid2">
+    <div class="note note--tip" style="margin:0">
+      <span class="t">为什么建议按顺序做</span>
+      L1 教你链和证书体系；L2 之后所有资产都长在链上；L6 的三份生态合约是 L7~L9 的前置条件；
+      L9 需要 L8 攒够能量。倒着做会不断遇到"前置条件不满足"的警告，而<b>警告与错误会直接扣报告分</b>（最多 −15）。
+    </div>
+    <div class="note note--tip" style="margin:0">
+      <span class="t">九项全部可以拿满：实测 100 / 100</span>
+      本手册配套的一个真实学生账号（学号 <code>19898800030</code>）已把 A~I 九维全部做到满分：
+      <b>报告 100 分・等级“优秀 🏆”・零扣分</b>，四维实训 100、教师评分 88、综合成绩 <b>95.2</b>。
+      曾经堵死满分的两个口径（B 项链上交易恒 0、只有 1 个树种）已在本版本修好，
+      第 10 章给出按分值排序的最优拿分路径与实测轨迹。
+    </div>
+  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>07 / 36</span></div></section><section class="page"><div class="hdr"><span>第 04 章 · 阶段一 云桌面搭链</span><span>CHAPTER 04 · BUILD THE CHAIN</span></div><div class="kicker">CHAPTER 04</div><h2>阶段一 · 云桌面搭链 10 步（D 项 10 分）</h2><p class="lead">云桌面 = 左侧教程步骤 + 右侧仿真终端。你在终端里<b>逐条手敲</b>该步骤要求的命令，全部通过后步骤自动打勾并计时；
+  命令顺序错误会提示"命令执行顺序错误"，语法错误会给出该步骤的<b>语法格式</b>提示（这就是你的"提示按钮"）。</p><figure>
+    <img src="../assets/screenshots/manual/S02-cloud.png" alt="云桌面搭链教程">
+    <figcaption>图 4-1 云桌面：上方"组织-节点-角色矩阵"是 6 组织 ↔ 4 节点的映射（第 2、5 步要考），左下 10 步清单，右侧终端 / 文件浏览器 / 编辑器三标签。</figcaption>
+  </figure><h3><span class="num">4.1</span>操作规范</h3><ul class="dash">
+    <li><b>禁止粘贴</b>：终端拦截 <code>Ctrl+V</code>，必须手敲。长命令请对照下方速查表逐字符输入，注意空格与冒号。</li>
+    <li><b>不要跳步</b>：每条命令有顺序（<code>cmd_idx</code>），先做前一条才会通过后一条。</li>
+    <li><b>看提示</b>：命令失败时终端会列出该步全部命令的"语法格式"，据此修正而不是乱试。</li>
+    <li><b>可回退</b>：右上"回退上一步"撤销最近完成的一步；"重置全部"会清空 10 步进度，慎用。</li>
+    <li><b>知识点小结</b>：每步下方有可折叠的知识点，报告与面试会问到（PBFT、证书体系、Gas）。</li>
+  </ul><h3><span class="num">4.2</span>10 步命令速查表（Step 1–5，共 27 条）</h3><p class="small muted">下表直接取自服务端教程注册表（<code>app/learning/tutorial_engine.py · TUTORIAL</code>），与云桌面页左侧步骤卡逐条对应。
+  控制台类命令需带 <code>[console]</code> 前缀（表示已进入 FISCO BCOS 控制台交互态）；<code>&lt;address&gt;</code> 用页面上给出的真实合约地址替换。</p><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>08 / 36</span></div></section><section class="page"><div class="hdr"><span>第 04 章 · 阶段一 云桌面搭链</span><span>CHAPTER 04 · BUILD THE CHAIN</span></div><table>
+    <thead><tr><th style="width:11mm">步骤</th><th>要输入的命令（必须按此顺序，共 27 条）</th><th style="width:44mm">这一步在验证什么</th></tr></thead>
+    <tbody>
+      
+      
+      
+      
+      
+    </tbody>
+  <tr><td class="c"><b>1</b><br><span class="small muted">5 条</span></td><td>
+        <span class="mono">$ curl -#LO https://github.com/FISCO-BCOS/FISCO-BCOS/releases/download/v2.9.1/build_chain.sh &amp;&amp; chmod +x build_chain.sh</span><br>
+        <span class="mono">$ bash build_chain.sh -l 127.0.0.1:4 -p 30300,20200,8545 -o nodes</span><br>
+        <span class="mono">$ cat nodes/127.0.0.1/node0/config.ini | grep -E '^\[|node_listen|channel_listen|peer_listen' | head -20</span><br>
+        <span class="mono">$ cat nodes/127.0.0.1/node0/conf/group.1.genesis | head -30</span><br>
+        <span class="mono">$ bash nodes/127.0.0.1/start_all.sh</span></td>
+        <td>官方建链脚本 → 一键生成 4 节点 PBFT 联盟链与完整证书体系（CA / 机构 / 节点 / SDK）→ 核对三类监听端口与创世块 → 启动节点</td></tr><tr><td class="c"><b>2</b><br><span class="small muted">5 条</span></td><td>
+        <span class="mono">$ ps -ef | grep fisco-bcos | grep -v grep | wc -l</span><br>
+        <span class="mono">$ ls nodes/127.0.0.1/</span><br>
+        <span class="mono">$ openssl x509 -in nodes/127.0.0.1/ca/ca.crt -noout -subject -issuer -dates</span><br>
+        <span class="mono">$ openssl verify -CAfile nodes/127.0.0.1/ca/ca.crt nodes/127.0.0.1/node0/conf/node.crt</span><br>
+        <span class="mono">$ nc -zv 127.0.0.1 30300 20200 8545 2&gt;&amp;1</span></td>
+        <td>联盟准入核验：进程数应为 <b>4</b>；产物目录 ca/agency/node0~3/sdk；CA 自签且未过期；节点证书能被 CA 验签通过；端口可达</td></tr><tr><td class="c"><b>3</b><br><span class="small muted">4 条</span></td><td>
+        <span class="mono">$ tail -n 50 nodes/127.0.0.1/node0/log/log_* | grep -E '\+\+\+Generating|Report'</span><br>
+        <span class="mono">$ tail -n 200 nodes/127.0.0.1/node0/log/log_* | grep -iE 'ERROR|WARN' | tail -5</span><br>
+        <span class="mono">$ tail -n 100 nodes/127.0.0.1/node0/log/log_* | grep -oE 'blk_num=[0-9]+' | tail -3</span><br>
+        <span class="mono">$ tail -n 100 nodes/127.0.0.1/node0/log/log_* | grep -oE 'hash=[a-f0-9]{64}' | tail -3</span></td>
+        <td>PBFT 共识确认：日志出现 <code>+++Generating</code> / <code>Report</code> = 正在出块；排错只看 ERROR/WARN；<code>blk_num</code> 递增、<code>hash</code> 连续 = 链健康</td></tr><tr><td class="c"><b>4</b><br><span class="small muted">8 条</span></td><td>
+        <span class="mono">$ cp -r nodes/127.0.0.1/sdk/* ~/fisco/console/conf/</span><br>
+        <span class="mono">$ openssl x509 -in nodes/127.0.0.1/sdk/sdk.crt -noout -subject -dates</span><br>
+        <span class="mono">$ openssl verify -CAfile nodes/127.0.0.1/sdk/ca.crt nodes/127.0.0.1/sdk/sdk.crt</span><br>
+        <span class="mono">$ cd ~/fisco/console &amp;&amp; bash start.sh</span><br>
+        <span class="mono">[console] getBlockNumber</span> · <span class="mono">[console] getPeers</span><br>
+        <span class="mono">[console] getSealerList</span> · <span class="mono">[console] getGroupPeers</span></td>
+        <td>SDK 证书拷入控制台（控制台持证才能连链）+ 证书验签 + 四条链情命令：块高 / 对等节点 / 共识节点 / 组内节点</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>09 / 36</span></div></section><section class="page"><div class="hdr"><span>第 04 章 · 阶段一 云桌面搭链</span><span>CHAPTER 04 · BUILD THE CHAIN</span></div><table>
+    <thead><tr><th style="width:11mm">步骤</th><th>要输入的命令（必须按此顺序，共 27 条）</th><th style="width:44mm">这一步在验证什么</th></tr></thead>
+    <tbody>
+      
+      
+      
+      
+      
+    </tbody>
+  <tr><td class="c"><b>5</b><br><span class="small muted">5 条</span></td><td>
+        <span class="mono">$ ls -la nodes/127.0.0.1/node0/conf/</span><br>
+        <span class="mono">$ cat nodes/127.0.0.1/node0/conf/config.ini | grep -E 'listen|peer|channel' | head -10</span><br>
+        <span class="mono">$ openssl x509 -in nodes/127.0.0.1/node0/conf/node.crt -noout -subject -dates</span><br>
+        <span class="mono">$ openssl verify -CAfile nodes/127.0.0.1/ca/ca.crt nodes/127.0.0.1/node0/conf/node.crt</span><br>
+        <span class="mono">[console] getNodeVersion</span></td>
+        <td>组织证书与节点归属：node0~3 各自的 <code>node.crt/node.pem</code> 齐全、由联盟 CA 签发、版本一致 —— 这就是 6 组织能接入同一条链的原因</td></tr></table><h2>10 步命令速查表（Step 6–10，共 29 条）</h2><p class="small muted">同样取自服务端教程注册表。Step 6–10 的语序仍然固定；<b>标有「真实」的命令会真的落到链上</b>（查余额、调合约、编译部署），
+  标有「教学」的命令输出为观测要点。表中的 <code>&lt;address&gt;</code> 与 <code>&lt;tx_hash&gt;</code>：<b>原样照打即可通过</b>（后端按链上最新实例与上一步回执解析），
+  你也可以替换成终端刚打印出来的真实值，两种写法都算对。</p><table>
+    <thead><tr><th style="width:12mm">步骤</th><th>要输入的命令（必须按此顺序，共 29 条）</th><th style="width:46mm">这一步在验证什么</th></tr></thead>
+    <tbody>
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      </tbody>
+  <tr><td class="c"><b>6</b><br><span class="small muted">6 条</span></td><td>
+        <span class="mono">$ cat &lt;&lt;'RULES'</span><br>
+        <span class="mono">[console] getAccountBalance 0xmetro</span><br>
+        <span class="mono">[console] getAccountBalance 0xbus</span><br>
+        <span class="mono">[console] getAccountBalance 0xbike</span><br>
+        <span class="mono">[console] getAccountBalance 0xtakeout</span><br>
+        <span class="mono">[console] getAccountBalance 0xrecycle</span></td>
+        <td>第一条只需输入这一行 <code>cat &lt;&lt;'RULES'</code>，终端会原样公示 6 组织能量发放规则表（内容同 <b>7.1</b> 那张表）—— 治理规则透明可查；后 5 条是<b>真实链上</b>余额查询，5 个业务钱包能查到余额 = 已在链上登记</td></tr><tr><td class="c"><b>7</b><br><span class="small muted">6 条</span></td><td>
+        <span class="mono">[console] getAccountBalance 0xadmin</span><br>
+        <span class="mono">[console] getAccountBalance 0xbike</span><br>
+        <span class="mono">[console] getAccountBalance 0xtakeout</span><br>
+        <span class="mono">[console] getAccountBalance 0xrecycle</span><br>
+        <span class="mono">[console] getAccountBalance 0xmetro</span><br>
+        <span class="mono">[console] getAccountBalance 0xbus</span></td>
+        <td>补上管理员钱包，<b>6 / 6 组织链上身份登记闭环</b>。全部为真实查询；顺序与第 6 步刻意错开，要求你逐账户核对而不是复用上一次输出。注意：FISCO 账户“<b>首次查询即激活</b>”，没有也不需独立的注册命令</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>10 / 36</span></div></section><section class="page"><div class="hdr"><span>第 04 章 · 阶段一 云桌面搭链</span><span>CHAPTER 04 · BUILD THE CHAIN</span></div><table>
+    <thead><tr><th style="width:12mm">步骤</th><th>要输入的命令（必须按此顺序，共 29 条）</th><th style="width:46mm">这一步在验证什么</th></tr></thead>
+    <tbody>
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      </tbody>
+  <tr><td class="c"><b>8</b><br><span class="small muted">6 条</span></td><td>
+        <span class="mono">$ bash nodes/127.0.0.1/check_node_status.sh all</span><br>
+        <span class="mono">$ for i in 0 1 2 3; do echo "=== node$i ==="; openssl x509 -in nodes/127.0.0.1/node$i/conf/node.crt -noout -enddate; done</span><br>
+        <span class="mono">$ for i in 0 1 2 3; do echo "=== node$i ==="; nc -zv 127.0.0.1 $((30300+i)) $((20200+i)) $((8545+i)) 2&gt;&amp;1; done</span><br>
+        <span class="mono">[console] call GreenEnergy &lt;address&gt; name</span><br>
+        <span class="mono">[console] call PlantCertificate &lt;address&gt; name</span><br>
+        <span class="mono">[console] call EcoBadge &lt;address&gt; tokenURI 1</span></td>
+        <td>上线前健康检查三件套（节点状态脚本 / 4 张节点证书有效期 / 4×3=12 个端口连通，均为<b>教学</b>观测要点）+ 三份生态合约<b>真实</b>只读探针：能读到 <code>name</code> / <code>tokenURI</code> = 合约在链上可调用，这就是报告 <b>H 项</b>的口径</td></tr><tr><td class="c"><b>9</b><br><span class="small muted">2 条</span></td><td>
+        <span class="mono">[console] deploy GreenEnergy 1000000</span><br>
+        <span class="mono">[console] getTransactionReceipt &lt;tx_hash&gt;</span></td>
+        <td><b>真实编译 + 真实部署</b>：终端会回显 <code>contract address</code> / <code>transaction hash</code> / <code>gas used</code>，再用回执确认 <code>status: 0x1</code>。<span class="tag tag--w">注意</span>这一步的部署方记为联盟管理员 <code>0xadmin</code>（系统级部署，同时同步 5 角色 mintRole 白名单、把平台流通货币切到新地址），<b>不计入你的 A / B 项</b>；你的 A / B 分要靠第 05、06 章亲手部署与转账</td></tr><tr><td class="c"><b>10</b><br><span class="small muted">9 条</span></td><td>
+        <span class="mono">[console] call GreenEnergy &lt;address&gt; name</span><br>
+        <span class="mono">[console] call GreenEnergy &lt;address&gt; balanceOf 0xlearner</span><br>
+        <span class="mono">[console] call GreenEnergy &lt;address&gt; mint 0xmetro 0xlearner 50 地铁通勤≥10km</span><br>
+        <span class="mono">[console] call GreenEnergy &lt;address&gt; mint 0xbus 0xlearner 20 公交出行≥5min</span><br>
+        <span class="mono">[console] call GreenEnergy &lt;address&gt; mint 0xbike 0xlearner 15 骑行≥2km</span><br>
+        <span class="mono">[console] call GreenEnergy &lt;address&gt; mint 0xtakeout 0xlearner 10 绿色外卖</span><br>
+        <span class="mono">[console] call GreenEnergy &lt;address&gt; mint 0xrecycle 0xlearner 100 回收≥1kg</span><br>
+        <span class="mono">[console] getTransactionReceipt &lt;last_mint_tx_hash&gt;</span><br>
+        <span class="mono">[console] call GreenEnergy &lt;address&gt; balanceOf 0xlearner</span></td>
+        <td>商业化全链路验证（全部真实上链）：先读合约名与初始余额 → 5 个业务角色按规则向居民 <code>0xlearner</code> 发放 → 查最后一笔 mint 的回执（<code>status: 0x1</code> + <code>Transfer</code> 事件）→ 再读一次余额对账。<b>5 笔 mint 合计 +195 点</b>。<span class="tag tag--w">注意</span>这 5 笔的发送方是机构角色钱包、入账方是演示居民 <code>0xlearner</code>，<b>既不进你的 B 项，也不会加到你自己的能量余额</b></td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>11 / 36</span></div></section><section class="page"><div class="hdr"><span>第 04 章 · 阶段一 云桌面搭链</span><span>CHAPTER 04 · BUILD THE CHAIN</span></div><div class="note note--warn">
+    <span class="t">关于“真实执行”与“教学模拟”（哪些输出不是真上链）</span>
+    <b>真实链 / 真实编译</b>：Step 6–7 的 <code>getAccountBalance</code>、Step 8–10 的 <code>call</code> / <code>deploy</code> / <code>getTransactionReceipt</code>。
+    <b>教学模拟</b>（本地无 docker / FISCO 节点时降级展示观测要点）：Step 1–5 全部命令、Step 6 的 <code>cat</code> 规则表、Step 8 的节点脚本 / 证书 / 端口三条。响应会带 <code>source: real / simulated</code> 字段标真实来源。
+    这是平台已知的设计取舍（建议清单 <b>P2-11</b>），不影响步骤判定与 D 项得分，但写实训报告时应准确描述“哪一段仿真、哪一段真实上链”。
+  </div><h3><span class="num">4.3</span>D 项评分细则与"探索加分"</h3><div class="grid2">
+    <div class="card">
+      <h4>完成度得分</h4>
+      <table style="margin:0">
+        <thead><tr><th>完成步数</th><th class="c">D 项得分</th></tr></thead>
+        <tbody>
+          <tr><td>10 / 10</td><td class="c"><b>10</b></td></tr>
+          <tr><td>≥ 5 / 10</td><td class="c">6</td></tr>
+          <tr><td>≥ 1 / 10</td><td class="c">2</td></tr>
+          <tr><td>0 / 10</td><td class="c">0</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h4>失败探索加分（+1 ~ +3，D 项仍封顶 10）</h4>
+      <p class="small">平台鼓励"试错式学习"：搭链过程中的失败尝试计入学习质量维度 —— 失败 1 次 +1、2 次 +2、≥3 次 +3。</p>
+      <p class="small muted">含义：一次都没失败过（0 次）时，报告会提示"缺少探索加分"；对 D 项尚未做满的同学，这是补分来源。</p>
+    </div>
+  </div><div class="note note--tip">
+    <span class="t">验收点：怎么确认这一步真的算完成了</span>
+    ① 左侧步骤圆角框变<b>绿色打勾</b>；② 顶部"已完成 x / 10 步"数字增加；③ 总览页"我的实训进度"同步；④ 报告页 L1 节点显示 <code>x/10 分</code>。四者一致才算数。
+  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>12 / 36</span></div></section><section class="page"><div class="hdr"><span>第 05 章 · 阶段二 合约开发</span><span>CHAPTER 05 · SMART CONTRACTS</span></div><div class="kicker">CHAPTER 05</div><h2>合约 IDE / 合约管理 / 接口调试（A 20 + H 5 + I 5）</h2><h3><span class="num">5.1</span>合约 IDE：编译并部署（A 项主战场）</h3><ol class="steps">
+    <li>进入<b>合约 IDE</b>，左侧选择工程（内置工程「系统内置合约」自带 6 份模板：ERC20 / ERC721 / ERC1155 / EcoBadge / GreenEnergy / PlantCertificate）。</li>
+    <li>在编辑器里<b>先读源码</b>：切换到 ERC20、ERC721、ERC1155 三份模板各看一次 —— 这一步就是 <b>I-1 的"读源码 ≥3 次" +2 分</b>。</li>
+    <li>点<b>编译</b>（真实 solc 编译，成功后产出 bytecode / ABI）—— 这是 <b>I-1 的"真实编译 ≥1 次" +1 分</b>。</li>
+    <li>点<b>部署</b>并确认发起交易；成功后合约地址写入"合约管理"，<b>A 项 +10 分</b>。</li>
+    <li>换标准重复：ERC20 → ERC721 → ERC1155 各部署 1 份，A 项按标准分布再加 <b>+3 / +3 / +4</b>，合计封顶 20 分。</li>
+    <li>顺手<b>保存工程</b>（另存为 / 保存修改）：计入"真学"行为埋点，也方便复现。</li>
+  </ol><figure>
+    <img src="../assets/screenshots/manual/S03-ide.png" alt="合约 IDE">
+    <figcaption>图 5-1 合约 IDE：左侧工程与文件树、中间 Monaco 编辑器、右侧编译 / 部署与输出面板；编译失败的行号会直接标在编辑器里。</figcaption>
+  </figure><h3><span class="num">5.2</span>合约管理：确认三份生态合约已激活（H 项）</h3><p>进入<b>合约管理</b>可见"已部署合约"列表（合约名 / 地址 / 标准 / 部署者 / 交易哈希 / 部署时间），支持按 ERC20 / ERC721 / ERC1155 / 自定义筛选。
+  <b>H 项只看三份生态合约是否在链上可用</b>：GreenEnergy、PlantCertificate、EcoBadge 三份齐全 = 5 分，2 份 = 2 分，1 份 = 1 分。</p><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>13 / 36</span></div></section><section class="page"><div class="hdr"><span>第 05 章 · 阶段二 合约开发</span><span>CHAPTER 05 · SMART CONTRACTS</span></div><div class="note note--info">
+    <span class="t">列表里已经有"系统内置"合约，为什么还要自己部署？</span>
+    平台启动时会播种演示合约（名字带"系统内置"），它们的部署者是内置钱包（如 <code>0xadmin</code>），<b>不计入你的 A 项</b>。
+    <b>A 项按"部署者 = 你的钱包候选集"统计</b>，所以必须<b>亲手编译并部署</b>三份标准合约。
+    <span class="tag tag--w">两者口径不同</span>与 A 项相反，<b>H 项是全局链上事实</b>：只要链上存在 GreenEnergy / PlantCertificate / EcoBadge 三份合约（平台播种、
+    或搭链教程 Step 9 的系统级部署即可完成），H 项就给你 5 分，<b>不需要你为 H 额外部署一次</b>。
+  </div><h3><span class="num">5.3</span>接口调试：调用一次就 +2（I-2）</h3><ol class="steps">
+    <li>进入<b>接口调试</b>，选择一份<b>你自己部署</b>的合约（或从合约管理页点"接口调试"直达）。</li>
+    <li>ABI 自动加载，函数按 <span class="tag tag--p">view</span> 只读与 <span class="tag tag--a">state</span> 写操作分组。</li>
+    <li>先点一个只读函数（如 <code>name</code> / <code>symbol</code> / <code>balanceOf</code>）执行一次 —— 完成 <b>I-2 +2 分</b>。</li>
+    <li>再点写函数（<code>transfer</code> / <code>approve</code> / <code>mint</code>）发起交易 —— 同时为 <b>B 项</b>累积交易笔数。</li>
+    <li>每次调用后到<b>调用监听器</b>回看请求与结果，养成"调用即留证"的习惯。</li>
+  </ol><figure>
+    <img src="../assets/screenshots/manual/S05-interfaces.png" alt="接口调试">
+    <figcaption>图 5-2 接口调试：选合约 → 选函数 → 填参数 → 执行；写函数会真实发交易并返回交易哈希。</figcaption>
+  </figure><div class="kicker">CHAPTER 06</div><h2>能量钱包与绿色资产市场（B 项 15 分 + C 项 10 分）</h2><p class="lead">这两页是<b>"造交易"</b>的主战场：报告里的 <b>B 项（链上活跃度）</b>只看一件事 —— 链上交易里<b>发送方 / 收款方 / 合约地址</b>命中你钱包候选集的有多少笔，实践上就是「你本人钱包发起的那些交易」。</p><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>14 / 36</span></div></section><section class="page"><div class="hdr"><span>第 06 章 · 阶段二 钱包与市场</span><span>CHAPTER 06 · WALLET &amp; MARKETPLACE</span></div><h3><span class="num">6.1</span>能量钱包：转账就是最干净的交易来源</h3><ol class="steps">
+    <li>进入<b>能量钱包</b>，确认顶栏"当前操作钱包"仍是<b>我的钱包</b>（形如 <code>stu:&lt;你的ID&gt;</code>）。</li>
+    <li>查看<b>资产总览</b>：绿色能量、植树证书、生态勋章余额与折算值，下方是<b>转账记录</b>时间线。</li>
+    <li>点<b>转账</b>：填写收款地址（可用内置演示地址 <code>0xmetro</code> / <code>0xbus</code> / <code>0xlearner</code>，也可写给自己的另一个地址）、金额，确认发起交易。</li>
+    <li>每次成功转账都会返回<b>交易哈希</b>并上链；重复第 3–4 步 <b>至少 10 次</b>，把 B 项打满。</li>
+    <li>不想只转能量？在<b>接口调试</b>里对自己部署的合约调 <code>transfer</code> / <code>approve</code> / <code>mint</code>，
+      或在市场<b>买下一次</b>、在联盟页<b>兑换一次</b>（扣能量的那笔 <code>transfer</code> 由你发出）—— 都计入同一笔数。
+      实测样本：<b>13 笔 transfer + 5 笔合约部署 + 1 笔 NFT 铸造 = 19 笔</b>，发送方清一色是你本人钱包 → B 项 15/15。</li>
+    <li><span class="tag tag--w">注意</span>在联盟页<b>以角色身份发放能量</b>时，那笔 <code>mint</code> 的发送方是机构角色钱包
+      （<code>0xmetro</code> 等）而不是你，所以<b>不进 B 项</b>；它的价值在 E / F / G 项与四维「能量发放」。<b>B 项只能靠你自己钱包发起的交易</b>。</li>
+    <li>需要更多代币来转账？能量来源见第 07 章（联盟角色发放）；<b>ERC20 的发行权只在管理员钱包 <code>0xadmin</code></b>，学生钱包直接调用 <code>mint</code> 会被拒绝，这是<b>预期行为</b>，不要误当作故障。</li>
+  </ol><figure>
+    <img src="../assets/screenshots/manual/S08-wallet.png" alt="能量钱包">
+    <figcaption>图 6-1 能量钱包：资产卡片 + 转账入口 + 链上转账记录；每笔记录可跳到区块链浏览器核验。</figcaption>
+  </figure><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>15 / 36</span></div></section><section class="page"><div class="hdr"><span>第 06 章 · 阶段二 钱包与市场</span><span>CHAPTER 06 · WALLET &amp; MARKETPLACE</span></div><h3><span class="num">6.2</span>B 项评分细则（按交易笔数阶梯给分）</h3><table>
+    <thead><tr><th>你的链上交易笔数</th><th class="c" style="width:22mm">B 项得分</th><th>怎么凑够笔数（都算）</th></tr></thead>
+    <tbody>
+      <tr><td>≥ 10 笔</td><td class="c"><span class="score">15</span></td><td>钱包转账、合约 <code>deploy</code>、写函数调用（<code>transfer</code> / <code>approve</code> / <code>mint</code> / <code>exchange</code> / 挂牌 / 购买）—— 全部计入</td></tr>
+      <tr><td>≥ 5 笔</td><td class="c"><span class="score">10</span></td><td>只走完合约部署 + 少量调用大约落在这档</td></tr>
+      <tr><td>≥ 2 笔</td><td class="c"><span class="score">5</span></td><td>部署 3 份合约通常已≥ 2 笔</td></tr>
+      <tr><td>≥ 1 笔</td><td class="c"><span class="score">2</span></td><td>至少部署过一次合约</td></tr>
+      <tr><td>0 笔</td><td class="c">0</td><td>从未发起过任何真实交易</td></tr>
+    </tbody>
+  </table><div class="note note--tip">
+    <span class="t">为什么这些交易真的算到你头上（P0-3 已修）</span>
+    链上 <code>transactions</code> 表只存<b>真实 0x 地址</b>，而登录态里还有用户 ID、<code>stu:</code> 别名与学号。
+    报告聚合现在按<b>钱包候选集取并集</b>，所以你用 <code>0x017f…d366</code> 发的那 19 笔能完整回到你名下（实测 B 项 15/15）。
+    如果你发现 B 项仍为 0，先确认两件事：① 你记得的那些交易确实是<b>你本人登录</b>时发的（不是借了同学账号）；
+    ② 到<b>区块链浏览器</b>按地址搜你自己的钱包，看发送方交易数是否 &gt; 0（第 08 章）。两边不一致再找老师。
+  </div><h3><span class="num">6.3</span>绿色资产市场：一次挂牌 + 一次成交 = C 项 10 分</h3><ol class="steps">
+    <li>进入<b>绿色资产市场 / NFT</b>，先<b>铸造</b>一份资产（上传证书/勋章图片或选择内置模板 → <code>mint</code>）—— <b>C 项 +5 分</b>。</li>
+    <li>对自己的资产点<b>挂牌出售</b>，设定价格（能量计价）—— 挂牌<b>只写平台订单、不上链</b>；真正产生链上交易的是<b>成交那一刻</b>的买方转账与资产交割。</li>
+    <li>用<b>另一个角色/钱包</b>完成一次<b>购买</b>（或在市场里买下一份他人/系统挂牌的资产）—— 成交 <b>C 项 +5 分</b>。</li>
+    <li>到<b>成交记录</b>确认这笔订单状态为"已完成"，并在监听器里留存交易哈希。</li>
+    <li>不想持有的资产可<b>取消挂牌</b>；取消不影响已拿到的 C 项分数。</li>
+  </ol><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>16 / 36</span></div></section><section class="page"><div class="hdr"><span>第 06 章 · 阶段二 钱包与市场</span><span>CHAPTER 06 · WALLET &amp; MARKETPLACE</span></div><figure>
+    <img src="../assets/screenshots/manual/S09-nft.png" alt="绿色资产市场">
+    <figcaption>图 6-2 绿色资产市场：铸造 / 挂牌 / 购买 / 成交记录四段式；绿色市场内的成交同样计入 C 项。</figcaption>
+  </figure><div class="note note--tip">
+    <span class="t">验收点与两个必须知道的前置</span>
+    报告里 <b>C 项</b>出现"铸造 1 份 +5 / 成交 1 笔 +5"即满 10 分；<b>B 项</b>同时应显示 5 笔以上（阶梯得分）。
+    ① <b>铸造需先具备生态身份</b>：服务端会查你在联盟页是否<b>选过联盟角色</b>，没选过直接 403「请先在『绿色低碳联盟链』页面选择联盟角色身份」；
+    而“切回普通用户”会清掉这条记录，所以<b>先选角色、再铸造，中途别切回普通用户</b>。被拦下时返回的 403 只会让你白点一次，<b>不扣 P 分</b>（口径见 9.3）。
+    ② 市场<b>购买用绿色能量结算</b>，付款前得先有足够余额（见 7.4）。
+    <span class="small muted">顺手加分点：铸造时若不复用已部署合约，后端会<b>为你新部署一份 ERC721 / ERC1155</b> 且部署者记为你本人 —— 这一步同时喂 A 项标准分布加分与 B 项交易笔数。</span>
+  </div><div class="kicker">CHAPTER 07</div><h2>绿色低碳联盟链：六个角色与能量规则（E 项 10 分 + F 项 10 分）</h2><p class="lead">这一章是"联盟治理"的核心体验：<b>换角色 → 用角色的发行权给居民发能量</b>。
+  平台会记录你<b>实际切换并使用过的角色数</b>（E 项）与<b>各角色的操作次数</b>（F 项）。</p><h3><span class="num">7.1</span>六角色、能量算法与节点授信（服务端口径）</h3><p class="small muted">下表取自 <code>GET /api/eco/roles</code>。能量不是“一个角色一个固定价”，而是
+  <b>基础分 + 按量加成、单次封顶</b>；每个发行节点还有自己的<b>授信额度</b>（只能上调不可下调）。</p><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>17 / 36</span></div></section><section class="page"><div class="hdr"><span>第 07 章 · 阶段三 联盟治理</span><span>CHAPTER 07 · ALLIANCE GOVERNANCE</span></div><table>
+    <thead><tr><th style="width:25mm">联盟角色</th><th style="width:41mm">触发门槛（需提交凭证）</th><th>能量算法</th><th class="c" style="width:20mm">节点授信</th></tr></thead>
+    <tbody>
+      <tr><td><b>管理员</b> <code>0xadmin</code></td><td>—</td><td><b>不发行能量</b>；只签发植树证书、管理树种目录与额度、运营能量国库与销毁</td><td class="c">—</td></tr>
+      <tr><td><b>地铁集团</b> <code>0xmetro</code></td><td>进站口 / 出站口 / 进站时间 / 里程 <b>≥ 10 km</b>（单号 <code>trip_no</code>）</td><td>基础 50，每超 1 km 再 +2，<b>单次封顶 150</b></td><td class="c">5000</td></tr>
+      <tr><td><b>公交集团</b> <code>0xbus</code></td><td>公交线路 / 上车时间 / 时长 <b>≥ 5 min</b>（单号 <code>trip_no</code>）</td><td>基础 20，每超 1 分钟再 +1，<b>单次封顶 60</b></td><td class="c">5000</td></tr>
+      <tr><td><b>共享单车</b> <code>0xbike</code></td><td>骑行订单号 / 里程 <b>≥ 2 km</b>（时长可选）</td><td>基础 15，每超 1 km 再 +3，<b>单次封顶 60</b>；它同时是<b>骑行券的唯一发行方</b></td><td class="c">5000</td></tr>
+      <tr><td><b>外卖平台</b> <code>0xtakeout</code></td><td>外卖订单号 + 必须勾选<b>「无需餐具」</b></td><td>开关型行为：<b>每单固定 10</b>，不按量加成，同一订单不重复发放</td><td class="c">3000</td></tr>
+      <tr><td><b>回收公司</b> <code>0xrecycle</code></td><td>回收单号 / 回收物分类 / 重量 <b>≥ 1 kg</b></td><td>基础 100，每超 1 kg 再 +20，<b>单次封顶 500</b>（填 <b>21 kg</b> 即拿满 500）</td><td class="c">8000</td></tr>
+    </tbody>
+  </table><h3><span class="num">7.2</span>操作步骤：把六个角色都用一遍</h3><div class="note note--info">
+    <span class="t">先看懂两种发放模式，你就不会碰权限错误</span>
+    <b>居民申请</b>（顶栏未选联盟角色）：你提交低碳行为凭证，对应联盟节点阈值校验通过后发到<b>你自己的钱包</b>；
+    <b>角色扮演</b>（已选联盟角色）：只能以<b>当前选中的那个角色</b>发行，选中角色与发放角色不一致会被拒。
+    两种模式下链上 <code>FROM</code> 都是机构钱包，但操作人会落库到你的登录身份（可审计）。
+  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>18 / 36</span></div></section><section class="page"><div class="hdr"><span>第 07 章 · 阶段三 联盟治理</span><span>CHAPTER 07 · ALLIANCE GOVERNANCE</span></div><ol class="steps">
+    <li>进入<b>绿色低碳联盟链</b>页，上方 7 张角色卡依次点：<b>地铁 → 公交 → 单车 → 外卖 → 回收 → 管理员</b>（+ 居民视角）。
+      <b>切换就是记分</b>：E 项统计的是你<b>真的使用过</b>的角色数，6/6 才拿满 10 分。</li>
+    <li>切到一个业务角色后，在它的“能量发行”卡里点<b>发放能量</b>：接收方选<b>自己的钱包</b>（组织钱包 <code>0xmetro</code> 等会被拒，防止发行方自铸）。</li>
+    <li>按角色填写<b>业务凭证</b>（上表“触发门槛”列）：达不到阈值直接判失败，失败会计入操作日志并扣 P 分。</li>
+    <li><b>单号必须逐笔不同</b>：同一业务单号 + 同一发行角色只会发放一次（防刷），重复提交不会报错但也不会再发。</li>
+    <li>每个角色至少成功发放 1 次；拿满 F 只需 <b>3 种角色</b>，拿满 G3 需要 <b>≥ 4 种</b>，所以建议 5 个业务角色各发 1–2 次。</li>
+    <li>用页面下方<b>能量流水</b>核对：每笔带角色 / 金额 / 备注 / 交易哈希，状态全为成功；余额 = 流水净额。
+      <span class="small muted">实测样本：11 笔发行共 +2850 → 4 笔兑换 −2530 + 1 笔市场购买 −50 → 余额 270，与链上 <code>balanceOf</code> 一致。</span></li>
+    <li>切到“管理员”角色看一眼<b>生态合约部署状态</b>（GreenEnergy / PlantCertificate / EcoBadge = 3/3 已部署），这是 H 项的确认位。</li>
+  </ol><figure>
+    <img src="../assets/screenshots/manual/S10-eco-top.png" alt="绿色低碳联盟链">
+    <figcaption>图 7-1 联盟治理工作台：角色切换、合约状态、能量发放与流水在同一页内闭环。</figcaption>
+  </figure><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>19 / 36</span></div></section><section class="page"><div class="hdr"><span>第 07 章 · 阶段三 联盟治理</span><span>CHAPTER 07 · ALLIANCE GOVERNANCE</span></div><h3><span class="num">7.3</span>E / F 项评分细则</h3><div class="grid2">
+    <div class="card">
+      <h4>E · 角色覆盖（10 分）</h4>
+      <table style="margin:0">
+        <thead><tr><th>使用过的联盟角色数</th><th class="c">E</th></tr></thead>
+        <tbody>
+          <tr><td>6 / 6</td><td class="c"><b>10</b></td></tr>
+          <tr><td>≥ 4</td><td class="c">8</td></tr>
+          <tr><td>≥ 2</td><td class="c">5</td></tr>
+          <tr><td>≥ 1</td><td class="c">2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h4>F · 治理深度（10 分）</h4>
+      <table style="margin:0">
+        <thead><tr><th>治理操作分布</th><th class="c">F</th></tr></thead>
+        <tbody>
+          <tr><td>覆盖 3 种角色并有实质操作</td><td class="c"><b>10</b></td></tr>
+          <tr><td>覆盖 2 种角色</td><td class="c">6</td></tr>
+          <tr><td>仅 1 种角色且 ≥ 3 次操作</td><td class="c">3</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div><div class="note note--tip">
+    <span class="t">数据归属口径（已收口，不再是“做了不加分”）</span>
+    报告不再拿单一钱包字符串去硬匹配，而是按你的<b>钱包候选集</b>取并集：
+    <code>真实地址 / 用户 ID / stu: 别名 / 登录账号</code>（例：本报告 <code>identity.wallet_candidates</code> 就包了这 4 个写法）。
+    因此角色切换、能量发放、兑换、转账、NFT 铸造与成交都能正常回收到你名下（建议清单 P0-2 / P0-3 已修）。
+    <b>但仍然成立的一条</b>：行为按<b>操作人</b>归属。如果你拿同学的账号登录后操作，那部分数据会计到<b>同学</b>的报告里。
+  </div><h2>能量累积与三类兑换（G 项 15 分）</h2><p class="lead">G 项考察你能不能把一条业务链真的"运转起来"：发能量 → 攒能量 → 兑换资产 → 资产回流。它是报告里分值第二高（15 分）却最容易被忽视的一项。</p><h3><span class="num">7.4</span>先算账：你需要多少能量</h3><table>
+    <thead><tr><th>兑换标的</th><th class="c" style="width:24mm">单价</th><th class="c" style="width:26mm">要拿满分需兑换</th><th>拿分对应</th></tr></thead>
+    <tbody>
+      <tr><td>植树证书·<b>银杏</b>（ERC721）</td><td class="c"><b>1000</b></td><td class="c">1 份</td><td>G1：覆盖 ≥ 2 个树种才能拿 8 分</td></tr>
+      <tr><td>植树证书·<b>水杉</b>（ERC721）</td><td class="c"><b>1500</b></td><td class="c">1 份</td><td>G1：第二个树种（只换银杏只有 4 分）</td></tr>
+      <tr><td>生态勋章（ERC1155）</td><td class="c">10</td><td class="c">1 枚</td><td>G2：勋章与骑行券<b>都</b>换过才满 4 分</td></tr>
+      <tr><td>骑行券（ERC1155）</td><td class="c">20</td><td class="c">1 张</td><td>G2（仅共享单车节点发行、也由它兑付）</td></tr>
+      <tr><td>发放角色覆盖</td><td class="c">—</td><td class="c">≥ 4 个角色</td><td>G3：以 ≥ 4 种角色完成发放 +3</td></tr>
+    </tbody>
+  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>20 / 36</span></div></section><section class="page page--alt"><div class="hdr"><span>第 07 章 · 阶段三 绿色经济运营</span><span>CHAPTER 07 · GREEN ECONOMY</span></div><div class="note note--info">
+    <span class="t">换算一下：拿满 G 项要 2530 能量，最快的路是 6 笔回收</span>
+    1000 + 1500 + 10 + 20 = <b>2530</b>。回收公司单次封顶 500（重量填 21 kg 即封顶），
+    <b>6 笔回收 = 3000 能量</b>，是点击次数最少的方案；比“每角色发一点”快得多。
+    <span class="small muted">注意：每笔单号不同；节点授信是<b>全班共用</b>的（回收节点 8000），已发行量会随同学练习不断上涨，
+    若提示额度不足，需教师 / 管理员上调发行授信。</span>
+  </div><h3><span class="num">7.5</span>三类兑换操作</h3><ol class="steps">
+    <li>在联盟页展开<b>能量兑换 / 绿色商城</b>区域，确认当前能量余额 ≥ 1000。</li>
+    <li><b>兑换植树证书（第一份）</b>：选一个树种（如<b>银杏</b> 1000）→ 确认扣减 → 发起交易；成功后证书进入“我的证书”，<b>签发记录不可变</b>。</li>
+    <li><b>兑换植树证书（第二份，G1 拿满 8 分的关键）</b>：选<b>另一个树种</b>（如<b>水杉</b> 1500）再换一份。
+      <span class="tag tag--w">硬前置</span>目录下必须真的有 ≥ 2 个 active 树种。本环境由<b>教师在「联盟治理」视角上架了水杉</b>，
+      若你的页面只看到一个树种，请老师按教师手册 3.4 先上架（需先扮演联盟管理员，且“所需能量”不得低于 1000）。</li>
+    <li><b>兑换生态勋章</b>：10 能量 / 枚 → ERC1155 铸造入账。</li>
+    <li><b>兑换骑行券</b>：20 能量 / 张 → 由<b>共享单车节点</b>在链上签发（不是管理员代签）。</li>
+    <li>可选加分动作：把兑换到的证书 / 勋章 / 骑行券<b>挂牌上市场</b>（回到 6.3）→ 同时补齐 C 项与部分 B 项。</li>
+  </ol><div class="grid2">
+    <figure style="margin-bottom:2mm"><img src="../assets/screenshots/manual/S11-eco-energy.png" alt="能量流水"><figcaption>图 7-2 能量流水：每一笔发放都带角色、金额、备注与交易哈希。</figcaption></figure>
+    <figure style="margin-bottom:2mm"><img src="../assets/screenshots/manual/S12-eco-exchange.png" alt="能量兑换"><figcaption>图 7-3 兑换中心：证书 / 勋章 / 骑行券三入口与对应单价。</figcaption></figure>
+  </div><h3><span class="num">7.6</span>G 项评分细则（15 分拆三部分）</h3><table>
+    <thead><tr><th style="width:14mm">子项</th><th>条件</th><th class="c" style="width:20mm">得分</th><th style="width:36mm">现状提醒</th></tr></thead>
+    <tbody>
+      
+      
+      
+    </tbody>
+  <tr><td class="c"><b>G1</b></td><td>兑换植树证书：覆盖 <b>2 个及以上树种</b> 8 分；仅 1 个树种 4 分；未兑换 0 分</td><td class="c"><span class="score">8</span></td><td>本环境已有银杏 + 水杉两个树种，<b>8 分完全可得</b>（前提：能量≥ 2500）</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>21 / 36</span></div></section><section class="page page--alt"><div class="hdr"><span>第 07 章 · 阶段三 绿色经济运营</span><span>CHAPTER 07 · GREEN ECONOMY</span></div><table>
+    <thead><tr><th style="width:14mm">子项</th><th>条件</th><th class="c" style="width:20mm">得分</th><th style="width:36mm">现状提醒</th></tr></thead>
+    <tbody>
+      
+      
+      
+    </tbody>
+  <tr><td class="c"><b>G2</b></td><td>勋章与骑行券<b>都</b>兑换过 4 分；只其中一种 2 分</td><td class="c"><span class="score">4</span></td><td>很容易拿满，两个按钮各点一次（共 30 能量）</td></tr><tr><td class="c"><b>G3</b></td><td>使用 <b>≥ 4 种</b>角色完成能量发放</td><td class="c"><span class="score">3</span></td><td>与 E 项复用同一批操作</td></tr></table><div class="note note--warn">
+    <span class="t">能量不够 / 兑换失败时的三条止血路线</span>
+    ① 切到<b>回收公司</b>角色，重量填 21 kg（单次封顶 500）连续发 6 笔，单号逐笔改；
+    ② 先完成勋章（10）与骑行券（20）把 G2 拿到手，再攒证书；
+    ③ <b>兑换失败会真的扣 P 分</b>：联盟页的失败会写进操作审计日志（error 每次 −1、最多 −10），所以余额不足时不要反复点；
+    先确认能量够、未切到不发能量的<b>管理员</b>角色，再发起交易。
+  </div><div class="kicker">CHAPTER 08</div><h2>调用监听器与区块链浏览器：给自己留证据</h2><p class="lead">阶段四不直接占一个分值，但它是你<b>把“做过”变成“可证”的唯一手段</b>：报告里的每一个分数都应能在这两页找到对应的交易哈希与回执。</p><h3><span class="num">8.1</span>调用监听器：看一下你每一次与链的对话</h3><ol class="steps">
+    <li>进入<b>调用监听器</b>，顶部看四个指标：总调用数 / 成功率 / 平均 Gas / 异常调用。</li>
+    <li>下方列表逐条记录：时间、调用方地址、目标合约、方法、状态（成功 / 失败）。</li>
+    <li>点开任意一条可看<b>请求参数与返回结果</b>；把关键几条（部署、mint、兑换、转账）的交易哈希记到你的实训日志里。</li>
+    <li>按条件筛：只看"失败"可以快速定位自己哪一步写错了参数，只看自己的地址可以清点实际交易数。</li>
+  </ol><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>22 / 36</span></div></section><section class="page"><div class="hdr"><span>第 08 章 · 阶段四 链上验证</span><span>CHAPTER 08 · ON-CHAIN VERIFICATION</span></div><figure>
+    <img src="../assets/screenshots/manual/S06-monitor.png" alt="调用监听器">
+    <figcaption>图 8-1 调用监听器：链上调用的实时流水。</figcaption>
+  </figure><div class="note note--bad">
+    <span class="t">重要：“异常调用”不等于报告里的 P 项扣分</span>
+    监听器的“异常调用”统计的是<b>链上合约调用记录中 status ≠ success 的行</b>（reverted / 0 / failed），包括 <code>name</code> / <code>decimals</code> 等
+    <b>只读查询</b>的失败；而报告的 <b>P 项只读「绿色低碳联盟链」页的操作审计日志</b>（见 9.3）。<b>两者是完全不互通的两套数</b>：
+    实测某账号监听器里累计 <b>13 笔异常调用、成功率 31.6%</b>，而这些 reverted 全部来自<b>链重置后已作废的旧合约地址</b>，
+    同账号报告的 <b>P 项扣分仍为 0</b>（建议清单 P2-9 / P2-14）。
+    所以：看到“异常调用”很高<b>不要慌</b>，先按 9.3 确认 P 项；真正的风险是在<b>失效地址上空转</b>（浪费点击且不产生任何分），
+    处理办法见 5.3：“已失效”标记的合约直接跳过，去重新部署一份。
+  </div><h3><span class="num">8.2</span>区块链浏览器：从交易哈希倒推证据</h3><ol class="steps">
+    <li>进入<b>区块链浏览器</b>，顶部看链概览：块高、交易总数、节点数、TPS。</li>
+    <li>把第 8.1 步记下的<b>交易哈希</b>粘到搜索框 → 查看所在区块、发送方、接收方、Gas、状态。</li>
+    <li>切到"地址"页签输入你的操作钱包地址 → 看到它发起的全部交易（这是证明 B 项的硬据）。</li>
+    <li>对比两侧数据：现在报告与浏览器都按同一套<b>钱包候选集</b>取数，两边应当一致；
+      若浏览器里有、报告里没有，先确认你没切错账号（候选集里的四个写法见 7.3），仍不一致再带截图找老师。</li>
+  </ol><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>23 / 36</span></div></section><section class="page"><div class="hdr"><span>第 08 章 · 阶段四 链上验证</span><span>CHAPTER 08 · ON-CHAIN VERIFICATION</span></div><figure>
+    <img src="../assets/screenshots/manual/S07-explorer.png" alt="区块链浏览器">
+    <figcaption>图 8-2 区块链浏览器：区块 / 交易 / 地址三个视图。注意"平均 Gas 0"为当前已知展示问题（P3-15）。</figcaption>
+  </figure><div class="note note--tip">
+    <span class="t">验收点：一份合格的学生证据清单</span>
+    至少留存：① 3 份合约部署哈希；② ≥ 10 笔交易哈希（或浏览器地址页截图）；③ 6 个角色各 1 次发放流水；④ 1 次证书 + 1 次勋章 + 1 次骑行券兑换记录；⑤ 1 次市场成交记录。
+    有这五项，无论报告口径如何，你的实训完成度都可被交叉证明。
+  </div><div class="kicker">CHAPTER 09</div><h2>生成、读数并导出你的实训报告</h2><p class="lead">报告是整份实训的<b>交付物</b>。它不是你自己填的表格，而是服务端<b>拿着你的真实行为重新算出来</b>的一份评分书。</p><h3><span class="num">9.1</span>生成与导出</h3><ol class="steps">
+    <li>左侧导航底部点<b>生成实训报告</b>，进入报告页。</li>
+    <li>顶部看三个信息：总分、等级、链上数据概览（交易数 / 合约数 / 区块高）。</li>
+    <li>点<b>刷新数据</b>重算一次 —— 每当你补做了操作，都必须重新刷新才会得到新分数。</li>
+    <li>看<b>学习建议与提升路径（智能推荐）</b>区：平台会逐项告诉你哪一项丢了分、下一步该做什么、预计能拿多少分（高分必读）。</li>
+    <li>点<b>下载 Markdown 报告</b>提交给老师；需要交原始数据时再点<b>下载 JSON 数据</b>。</li>
+  </ol><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>24 / 36</span></div></section><section class="page"><div class="hdr"><span>第 09 章 · 生成实训报告</span><span>CHAPTER 09 · FINAL REPORT</span></div><figure>
+    <img src="../assets/screenshots/manual/S13-report-score.png" alt="实训报告评分表">
+    <figcaption>图 9-1 报告评分表：模块 / 项目 / 满分 / 得分 / 规则说明 五列，每一项的取分规则完全公开。</figcaption>
+  </figure><h3><span class="num">9.2</span>九维评分表总览（合计 100 分）</h3><table>
+    <thead><tr><th class="c" style="width:12mm">维度</th><th style="width:34mm">名称</th><th class="c" style="width:16mm">满分</th><th>一句话拿分条件</th></tr></thead>
+    <tbody>
+      <tr><td class="c"><b>A</b></td><td>合约开发</td><td class="c"><span class="score">20</span></td><td>部署 ≥1 份得 10；再按 ERC20 +3 / ERC721 +3 / ERC1155 +4 叠加</td></tr>
+      <tr><td class="c"><b>B</b></td><td>链上活跃度</td><td class="c"><span class="score">15</span></td><td>真实交易 ≥10 笔拿满（阶梯：1 / 2 / 5 / 10 笔）</td></tr>
+      <tr><td class="c"><b>C</b></td><td>资产生命周期</td><td class="c"><span class="score">10</span></td><td>铸造 ≥1 得 5 + 成交 ≥1 得 5</td></tr>
+      <tr><td class="c"><b>D</b></td><td>链搭建完成度</td><td class="c"><span class="score">10</span></td><td>云桌面 10/10 步；探索失败可 +1~3</td></tr>
+      <tr><td class="c"><b>E</b></td><td>联盟角色覆盖</td><td class="c"><span class="score">10</span></td><td>6/6 角色都用过</td></tr>
+      <tr><td class="c"><b>F</b></td><td>治理深度</td><td class="c"><span class="score">10</span></td><td>≥ 3 种角色有实质操作</td></tr>
+      <tr><td class="c"><b>G</b></td><td>绿色经济运营</td><td class="c"><span class="score">15</span></td><td>G1 证书 8 + G2 勋章&amp;骑行券 4 + G3 发放角色 3</td></tr>
+      <tr><td class="c"><b>H</b></td><td>生态合约激活</td><td class="c"><span class="score">5</span></td><td>GreenEnergy / PlantCertificate / EcoBadge 三份齐全</td></tr>
+      <tr><td class="c"><b>I</b></td><td>学习质量</td><td class="c"><span class="score">5</span></td><td>I1 读源码≥3次 +2、真实编译≥1 +1（上限 3）；I2 接口调试≥1 +2</td></tr>
+    </tbody>
+  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>25 / 36</span></div></section><section class="page"><div class="hdr"><span>第 09 章 · 生成实训报告</span><span>CHAPTER 09 · FINAL REPORT</span></div><h3><span class="num">9.3</span>扣分项与等级阈值</h3><div class="grid2">
+    <div class="card">
+      <h4>扣分（P 项，合计最多 −15）</h4>
+      <table style="margin:0">
+        <thead><tr><th>级别</th><th class="c" style="width:32mm">算法</th><th class="c" style="width:16mm">封顶</th></tr></thead>
+        <tbody>
+          <tr><td>操作 <b>error</b></td><td class="c">每次 −1</td><td class="c"><b>−10</b></td></tr>
+          <tr><td>操作 <b>warn</b></td><td class="c">每 10 次 −3</td><td class="c"><b>−5</b></td></tr>
+          <tr><td>两项合计</td><td class="c">—</td><td class="c"><b>−15</b></td></tr>
+        </tbody>
+      </table>
+      <p class="small muted" style="margin-top:2mm"><b>只统计「绿色低碳联盟链」页的操作审计日志</b>：能量发放被拒、兑换余额不足、
+      挂牌 / 购买失败、未选角色就操作、上架树种不合规等。合约 IDE 编译失败、接口调试 reverted、NFT 页 403
+      <b>都不在里面</b>（建议清单 P2-9 的口径已收口）。</p>
+      <p class="small muted" style="margin-top:1.5mm">日志按<b>操作者</b>归因（P1-26）：统计的是<b>你本人发起</b>的那些操作，
+      别人以角色身份给你发能量时的失败不会扣到你头上。实测账号 21 条日志、error 0 / warn 0 → <b>扣分为 0</b>。</p>
+    </div>
+    <div class="card">
+      <h4>等级（服务端阈值，与页面显示一致）</h4>
+      <table style="margin:0">
+        <thead><tr><th>总分</th><th class="c">等级</th></tr></thead>
+        <tbody>
+          <tr><td>≥ 90</td><td class="c"><b style="color:var(--primary)">优秀 🏆</b></td></tr>
+          <tr><td>≥ 75</td><td class="c"><b style="color:var(--info)">良好 🥈</b></td></tr>
+          <tr><td>≥ 60</td><td class="c"><b style="color:var(--warn)">合格 ✅</b></td></tr>
+          <tr><td>≥ 40</td><td class="c"><b style="color:var(--accent)">待完善 🚧</b></td></tr>
+          <tr><td>&lt; 40</td><td class="c"><b style="color:var(--error)">未完成 ❌</b></td></tr>
+        </tbody>
+      </table>
+      <p class="small muted" style="margin-top:2mm">总分先按 A~I 相加，再减 P 项，最后 <code>max(0, …)</code>；所以<b>九维做满 100 且零扣分为“优秀 🏆”</b>。</p>
+    </div>
+  </div><h3><span class="num">9.4</span>报告读数自检（三分钟）</h3><table>
+    <thead><tr><th style="width:44mm">看到的现象</th><th>结论与动作</th></tr></thead>
+    <tbody>
+      <tr><td>B 项 = 0，但浏览器里能看到自己的交易</td><td>先确认那几笔交易确实是<b>你本人登录</b>时发起的；再刷新报告。当前版本按钱包候选集取并集（P0-3 已修），仍为 0 就带浏览器截图找老师</td></tr>
+      <tr><td>E / F / G / I 全为 0，而你确定做过</td><td>几乎都是<b>登录账号不是同一个</b>（数据按操作人归属）。到报告 JSON 的 <code>identity.wallet_candidates</code> 核对四个写法，看是不是你自己的</td></tr>
+      <tr><td>教程步骤显示「28/10 步」、合约数大得不合理</td><td>你看到的是<b>全局混合口径</b>（P1-6，教师 / 管理员不指定钱包时的默认视图）。学生登录自己的账号只会看到本人数据</td></tr>
+      <tr><td>出现「P 操作错误扣分 −N」</td><td>到联盟页<b>操作日志 / 审计概览</b>按本人筛，定位 error 的原因（多为能量不足 / 未选角色 / 凭证未达阈值）。<b>error 行不会因后续成功而消失、也无法删除</b>，所以重点是停止重复同一个失败动作，而不是反复重试</td></tr>
+      <tr><td>刚做完操作但分数没变</td><td>没点<b>刷新数据</b>。报告不会自动重算</td></tr>
+      <tr><td>报告 100，「我的成绩」却是 95.2</td><td>正常（两套体系，见第 11 章）：综合分 = 实训分 × 60% + 教师分 × 40%</td></tr>
+    </tbody>
+  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>26 / 36</span></div></section><section class="page page--alt"><div class="hdr"><span>第 10 章 · 高分攻略</span><span>CHAPTER 10 · MAXIMIZE YOUR SCORE</span></div><div class="kicker">CHAPTER 10</div><h2>按"性价比"排序的冲刺清单</h2><p class="lead">下面这张表把 100 分拆成"每个动作值多少分 / 花多少时间"。时间不够时，从第一行往下做，做到哪算哪；
+  全部做完就是本手册实测过的成绩：<b>A20 · B15 · C10 · D10 · E10 · F10 · G15 · H5 · I5 = 100 分，扣分 0</b>
+  （一个真实账号的实际轨迹：19 笔链上交易、11 笔能量发放、6/6 角色、两个树种各 1 份证书）。</p><table>
+    <thead><tr><th class="c" style="width:10mm">优</th><th style="width:52mm">动作</th><th class="c" style="width:20mm">得分</th><th class="c" style="width:16mm">耗时</th><th>为什么划算</th></tr></thead>
+    <tbody>
+      <tr><td class="c"><span class="tag tag--p">1</span></td><td>I 项：读 3 份源码 + 编译 1 次 + 接口调试调 1 次只读函数</td><td class="c"><b>5</b></td><td class="c">5 分钟</td><td>全平台最便宜的分，而且本来就该做</td></tr>
+      <tr><td class="c"><span class="tag tag--p">1</span></td><td>H 项：确认三份生态合约链上可用</td><td class="c"><b>5</b></td><td class="c">1 分钟</td><td>平台播种 + 教程 Step 9 已凑齐，你只需在联盟页看一眼 3/3</td></tr>
+      <tr><td class="c"><span class="tag tag--p">1</span></td><td>A 项：依次部署 ERC20 / ERC721 / ERC1155</td><td class="c"><b>20</b></td><td class="c">20 分钟</td><td>三份下去就是 10 + 3 + 3 + 4，一步拿满</td></tr>
+      <tr><td class="c"><span class="tag tag--p">1</span></td><td>D 项：云桌面把 10 步全部打勾</td><td class="c"><b>10</b></td><td class="c">30 分钟</td><td>命令有速查表；Step 8–10 的真实探针会顺手凑齐 H 项，但那些交易记在 <code>0xadmin</code> 与机构钱包名下，<b>不进你的 B 项</b></td></tr>
+      <tr><td class="c"><span class="tag tag--i">2</span></td><td>E / F / G3：6 个角色各切换一次，其中 ≥ 4 种角色各成功发放 1 次</td><td class="c"><b>23</b></td><td class="c">20 分钟</td><td>一批操作同时喂饱三项（10 + 10 + 3）；发放时把接收方选成自己的钱包，还能同时喂四维「能量发放」</td></tr>
+      <tr><td class="c"><span class="tag tag--i">2</span></td><td>G2：勋章 + 骑行券各兑换 1 次</td><td class="c"><b>4</b></td><td class="c">2 分钟</td><td>只花 30 能量，成本几乎为零</td></tr>
+      <tr><td class="c"><span class="tag tag--w">3</span></td><td>C 项：铸造 1 份 + 市场成交 1 笔</td><td class="c"><b>10</b></td><td class="c">10 分钟</td><td>铸造会顺带为你部署一份 ERC721/1155；成交买系统挂牌资产最快</td></tr>
+      <tr><td class="c"><span class="tag tag--w">3</span></td><td>G1：兑换 <b>2 个不同树种</b>的植树证书各 1 份</td><td class="c"><b>8</b></td><td class="c">15 分钟</td><td>需 2500 能量：用回收角色重量填 21 kg 发 6 笔（单笔封顶 500）最快</td></tr>
+      <tr><td class="c"><span class="tag tag--a">4</span></td><td>B 项：核对链上交易 ≥ 10 笔</td><td class="c"><b>15</b></td><td class="c">0–10 分钟</td><td>走完上面几步，交易数通常已 ≥ 15 笔；不够就在能量钱包里补转账</td></tr>
+      <tr><td class="c"><span class="tag tag--a">5</span></td><td>控住 P 项：只在联盟页规范操作、失败不反复重试</td><td class="c" style="color:var(--error)"><b>最多 −15</b></td><td class="c">—</td><td>不丢分就是最稳的涨分</td></tr>
+    </tbody>
+  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>27 / 36</span></div></section><section class="page page--alt"><div class="hdr"><span>第 10 章 · 高分攻略</span><span>CHAPTER 10 · MAXIMIZE YOUR SCORE</span></div><div class="grid3">
+    <div class="card stat"><div class="lbl">实测可达</div><div class="big">100 分</div><p class="small">九维全满 + 零扣分，等级“优秀 🏆”。本版本已修掉曾经堵死满分的两个口径（B 项交易归属、G1 树种）。</p></div>
+    <div class="card stat"><div class="lbl">稳健目标</div><div class="big">≥ 75 分</div><p class="small">优先级 1、2 全做完就到“良好”，且不依赖能量与树种供给，适合时间紧张时保底。</p></div>
+    <div class="card stat"><div class="lbl">唯一硬前置</div><div class="big">2 个树种</div><p class="small">G1 的 8 分需要目录下真有 ≥ 2 个在售树种，只能由教师 / 管理员上架（见教师手册 3.4）。</p></div>
+  </div><h3><span class="num">10.1</span>一页纸时间表（建议 3 课时）</h3><table>
+    <thead><tr><th style="width:26mm">课时</th><th>内容</th><th style="width:30mm">阶段末自检</th></tr></thead>
+    <tbody>
+      <tr><td><b>第 1 课时</b></td><td>登录 → 看总览 → 云桌面 Step1–10（D 项）→ Step8–10 的真实调用顺手凑齐 H 项；B 项不在这里，留到第 2 课时</td><td>D = 10、H = 5</td></tr>
+      <tr><td><b>第 2 课时</b></td><td>合约 IDE 读源码 + 编译 + 部署 3 份标准合约（A / I）→ 接口调试一轮（I）→ 能量钱包转账凑笔数（B）→ 市场铸造与成交（C）</td><td>A = 20、I = 5、C = 10</td></tr>
+      <tr><td><b>第 3 课时</b></td><td>联盟页 6 角色发放（E / F / G3）→ 攒能量换 2 树种证书 + 勋章 + 骑行券（G1 / G2）→ 监听器与浏览器留证据 → 刷新并导出报告</td><td>E = 10、F = 10、G = 15</td></tr>
+    </tbody>
+  </table><div class="note note--bad">
+    <span class="t">三个典型假分数陷阱</span>
+    ① <b>切了钱包</b>：中途手动切到 <code>0xadmin</code> 或同学钱包做操作，那一段数据就归到对方名下；② <b>看错页</b>：把"我的成绩"的四维实训分与报告的九维分当作同一个数（它们算法完全不同，见第 11 章）；
+    ③ <b>只认一个页面</b>：侧边栏的"整体学习进度"现在已是你的真实进度（每 15 秒与切页时刷新），但它只算<b>搭链教程步数</b>，不等于报告的九维总分 —— 交作业以<b>报告页</b>为准。
+  </div><div class="kicker">CHAPTER 11</div><h2>你的最终成绩 = 实训分 × 60% + 教师评分 × 40%</h2><div class="note note--bad">
+    <span class="t">最重要的结论先说</span>
+    教师未评分时，成绩册里<b>根本没有你的正式行</b>；即使老师把草稿同步成了成绩但没录分，综合分也只有<b>实训分 × 60%</b>。
+    实测账号 <code>19898800030</code>：实训分 <b>100.0</b>、教师分 <b>88.0</b> → 综合分 <b>95.2</b>；同一份实训若教师分为 0，只能记 <b>60.0</b>。
+    所以做完实训后，一定要走到第 11.3 节的三段链路里，请老师在<b>成绩录入</b>里给你打分，否则九维报告做得再满，总评也上不去。
+  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>28 / 36</span></div></section><section class="page"><div class="hdr"><span>第 11 章 · 成绩构成</span><span>CHAPTER 11 · HOW YOUR GRADE IS COMPUTED</span></div><h3><span class="num">11.1</span>两套分数体系，千万别混淆</h3><table>
+    <thead><tr><th style="width:30mm">体系</th><th style="width:42mm">在哪里看</th><th>算的是什么</th></tr></thead>
+    <tbody>
+      <tr><td><b>实训报告（九维 A~I）</b></td><td>生成实训报告</td><td><b>覆盖度</b>评分书：每一项只看你有没有做到那个门槛（≥1 份 / ≥10 笔 / 6 角色…），达到就给满分，再减 P 项扣分。它是你提交给老师的<b>作品</b></td></tr>
+      <tr><td><b>成绩册（四维实训分）</b></td><td>我的成绩</td><td><b>次数 × 系数</b>的过程分：链搭建 20% + 合约开发 30% + 链上验证 25% + 联盟治理 25%，每一维 100 分封顶，加权得到“实训分”，再与教师评分按 60/40 合成综合分</td></tr>
+    </tbody>
+  </table><p class="small muted">两套体系的算法与取数事件都不同（建议清单 <b>P1-7</b> 仍成立）：报告看“做没做到”，成绩册看“做了多少次”。</p><h3><span class="num">11.2</span>四维实训分细则（每维 100 封顶，算的是次数）</h3><table>
+    <thead><tr><th style="width:30mm">维度（权重）</th><th style="width:56mm">服务端公式</th><th>最快顶到 100 的做法</th></tr></thead>
+    <tbody>
+      <tr><td>链底层搭建 <code>chain_setup</code><br><span class="small muted">20%</span></td><td class="mono small">IDE 打开模板 ×5 + 保存工程 ×10 + 教程完成步 ×8</td><td>云桌面 10 步就是 80 分；再在合约 IDE 里打开 2 个内置模板（10）+ 保存 1 次（10）→ 满</td></tr>
+      <tr><td>合约开发 <code>contract_dev</code><br><span class="small muted">30%（最高）</span></td><td class="mono small">编译成功 ×5 + 部署合约 ×25</td><td>部署 4 份就满（或 3 份 + 5 次成功编译）。编译失败<b>不扣分</b>，只是不计次；权重最大，优先保它</td></tr>
+      <tr><td>链上验证 <code>chain_verify</code><br><span class="small muted">25%</span></td><td class="mono small">接口调用 ×5 + 合约调用 ×4 + 链上交易 ×3</td><td>这一维最容易被忽略：它要的是<b>真实调用行为</b>（接口调试、写调用、交易），只看浏览器页面不算；实测 9 次接口调用 + 19 笔交易已封顶</td></tr>
+      <tr><td>联盟治理 <code>alliance_gov</code><br><span class="small muted">25%</span></td><td class="mono small">切角色 ×8 + 能量发放 ×10 + 铸造 ×6 + NFT 成交 ×5 + 市场成交 ×5 + ERC20 转账 ×2 + 看报告 ×4</td><td>切满 6 个角色（48）+ 6 次成功发放（60）就已封顶；此外每看一次报告 +4 分，多刷新几次只有好处</td></tr>
+    </tbody>
+  </table><p class="small muted">系数与权重取自 <code>app/routers/grades.py · _compute_training_score()</code>（每一维各自 100 封顶），再按 20 / 30 / 25 / 25 加权得实训分。
+  两个容易误解的口径：「能量发放」数的是<b>你的钱包作为接收方</b>的能量记录（所以发放时接收方要选自己）；「链上交易」数的是<b>发送方或收款方</b>命中你钱包候选集的交易。</p><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>29 / 36</span></div></section><section class="page"><div class="hdr"><span>第 11 章 · 成绩构成</span><span>CHAPTER 11 · HOW YOUR GRADE IS COMPUTED</span></div><figure>
+    <img src="../assets/screenshots/manual/S15-mygrades.png" alt="我的成绩">
+    <figcaption>图 11-1 我的成绩：自上而下是“实训成绩概览（四维拆解）→ 系统实训草稿（标注不计入综合分）→ 能力雷达 → 成绩记录”。成绩记录的<b>行来源</b>列会写清这一行是“教师已评”还是“系统行”。</figcaption>
+  </figure><h3><span class="num">11.3</span>“系统实训草稿”是什么，与正式成绩隔了几步</h3><p>当前版本已把<b>草稿与成绩册彻底分家</b>（P1-8 / P1-25 已修）：打开报告、刷新报告都<b>不再</b>往成绩册里写任何行，
+  成绩册唯一的系统写入通道是教师显式点“同步”。整条链路三段，每段都要有人按一次按钮：</p><ol class="steps">
+    <li>你在<b>我的成绩</b>页点<b>同步实训草稿</b> —— 只生成一条草稿（页面上标“不计入综合分”），作用是让老师看见你的实训分。</li>
+    <li>老师在<b>成绩册</b>的<b>系统实训草稿</b>区点<b>同步为成绩</b>（或“全部同步为本班成绩”）—— 这一步才真正生成正式行。</li>
+    <li>老师在<b>成绩录入</b>里给出<b>教师评分</b> —— 综合分 = 实训 × 0.6 + 教师 × 0.4 到这里才算完整。</li>
+  </ol><ul class="dash">
+    <li>看<b>行来源</b>标签最可靠：<b>教师已评</b> = 老师正式评过；<b>系统行</b> = 只是草稿同步来、教师分仍为 0。</li>
+    <li>老师重复同步草稿时，<b>只刷新实训维度</b>，教师分与备注不会被改写，所以不用担心“同步一次分数被冲掉”。</li>
+    <li>对教师分有异议时，拿第 08 章的证据清单去沟通，而不是反复刷新报告（刷新不会改变教师分）。</li>
+  </ul><div class="note note--tip">
+    <span class="t">提交作业的标准动作</span>
+    ① 报告页点<b>刷新数据</b>→ ② 确认九维分数不再上升 → ③ <b>下载 Markdown 报告</b>→
+    ④ 到<b>我的成绩</b>点<b>同步实训草稿</b>，并截图“行来源 + 教师分”状态 → ⑤ 一并发给老师，请他同步草稿并录入教师分。
+  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>30 / 36</span></div></section><section class="page"><div class="hdr"><span>第 12 章 · 成就 / 常见问题</span><span>CHAPTER 12 · ACHIEVEMENTS &amp; FAQ</span></div><div class="kicker">CHAPTER 12</div><h2>成就中心与常见问题</h2><h3><span class="num">12.1</span>成就中心：不影响成绩，但能帮你查漏</h3><p>成就页展示徽章墙与积分，并按阶段列出<b>每日挑战</b>（领取 → 完成 → 提交进度）。它不参与评分，但每一个成就都是一条"你确实做到了 X"的旁证。
+  实用用法：<b>把未获得的成就当作待办清单</b>，它们与九维评分项高度重叠。</p><figure>
+    <img src="../assets/screenshots/manual/S16-achievements.png" alt="成就中心">
+    <figcaption>图 12-1 成就中心：徽章墙 + 积分 + 每日挑战。</figcaption>
+  </figure><div class="note note--ok">
+    <span class="t">成就与报告现在同一口径</span>
+    成就页与报告都已经改成按<b>钱包候选集</b>取数（P0-2 已修），所以“成就显示 6/6 角色、报告 E 项却是 0”这种矛盾在本版本已不会出现；
+    实测账号的成就与报告均读到 <b>6/6 角色</b>。若仍对不上，先看监听器/浏览器有没有真实记录，再把两组数字一并报老师。
+    一个仍存在的小问题：成就<b>排行榜</b>只展示链上地址、不显示姓名（P3-23），看到陌生 <code>0x…</code> 属正常。
+  </div><h3><span class="num">12.2</span>FAQ 与故障排查</h3><p class="small muted">按“登录 → 云桌面 → 链与合约 → 分数与成绩”四类排序，先对号再行动。</p><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>31 / 36</span></div></section><section class="page"><div class="hdr"><span>第 12 章 · 成就 / 常见问题</span><span>CHAPTER 12 · ACHIEVEMENTS &amp; FAQ</span></div><table>
+    <thead><tr><th style="width:56mm">现象</th><th>原因与处理</th></tr></thead>
+    <tbody>
+      <tr><td><b>登录失败，提示看不清原因</b></td><td>本版已把三类原因分开（P1-4 已修）：提示<b>实训 SSO 返回的原文</b>（如“用户名或密码错误”）→ 账号密码问题；提示<b>「SSO 登录接口 HTTP 4xx/5xx」</b>→ 身份服务异常，把<b>账号名 + 时间点</b>报老师；提示<b>「无法连接 SSO 服务」</b>→ 平台到 SSO 的网络不通，等老师处理。三种都不要连续重试</td></tr>
+      <tr><td>登录后菜单里看不到某些页</td><td>角色权限不足。学生账号不包含教师端功能（如成绩录入、树种目录上架）属正常</td></tr>
+      <tr><td><b>云桌面终端无法粘贴命令</b></td><td>为训练手写命令，终端<b>故意屏蔽了 Ctrl+V</b>。只能逐字输入；写错的命令直接回车产生失败记录即可，不影响后续</td></tr>
+      <tr><td>命令明明对了却不打勾</td><td>步骤按<b>顺序</b>正则匹配：必须先完成前一步。若顺序正确仍不通过，核对多余空格与参数（尤其地址大小写）；页面左侧步骤卡展开后的“语法格式”就是标准答案</td></tr>
+      <tr><td>顶栏链状态不是"链运行中"</td><td>后端或链节点未就绪。先等 30 秒刷新；仍不行就通知老师，<b>不要在此时做部署类操作</b>（会留下一堆失败交易，影响监听器的异常统计）</td></tr>
+      <tr><td>部署 / 发行报"权限不足"</td><td>ERC20 发行权仅在管理员钱包。检查顶栏是否切到了错误钱包；<b>铸造 NFT 被 403 拦下</b>则是没选联盟角色，回联盟页选角色即可（不扣 P 分）</td></tr>
+      <tr><td>报告分数与"我的成绩"不一致</td><td>正常（两套体系，P1-7）。以提交给老师的 Markdown 报告为准，算总评以成绩册为准（见第 11 章）</td></tr>
+      <tr><td>侧边栏"整体学习进度"不变化</td><td>本版已接上真实进度（每 15 秒与切页时刷新，P1-5 已修）；但它<b>只算搭链教程步数</b>，不等于报告九维分。它长期不动时，先确认你确实在云桌面完成了步骤</td></tr>
+      <tr><td>不小心切了同学/内置的钱包</td><td>立即切回"我的钱包"再继续。切过去那一段数据归对方名下（同一候选集内的别名已能合并，跨账号不行），可补做一遍拿回分数</td></tr>
+      <tr><td>页面报错 / 班级与成绩列表空白</td><td>先刷新；成绩册为空通常是<b>教师还没绑定班级、或未同步花名册</b>（P0-1 / P0-4 已把错误显式暴露出来），需老师按教师手册第 3 章处理，学生无法绕过</td></tr>
+      <tr><td>报告 100 分，综合分却只有 60</td><td>成绩册里没有教师分（或老师只同步了草稿未录入评分）。综合分 = 实训 × 0.6 + 教师 × 0.4，请老师完成第 11.3 节的第 3 步</td></tr>
+    </tbody>
+  </table><h3><span class="num">12.3</span>术语表</h3><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>32 / 36</span></div></section><section class="page"><div class="hdr"><span>第 12 章 · 成就 / 常见问题</span><span>CHAPTER 12 · ACHIEVEMENTS &amp; FAQ</span></div><div class="grid2">
+    <div class="card"><h4>链与身份</h4><p class="small"><b>联盟链</b>：由已知成员（地铁/公交/单车等）共同治理的链。<b>节点</b>：运行链程序的服务器，本平台为 4 节点 PBFT。<b>钱包</b>：链上地址，形如 <code>0x…</code>；<code>stu:&lt;ID&gt;</code> 是你的平台别名。</p></div>
+    <div class="card"><h4>合约与资产</h4><p class="small"><b>智能合约</b>：上链的程序。<b>ERC20</b> 同质化代币（能量）；<b>ERC721</b> 唯一证书；<b>ERC1155</b> 批量勋章。<b>ABI</b>：合约接口描述；<b>bytecode</b>：编译后的链上字节码。</p></div>
+    <div class="card"><h4>交易与验证</h4><p class="small"><b>交易哈希</b>：一笔上链操作的唯一凭证。<b>回执 Receipt</b>：执行结果与状态。<b>Gas</b>：执行消耗。<b>只读调用 view</b>：不写链、不产生交易；<b>写调用 state</b>：产生交易。</p></div>
+    <div class="card"><h4>评分术语</h4><p class="small"><b>九维 A~I</b>：报告评分项（100 分）。<b>P 项</b>：扣分项，只统计联盟页操作日志，最多 −15。<b>四维</b>：成绩册的四个过程维度。<b>实训分 / 教师分 / 综合分</b>：60% / 40% / 合成结果。<b>钱包候选集</b>：判定“这些数据算不算你”的一组写法。</p></div>
+  </div><h2>会影响你得分的已知问题（摘自《产品与逻辑问题建议清单》）</h2><p class="lead">本节内容摘自《产品与逻辑问题建议清单》，按<b>本版实测状态</b>分两栏：已修的你不用再绕路，仍存在的只是“看得到、不阻断得分”。编号供与老师沟通时使用。</p><h3><span class="num">A.1</span>本版已修复（不再需要学生绕路）</h3><table>
+    <thead><tr><th class="c" style="width:20mm">编号</th><th style="width:52mm">曾经的现象</th><th>现在的行为</th></tr></thead>
+    <tbody>
+      
+      
+      
+      
+      
+      
+      
+      
+      
+    </tbody>
+  <tr><td class="c mono"><b>P0-1 / P0-4</b></td><td>班级看板 / 学生列表 / 进度统计全为空，花名册写入失败被静默吞掉</td><td>花名册写入结果显式暴露（<code>roster_ok</code>），班级口径未解析时直接提示 <code>class_unbound</code>，老师可手动绑定任教班级</td></tr><tr><td class="c mono"><b>P0-2</b></td><td>做了 E/F/G/I 但报告为 0；同一人不同口径 5~80 分差异</td><td>报告与成就的读路径统一到<b>钱包候选集</b>（真实地址 / user_id / <code>stu:</code> 别名 / 学号），实测 E = 10、F = 10</td></tr><tr><td class="c mono"><b>P0-3</b></td><td>交易明明发了，B 项始终 0 分（实测命中 0 笔）</td><td>链上表改按候选集匹配，实测命中 <b>19 笔</b> → B 项 15 分拿满，“优秀 🏆”不再被堵死</td></tr><tr><td class="c mono"><b>P1-4</b></td><td>登录失败只给一句笼统的 502 文案，看不出是密码错还是服务挂</td><td>三类分开：SSO 原文（密码错）/ 「SSO 登录接口 HTTP x」/「无法连接 SSO 服务」</td></tr><tr><td class="c mono"><b>P1-5</b></td><td>侧边栏“整体学习进度”是写死的展示值</td><td>改接服务端真实进度（每 15 秒与切页重拉）；口径仍为<b>搭链教程步数</b></td></tr><tr><td class="c mono"><b>P1-8 / P1-25</b></td><td>一打开报告就往成绩册插一行“系统自动”、教师分 0，会污染教师列表</td><td>查看与刷新报告<b>完全只读</b>；草稿只进 <code>grade_draft</code>，必须教师显式同步才落成绩册</td></tr></table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>33 / 36</span></div></section><section class="page page--alt"><div class="hdr"><span>附录 A · 已知问题索引</span><span>APPENDIX A · KNOWN ISSUES</span></div><table>
+    <thead><tr><th class="c" style="width:20mm">编号</th><th style="width:52mm">曾经的现象</th><th>现在的行为</th></tr></thead>
+    <tbody>
+      
+      
+      
+      
+      
+      
+      
+      
+      
+    </tbody>
+  <tr><td class="c mono"><b>P2-9</b></td><td>只读调用、编译失败也算“操作错误”，P 项动辄被扣满 −10</td><td>P 项只统计联盟页操作审计日志；IDE 编译失败、接口调试 reverted、NFT 403 均不计分</td></tr><tr><td class="c mono"><b>其他</b></td><td>建链教程命令注册表与页面展示清单错位（D 项 10 分不可达）</td><td>两边已对齐，10 步逐条可做完；第 04 章速查表即取自注册表</td></tr><tr><td class="c mono"><b>其他</b></td><td>后端重启重置 EVM 状态，旧合约列表里“看起来还能调”</td><td>合约管理与接口调试均区分<b>已失效 / 在链</b>，避免你误调用一个已经不在链上的地址</td></tr></table><h3><span class="num">A.2</span>本版仍存在（不阻断得分，但你会看到）</h3><table>
+    <thead><tr><th class="c" style="width:20mm">编号</th><th class="c" style="width:14mm">等级</th><th style="width:44mm">现象</th><th>你需要知道的</th></tr></thead>
+    <tbody>
+      <tr><td class="c mono"><b>P1-6</b></td><td class="c"><span class="tag tag--w">高</span></td><td>报告里出现“28/10 步”、20 份合约等不属于你的数据</td><td>只发生在<b>教师 / 管理员不指定钱包</b>的全局视图；学生登录自己账号只会看到本人数据</td></tr>
+      <tr><td class="c mono"><b>P1-7</b></td><td class="c"><span class="tag tag--w">高</span></td><td>同屏两个分：报告 100 / 实训分 100 但综合分 95.2</td><td>设计使然（九维门槛 vs 四维次数，再 60/40 合成），不是算错</td></tr>
+      <tr><td class="c mono"><b>P2-11</b></td><td class="c"><span class="tag tag--i">中</span></td><td>云桌面角标写“真实执行”，但输出像录像</td><td>出于安全整改，命令一律先在<b>沙箱虚拟文件系统</b>里仿真；Step 6–7 的余额查询、Step 8–10 的 <code>call</code> / <code>deploy</code> 在有链环境时<b>真实上链</b>（但发送方是 <code>0xadmin</code> / 机构钱包，不进你的 B 项），Step 1–5 与 Step 6 的规则表、Step 8 前三条为教学文本。写实训心得时请区分描述</td></tr>
+      <tr><td class="c mono"><b>P2-12</b></td><td class="c"><span class="tag tag--i">中</span></td><td>登录页块高、出块周期、沙盒 TPS 一直在动</td><td>只有“链模式 / 链状态”是后端真实值，其余为装饰动画</td></tr>
+      <tr><td class="c mono"><b>P3-15</b></td><td class="c"><span class="tag tag--p">低</span></td><td>区块链浏览器 Gas 分析永远是 0</td><td>链模式未回填 gas 字段，不是你的交易有问题</td></tr>
+      <tr><td class="c mono"><b>P3-23</b></td><td class="c"><span class="tag tag--p">低</span></td><td>成就排行榜只有地址没有姓名，偶见脏账号</td><td>不影响你的得分与成绩，仅作展示</td></tr>
+      <tr><td class="c mono"><b>环境依赖</b></td><td class="c"><span class="tag tag--i">中</span></td><td>兑换中心只有 1 个树种，G1 拿不满 8 分</td><td>平台<b>不会播种树种目录</b>，需教师 / 管理员上架 ≥ 2 个在售树种（教师手册 3.4）。开学前可让老师先确认</td></tr>
+    </tbody>
+  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>34 / 36</span></div></section><section class="page page--alt"><div class="hdr"><span>附录 A · 已知问题索引</span><span>APPENDIX A · KNOWN ISSUES</span></div><div class="note note--tip">
+    <span class="t">如何反馈一个分数争议（30 秒模板）</span>
+    "账号 ____；报告里 ____ 项为 0；但我已在 ____（页面）完成 ____（动作），共 ____ 笔，交易哈希前 8 位是 ________；对应已知问题编号 ____。"
+    按这个格式发给出课老师，一次就能定位。
+  </div><div class="kicker">SUBMIT CHECKLIST</div><h2>交报告前，逐项划对号</h2><table>
+    <thead><tr><th class="c" style="width:12mm">✓</th><th style="width:60mm">检查项</th><th class="c" style="width:26mm">目标</th><th>在哪确认</th></tr></thead>
+    <tbody>
+      <tr><td class="c">□</td><td>云桌面 10 步全部打勾</td><td class="c"><b>D = 10</b></td><td>云桌面顶部"已完成 x / 10 步"</td></tr>
+      <tr><td class="c">□</td><td>三大标准合约已部署（我自己部署的）</td><td class="c"><b>A = 20</b></td><td>合约管理列表，部署者 = 我的钱包（候选集）</td></tr>
+      <tr><td class="c">□</td><td>三份生态合约在链上齐全</td><td class="c"><b>H = 5</b></td><td>联盟页合约状态 3/3（全局事实，不必自己部署）</td></tr>
+      <tr><td class="c">□</td><td>读过 3 份源码 + 编译成功 + 接口调试过</td><td class="c"><b>I = 5</b></td><td>合约 IDE 与接口调试页（只读函数调 1 次即可）</td></tr>
+      <tr><td class="c">□</td><td>链上交易 ≥ 10 笔（含部署与转账）</td><td class="c"><b>B = 15</b></td><td>区块链浏览器地址页，与报告同口径（P0-3 已修）</td></tr>
+      <tr><td class="c">□</td><td>铸造过 1 份资产且市场成交 1 笔</td><td class="c"><b>C = 10</b></td><td>绿色资产市场成交记录（绿色市场成交也计入）</td></tr>
+      <tr><td class="c">□</td><td>6 个联盟角色都切换并成功发放过</td><td class="c"><b>E = 10 · F = 10</b></td><td>能量流水按角色筛，≥ 3 种角色有实质操作</td></tr>
+      <tr><td class="c">□</td><td><b>2 个不同树种</b>的证书 + 勋章 + 骑行券都兑换过</td><td class="c"><b>G = 15</b></td><td>兑换中心与我的资产（只有 1 个树种时 G1 仅 4 分，G 上限 11）</td></tr>
+      <tr><td class="c">□</td><td>联盟页没有成堆的失败操作</td><td class="c"><b>P 扣分 = 0</b></td><td>报告页扣分行 + 联盟页操作日志按本人筛</td></tr>
+      <tr><td class="c">□</td><td>报告已刷新并下载 Markdown</td><td class="c"><b>总分 ≥ 90</b></td><td>报告页右上角（实测可 100）</td></tr>
+      <tr><td class="c">□</td><td>草稿已同步且教师分不为空</td><td class="c"><b>行来源 = 教师已评</b></td><td>我的成绩（否则综合分最多只算到实训 × 60%）</td></tr>
+    </tbody>
+  </table><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>35 / 36</span></div></section><section class="page"><div class="hdr"><span>附录 B · 交付前自检</span><span>APPENDIX B · FINAL CHECKLIST</span></div><div class="grid3">
+    <div class="card stat"><div class="lbl">合格线</div><div class="big">60</div><p class="small">优先级 1 的四个动作（部署 / 教程 / I 项 / 看一眼 H）做完就跨过。</p></div>
+    <div class="card stat"><div class="lbl">优秀线</div><div class="big">90</div><p class="small">再加 6 角色发放与一轮兑换，P 项控在 0，就已进“优秀 🏆”区间。</p></div>
+    <div class="card stat"><div class="lbl">实测满分</div><div class="big">100</div><p class="small">九维全满零扣分；唯一外因是树种目录得有 ≥ 2 个在售树种。</p></div>
+  </div><div class="note note--ok">
+    <span class="t">一句话版本</span>
+    <b>先把三份标准合约部署下去（A 20 + I 5），再花半小时把云桌面 10 步打完（D 10），然后用 6 个角色各发放一次（E+F+G3 共 23），
+    攒满 2500 能量换两个树种的证书、再换一枚勋章一张券（G 15），补上铸造与成交（C 10），核对交易已 ≥ 10 笔（B 15）；
+    全程只在联盟页规范操作、失败不反复重试（P 0）。做完刷新报告、下载、请老师同步草稿并录教师分。</b>
+  </div><div class="ftr"><span>FISCOChain 联盟链实训平台 · 学生使用手册</span><span>36 / 36</span></div></section>
+</body>
+</html>

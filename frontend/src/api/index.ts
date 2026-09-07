@@ -11,6 +11,14 @@ export const authApi = {
   session: () => http.get('/auth/session'),
   /** 班级学生列表（教师查看同班学生 + 实训进度概要） */
   classStudents: () => http.get('/auth/class-students') as Promise<any>,
+  /** 身份/班级自检（P0-1）：班级解析链来源 + 花名册来源 + 钱包候选集 + 自检项 */
+  rosterStatus: () => http.get('/auth/roster-status') as Promise<any>,
+  /** 教师绑定任教班级（P0-1：SSO 不返班级时的自助入口；管理员可代绑） */
+  bindClass: (data: { class_id: string; teacher_user_id?: string }) =>
+    http.post('/auth/bind-class', data) as Promise<any>,
+  /** 管理员认领历史共享钱包归属（P0-2：一人一钱包上线前的 0xlearner 等） */
+  claimWalletAlias: (data: { alias: string; user_id: string }) =>
+    http.post('/auth/wallet-alias/claim', data) as Promise<any>,
   /** 平台整体实训进度概览（按角色返回不同粒度：学生=个人 / 教师=班级 / 管理员=全校） */
   platformProgress: () => http.get('/auth/platform-progress') as Promise<any>,
 }
@@ -36,10 +44,19 @@ export const gradesApi = {
     http.post('/grades/compute-training', data),
   /** 批量刷新所有已绑定 wallet 记录的实训成绩 + 综合成绩 */
   refreshTraining: () => http.post('/grades/refresh-training'),
-  /** 学生端：按 wallet 查看自己的成绩 */
+  /** 学生端：按 wallet 查看自己的成绩（含系统草稿 draft + 行来源 row_kind） */
   myGrades: (wallet: string) =>
     http.get('/grades/my', { params: { wallet } }) as Promise<any>,
-  /** 报告→成绩闭环：按 wallet 自动创建/更新成绩草稿 */
+  /** 刷新系统草稿（只写 grade_draft，**不进成绩册、不影响综合分**，P1-8 / P1-25） */
+  draftRefresh: (data: { wallet: string; student_id?: string; student_name?: string; course?: string }) =>
+    http.post('/grades/draft/refresh', null, { params: data }) as Promise<any>,
+  /** 教师端：查看待同步的系统草稿（含每条的目标行类型 target_row_kind） */
+  drafts: (params: { class_id?: string; course?: string } = {}) =>
+    http.get('/grades/drafts', { params }) as Promise<any>,
+  /** 教师端：把草稿显式同步为正式成绩（成绩册唯一的系统写入通道，人工触发） */
+  draftApply: (data: { draft_id?: number; user_id?: string; course?: string; all?: boolean; class_id?: string }) =>
+    http.post('/grades/draft/apply', data) as Promise<any>,
+  /** @deprecated 旧名，行为已改为只写 grade_draft（不再写成绩册），请用 draftRefresh */
   autoDraft: (data: { wallet: string; student_id?: string; student_name?: string; course?: string }) =>
     http.post('/grades/auto-draft', null, { params: data }) as Promise<any>,
 }
@@ -180,22 +197,33 @@ export const ecoApi = {
   /** 清除联盟角色选择，回到普通用户身份 */
   clearRole: (wallet: string) => http.post('/eco/role/clear', { wallet }),
   currentRole: (wallet: string) => http.get('/eco/role/current', { params: { wallet } }),
+  /** 四维度职能矩阵（谁发行能量 / 谁发行资产 / 谁获取能量 / 谁兑换资产 + 本人 capabilities） */
+  rolesDuties: (wallet?: string) =>
+    http.get('/eco/roles/duties', { params: { wallet } }) as Promise<any>,
   contractStatus: () => http.get('/eco/contracts/status'),
   builtinContracts: () => http.get('/eco/contracts/builtin'),
-  /** 一键编译 + 部署内置绿色合约 */
-  deployContract: (name: string, deployer: string = '0xlearner') =>
+  /** 一键编译 + 部署内置绿色合约（deployer 留空 = 后端按 JWT 本人钱包校验） */
+  deployContract: (name: string, deployer = '') =>
     http.post('/eco/contracts/deploy', { name, deployer }),
   issueEnergy: (wallet: string, role_key: string, proof: Record<string, any> = {}, force = false) =>
     http.post('/eco/energy/issue', { wallet, role_key, proof, force }),
-  energyRecords: (wallet?: string) => http.get('/eco/energy/records', { params: { wallet } }),
+  /** 能量台账双视角：by=receiver 我获取的（居民）/ by=issuer 本节点发行的（业务节点）；limit 只截列表，不影响累计聚合 */
+  energyRecords: (wallet?: string, by: 'receiver' | 'issuer' = 'receiver', limit?: number) =>
+    http.get('/eco/energy/records', { params: { wallet, by, ...(limit ? { limit } : {}) } }) as Promise<any>,
   energyBalance: (wallet: string) => http.get('/eco/energy/balance', { params: { wallet } }),
   trees: () => http.get('/eco/trees'),
   addTree: (data: any) => http.post('/eco/trees/add', data),
+  /** 治理：调整树种发行额度（只可上调）/ 上下架 */
+  updateTree: (data: {
+    species_id: number; wallet: string; supply?: number; status?: string
+  }) => http.post('/eco/trees/update', data),
   exchangeCertificate: (wallet: string, species_id: number) => http.post('/eco/certificates/exchange', { wallet, species_id }),
   certificates: (owner?: string) => http.get('/eco/certificates/list', { params: { owner } }),
-  exchangeBadge: (wallet: string, badge_type: string, type_id?: number) =>
-    http.post('/eco/badges/exchange', { wallet, badge_type, type_id }),
-  badges: (owner?: string) => http.get('/eco/badges/list', { params: { owner } }),
+  exchangeBadge: (wallet: string, badge_type: string, type_id?: number, quantity = 1) =>
+    http.post('/eco/badges/exchange', { wallet, badge_type, type_id, quantity }),
+  /** 勋章/骑行券：by=owner 我持有的 / by=issued 本节点发行·发放的 */
+  badges: (owner?: string, by: 'owner' | 'issued' = 'owner') =>
+    http.get('/eco/badges/list', { params: { owner, by } }) as Promise<any>,
   /** 勋章 / 骑行券类型列表 */
   badgeTypes: () => http.get('/eco/badges/types'),
   /** 管理员 / 联盟角色新增勋章（或骑行券）类型 */
@@ -212,8 +240,8 @@ export const ecoApi = {
     http.post('/eco/errors/record', data),
   /** 查看操作日志列表（可选按钱包过滤） */
   listLogs: (wallet?: string, limit = 200) => http.get('/eco/errors/list', { params: { wallet, limit } }),
-  /** 绿色资产市场：挂牌 */
-  marketList: (data: { seller: string; asset_type: string; asset_id: number; price_energy: number }) =>
+  /** 绿色资产市场：挂牌（ERC1155 可按份数拆挂，ERC721 恒为 1） */
+  marketList: (data: { seller: string; asset_type: string; asset_id: number; price_energy: number; quantity?: number }) =>
     http.post('/eco/market/list', data),
   /** 绿色资产市场：查询在售 */
   marketItems: (asset_type?: string, seller?: string) =>
@@ -226,9 +254,18 @@ export const ecoApi = {
     http.post('/eco/market/cancel', { listing_id, seller }),
   /** 绿色资产市场：已成交记录（权威数据源，供市场页交易时间线展示） */
   marketTrades: (limit = 100) => http.get('/eco/market/trades', { params: { limit } }),
-  /** 角色工作台：职责 / 权限位 / 角色钱包链上活动统计 / 待办运营动作（只读聚合） */
-  roleWorkbench: (role_key: string) =>
-    http.get('/eco/role/workbench', { params: { role_key } }) as Promise<any>,
+  /** 角色工作台：职责 / 能力位 / 发行授信额度 / 链上活动统计 / 待办运营动作（只读聚合） */
+  roleWorkbench: (role_key: string, wallet?: string) =>
+    http.get('/eco/role/workbench', { params: { role_key, wallet } }) as Promise<any>,
+  /** 能量国库：累计发行 / 回收 / 已销毁 / 在途 + 通胀审计（所有身份只读） */
+  treasuryOverview: (wallet?: string) =>
+    http.get('/eco/treasury/overview', { params: { wallet } }) as Promise<any>,
+  /** 治理：国库销毁已回收能量（仅教师 / 平台管理员账号） */
+  treasuryBurn: (data: { wallet: string; amount: number; note?: string }) =>
+    http.post('/eco/treasury/burn', data) as Promise<any>,
+  /** 能量流水账本（按事件记账，含符号与类型标签，供审计视图） */
+  energyFlows: (wallet?: string, limit = 50) =>
+    http.get('/eco/energy/flows', { params: { wallet, limit } }) as Promise<any>,
   /** 监管审计视角：块高 / 合约调用健康度 / 异常调用明细 / 各角色能量发放对比（全链只读聚合） */
   auditOverview: () => http.get('/eco/audit/overview') as Promise<any>,
 }

@@ -17,6 +17,7 @@
         <el-button type="primary" @click="loadData" :loading="loading">
           <el-icon><Refresh /></el-icon>&nbsp;刷新成绩
         </el-button>
+        <el-button @click="refreshDraft" :loading="draftLoading">同步实训草稿</el-button>
         <el-button @click="$router.push('/report')">
           <el-icon><Document /></el-icon>&nbsp;查看实训报告
         </el-button>
@@ -52,6 +53,26 @@
       </div>
     </section>
 
+    <!-- 系统实训草稿（P1-25：草稿与正式成绩分家，不影响综合分） -->
+    <section class="dq-card" v-if="wallet && draft !== null">
+      <div class="dq-card-title">
+        系统实训草稿
+        <span class="dq-tag muted">不计入综合分</span>
+        <span class="dq-tag warn" v-if="!grades.length">成绩册暂无记录</span>
+      </div>
+      <div class="draft-body" v-if="draft">
+        <div class="draft-score">{{ Number(draft.training_score || 0).toFixed(1) }}</div>
+        <div class="draft-meta">
+          <div>课程：{{ draft.course }} · 更新于 {{ formatTime(draft.updated_at) }}</div>
+          <div class="draft-tip">这是系统按你的链上活动实时算出的实训分草稿。它只在预览里存在，
+            需教师在「成绩册 · 系统草稿」里点同步后才会成为正式成绩（正式成绩才参与综合分）。</div>
+        </div>
+      </div>
+      <div class="draft-calibers" v-if="walletCandidates.length > 1">
+        已合并同一学生的多个身份口径：{{ walletCandidates.join(' / ') }}
+      </div>
+    </section>
+
     <!-- 能力雷达图 -->
     <section class="dq-card" v-if="wallet && detailNow">
       <div class="dq-card-title">能力维度分析</div>
@@ -64,9 +85,18 @@
         成绩记录
         <span class="dq-tag" v-if="grades.length">{{ grades.length }} 条</span>
       </div>
-      <el-table :data="grades" stripe v-loading="loading" empty-text="暂无成绩记录，完成实训后将自动生成">
+      <el-table :data="grades" stripe v-loading="loading"
+                empty-text="成绩册暂无记录：完成实训后由系统算出草稿，教师同步后才生成正式成绩">
         <el-table-column prop="course" label="课程" width="150" />
         <el-table-column prop="student_name" label="学生" width="120" />
+        <el-table-column label="行来源" width="110">
+          <template #default="{ row }">
+            <!-- P1-25：让学生能看出这一行是教师正式评过的分，还是系统自动行 -->
+            <span class="dq-tag" :class="row.row_kind === 'teacher' ? '' : 'muted'">
+              {{ row.row_kind === 'teacher' ? '教师已评' : '系统行' }}
+            </span>
+          </template>
+        </el-table-column>
         <el-table-column label="实训成绩" width="120">
           <template #default="{ row }">
             <span class="score-cell accent">{{ row.training_score?.toFixed(1) || '0.0' }}</span>
@@ -127,18 +157,27 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh, Document } from '@element-plus/icons-vue'
 import { gradesApi } from '@/api'
+import { fmtDateTime } from '@/utils/time'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import { useWalletStore } from '@/stores/wallets'
 import * as echarts from 'echarts'
 
 const app = useAppStore()
 const auth = useAuthStore()
-// 用 userId 作为学习行为追踪标识（不随角色钱包切换变化），确保成绩按用户隔离
-const wallet = computed(() => auth.user?.userId || app.currentWallet || '0xlearner')
+const wallets = useWalletStore()
+// 用 userId 作为学习行为跟踪标识（不随角色钱包切换变化），确保成绩按用户隔离；
+// userId 缺失时回落**本人真实链上地址**，不再回落 0xlearner 这个公共演示别名
+// （否则同一浏览器换账号登录会看到彼此的成绩）
+const wallet = computed(() => auth.user?.userId || wallets.myAddress || app.currentWallet || '')
 const loading = ref(false)
 const grades = ref<any[]>([])
 const trainingNow = ref<number | null>(null)
 const detailNow = ref<any>(null)
+// P1-25：系统草稿（grade_draft）与成绩册分行展示，不混为一谈
+const draft = ref<any | null>(null)
+const draftLoading = ref(false)
+const walletCandidates = ref<string[]>([])
 const radarChart = ref<HTMLElement>()
 
 const dimensionLabels = {
@@ -148,11 +187,7 @@ const dimensionLabels = {
   alliance_gov: '联盟治理',
 }
 
-const formatTime = (ts: string) => {
-  if (!ts) return '-'
-  const d = new Date(ts)
-  return d.toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-}
+const formatTime = (ts: string) => (ts ? fmtDateTime(ts) : '-')
 
 const loadData = async () => {
   if (!wallet.value) {
@@ -166,6 +201,8 @@ const loadData = async () => {
     grades.value = res.grades || []
     trainingNow.value = res.training_now ?? 0
     detailNow.value = res.detail_now || null
+    draft.value = res.draft ?? null
+    walletCandidates.value = res.wallet_candidates || []
 
     // 渲染雷达图
     await nextTick()
@@ -174,6 +211,24 @@ const loadData = async () => {
     ElMessage.error(e?.response?.data?.detail || '加载成绩失败')
   } finally {
     loading.value = false
+  }
+}
+
+/** 刷新系统草稿（只写 grade_draft，不写成绩册，P1-8 / P1-25） */
+const refreshDraft = async () => {
+  if (!wallet.value) {
+    ElMessage.warning('请先连接钱包')
+    return
+  }
+  draftLoading.value = true
+  try {
+    const res: any = await gradesApi.draftRefresh({ wallet: wallet.value })
+    ElMessage.success(`草稿已更新：实训 ${Number(res?.training_score ?? 0).toFixed(1)} 分（不影响综合分）`)
+    await loadData()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '刷新草稿失败')
+  } finally {
+    draftLoading.value = false
   }
 }
 
@@ -242,6 +297,8 @@ watch(wallet, (newWallet) => {
     grades.value = []
     trainingNow.value = null
     detailNow.value = null
+    draft.value = null
+    walletCandidates.value = []
   }
 })
 </script>
@@ -368,6 +425,40 @@ watch(wallet, (newWallet) => {
 .radar-chart {
   width: 100%;
   height: 300px;
+}
+
+.draft-body {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.draft-score {
+  font-size: 32px;
+  font-weight: 700;
+  color: #ffd24d;
+  line-height: 1;
+  min-width: 90px;
+}
+
+.draft-meta {
+  flex: 1;
+  font-size: 13px;
+  color: #8fa0c4;
+  line-height: 1.7;
+}
+
+.draft-tip {
+  margin-top: 4px;
+  color: #7b8aab;
+}
+
+.draft-calibers {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #7b8aab;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  word-break: break-all;
 }
 
 .score-cell {

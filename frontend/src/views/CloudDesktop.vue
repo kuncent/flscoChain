@@ -19,7 +19,7 @@
         <div class="mx-role" v-for="r in roleMatrix.roles" :key="r.key" :title="r.desc">
           <span class="mr-icon">{{ r.icon }}</span>
           <span class="mr-name">{{ r.name }}</span>
-          <span class="mr-wallet">{{ r.wallet }}</span>
+          <span class="mr-wallet" :title="'链上 CLI 账户别名（非资产地址）；机构真实地址 ' + (r.address || '未就绪')">{{ r.wallet_alias }}</span>
           <span class="mr-tags">
             <span class="mr-tag" v-for="(t, ti) in permTags(r)" :key="ti">{{ t }}</span>
           </span>
@@ -338,11 +338,19 @@ import { chainApi } from '@/api'
 // 任务 #21：教程进度改事件驱动（SSE 推送）
 import { onBusEvent } from '@/api/events'
 import { useAppStore } from '@/stores/app'
+import { useWalletStore } from '@/stores/wallets'
+import { shortAddr } from '@/utils/address'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { safeGet, safeSet, fmtDuration } from '@/utils/storage'
 import * as monaco from 'monaco-editor'
 
 const app = useAppStore()
+const wallets = useWalletStore()
+/** 本页读写用的钱包：一律是**真实链上地址**（顶栏当前操作钱包，未收敛时回落本人地址）。
+ *  不再写死 '0xlearner'：那是密钥库内部别名，既不是资产台账口径（资产只存地址），
+ *  还会让不同账号在同一浏览器上看到同一份搭链进度。 */
+const opWallet = computed(() => app.currentWallet || wallets.myAddress)
+const opWalletNow = () => app.currentWallet || wallets.myAddress
 const steps = ref<any[]>([])
 
 /* ---------- 组织-节点-角色矩阵（GET /chain/tutorial/rolematrix） ---------- */
@@ -718,7 +726,8 @@ const persistDone = () => safeSet(DONE_KEY, doneSteps.value)
 /** 从服务端拉取该钱包的搭链进度（优先级高于 localStorage，取两者并集） */
 async function syncProgressFromServer() {
   try {
-    const wallet = app.currentWallet || '0xlearner'
+    const wallet = opWallet.value
+    if (!wallet) return
     const r: any = await chainApi.progress(wallet)
     if (!r || !Array.isArray(r.steps)) return
     const serverDone = (r.steps || []).filter((s: any) => s.done).map((s: any) => s.step)
@@ -897,7 +906,7 @@ const KNOWLEDGE: Record<number, string[]> = {
   10: [
     'name() / balanceOf() 是 view 函数，本地执行不消耗 Gas 不上链',
     'mint() / transfer() 是状态变更函数，广播交易、消耗 Gas、产生 Transfer 事件日志',
-    `6 角色发放链路已打通：🚇地铁→${app.currentWallet || '0xlearner'}+50；📦外卖→${app.currentWallet || '0xlearner'}+10；♻️回收→${app.currentWallet || '0xlearner'}+100（接收方 = 「我的钱包」普通用户）`,
+    `6 角色发放链路已打通：🚇地铁→${shortAddr(opWalletNow()) || '我的钱包'}+50；📦外卖→${shortAddr(opWalletNow()) || '我的钱包'}+10；♻️回收→${shortAddr(opWalletNow()) || '我的钱包'}+100（接收方 = 「我的钱包」普通用户）`,
     'Step 10 完成 → 进入绿色低碳联盟链（/eco）即可体验完整 6 角色运营闭环：发放→累积→兑换→挂牌→购买→下架',
   ],
 }
@@ -945,7 +954,7 @@ async function resetAll() {
   stepDurationsRaw.value = {}
   persistDone()
   persistDur()
-  try { await chainApi.resetProgress(app.currentWallet || '0xlearner') } catch {}
+  try { await chainApi.resetProgress(opWallet.value) } catch {}
   active.value = 0
   ElMessage.success('进度已重置，从第 1 步重新开始')
 }
@@ -968,7 +977,7 @@ async function execCommand(cmd: string) {
   termBusy.value = true
   startTimer()
   try {
-    const wallet = app.currentWallet || '0xlearner'
+    const wallet = opWallet.value
     const r: any = await chainApi.execCommand(cur.value.step, cmd, wallet)
 
     // 输出执行结果（接近真实终端：# 开头为注释行 dim 灰色，[INFO]/[OK]/[WARN]/[ERROR] 按级别着色）
@@ -1278,7 +1287,7 @@ function initTerm() {
 
 /* ---------- 生命周期 ---------- */
 onMounted(async () => {
-  const wallet = app.currentWallet || '0xlearner'
+  const wallet = opWallet.value
   const r: any = await chainApi.tutorial(wallet)
   steps.value = r.steps
   loadRoleMatrix()

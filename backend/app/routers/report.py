@@ -34,6 +34,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -43,11 +44,22 @@ from typing import Optional
 
 from ..chain_client import get_chain_client, get_chain_mode_label
 from ..db import get_conn, now, scope_where
-from ..security import get_current_user, PRIVILEGED_ROLES
+from ..security import (
+    PRIVILEGED_ROLES,
+    get_current_user,
+    lower_wallet_in,
+    owns_wallet,
+    redact_secrets,
+    resolve_wallet_candidates,
+)
 # 学习行为埋点统一收口至 learning.events（EventType 常量 + track 唯一写入实现）
 from ..learning.events import EventType, track as _track
+# 角色 key 归一化 + 权威角色集（E 项多样性不得自己写一套角色名单）
+from ..learning.alliance_roles import ROLES, normalize_role_key
 
 router = APIRouter(prefix="/api/report", tags=["report"])
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_report_wallet(user: dict, requested: Optional[str]) -> str:
@@ -55,17 +67,22 @@ def _resolve_report_wallet(user: dict, requested: Optional[str]) -> str:
 
     - 教师 / 管理员（role 1/3）：可按参数查任意钱包，为空则全局聚合；
     - 学生：仅能查本人钱包数据，查他人 403；未绑定钱包 400。
+
+    P0-2：归属判定不再只比 user_id / JWT wallet 两个硬口径，而是落到钱包
+    候选集（注册别名 / 密钥库真实地址 / 已认领的历史演示钱包），否则学生用自己
+    的真地址看自己的报告会被告「仅能查看本人」。
     """
     role = int(user.get("role_id") or 0)
     req_w = (requested or "").strip()
     own = (user.get("wallet") or user.get("user_id") or "").strip()
     if role in PRIVILEGED_ROLES:
         return req_w
-    if req_w and req_w != own:
+    if req_w and req_w != own and not owns_wallet(user, req_w):
         raise HTTPException(status_code=403, detail="仅能查看本人的实训报告")
-    if not own:
+    target = req_w or own
+    if not target:
         raise HTTPException(status_code=400, detail="当前账号未绑定钱包，无法生成实训报告")
-    return own
+    return target
 
 
 def _scope_uid(user: dict) -> Optional[str]:
@@ -109,39 +126,117 @@ def _parse_ts_any(val: Any) -> int:
         return 0
 
 
-def _load_eco_brief(wallet: str = "", user_id: str | None = None) -> dict[str, Any]:
+def _has_col(conn, table: str, col: str) -> bool:
+    """表是否已有某列（在线迁移未完成时的降级判定，避免整个生态维度数据归零）。"""
+    try:
+        return any(r[1] == col for r in conn.execute(
+            f"PRAGMA table_info({table})").fetchall())
+    except Exception:
+        return False
+
+
+def _actor_scope(cands: list[str], user_id: str = "") -> tuple[str, list[str]]:
+    """操作日志「这件事是谁做的」过滤片段（P1-26）。
+
+    eco_operation_logs.wallet 存的是**被操作的业务钱包**（如行政角色给学生发能量
+    时写的是学生钱包），直接拿它算 error 会把别人的操作失误扣在本生头上。
+    新行按 actor_wallet / actor_user_id 归因；actor 两列均为空的**存量行**退回钱包
+    口径（不改历史分数，仅新增行适用新口径）。返回 (SQL 片段, 参数列表)。
+    """
+    h, lc = lower_wallet_in(cands)
+    if not lc:
+        return "", []
+    parts = [
+        f"lower(COALESCE(actor_wallet, '')) IN ({h})",
+        f"(COALESCE(actor_wallet, '') = '' AND COALESCE(actor_user_id, '') = '' "
+        f"AND lower(wallet) IN ({h}))",
+    ]
+    params: list[str] = list(lc) + list(lc)
+    uid = (user_id or "").strip()
+    if uid:
+        parts.append("lower(COALESCE(actor_user_id, '')) = ?")
+        params.append(uid.lower())
+    return "(" + " OR ".join(parts) + ")", params
+
+
+def _load_eco_brief(
+    wallet: str = "", user_id: str | None = None, candidates: list[str] | None = None
+) -> dict[str, Any]:
     """加载 eco 高级实战汇总数据（无异常不中断，失败返回空结构）。
 
     V2：扩展学习质量维度（搭链进度/耗时分布、角色多样性、能量发放多样性、树种多样性、行为埋点）。
     V3：支持 per-wallet 过滤（wallet 非空时仅统计该钱包数据）。
+    V4（P0-3）：过滤口径从「单值等值」改为**钱包候选集** `lower(col) IN (...)`：
+      同一学生的事务分散在 userId / stu: 别名 / 密钥库真实地址 / 已认领历史钱包
+      多个口径下，单值匹配会系统性少算 E~I 各维与扣分项。
+      candidates 传入时优先用它；为空列表且未传 candidates 时退回 [wallet]。
     多租户 scope 浅接线（任务 #15）：wallet 非空且 user_id 非空时，对确认带租户列的表
     （chain_tutorial_progress / learning_events）叠加 db.scope_where（本用户 + 未登记旧行）；
     eco_* 历史建表无租户列不叠加；user_id 为 None 时与既有行为完全一致。
     """
     try:
+        if candidates is None:
+            candidates = [wallet] if wallet else []
         with get_conn() as conn:
-            # 构建 wallet 过滤条件
-            wallet_filter = ""
-            wallet_params = ()
-            if wallet:
-                wallet_filter = " WHERE wallet = ?"
-                wallet_params = (wallet,)
+            # ===== 钱包候选集 → 过滤片段（P0-3）=====
+            in_h, in_p = lower_wallet_in(candidates)
+            filtered = bool(in_p)
+
+            def _in(col: str) -> str:
+                """`col` 命中本人候选集（大小写不敏感）。"""
+                return f"lower({col}) IN ({in_h})"
+
+            # 构建 wallet 过滤条件（候选集口径；无候选时全局聚合）
+            wallet_filter = (" WHERE " + _in("wallet")) if filtered else ""
+            wallet_params: tuple = tuple(in_p) if filtered else ()
 
             # 多租户 scope 片段（仅确认带 user_id 列的表，见 db.scope_where）
             _sc_tp, _sc_tp_p = scope_where("chain_tutorial_progress", user_id=user_id)
             _sc_le, _sc_le_p = scope_where("learning_events", user_id=user_id)
 
-            # ===== 角色：曾选择过多少不同的 UNIQUE 角色（E项基础）======
-            row = conn.execute(
-                "SELECT COUNT(DISTINCT role_key) AS distinct_roles, "
-                "COUNT(*) AS total_switches, "
-                "COUNT(DISTINCT wallet) AS unique_wallets "
-                "FROM eco_role_selections" + wallet_filter,
-                wallet_params
-            ).fetchone()
-            distinct_roles = row["distinct_roles"] if row else 0
-            role_switches = row["total_switches"] if row else 0
-            role_wallets = row["unique_wallets"] if row else 0
+            # ===== 角色：曾体验过多少种不同的联盟角色（E 项基础）======
+            # 修 E 项结构性拿不到分：旧口径读 eco_role_selections，但该表有
+            # UNIQUE(wallet)，只存「当前选中的那一个」角色（且点「切回普通用户」
+            # 会 DELETE 该行），于是 COUNT(DISTINCT role_key) 上限恒为 1 → 学生把 6
+            # 个角色全切换一遍也只能拿 2/10（若最后一步是切回普通用户则直接 0）。
+            # 历史口径改用行为埋点 learning_events.eco_role_switch（与成就
+            # role_all_six / 微任务 eco_t2 / 实训路径核验同一权威源），旧别名经
+            # normalize_role_key 归一、按已知角色集过滤（防脏埋点虚增），并与当前
+            # 选择取并集，兼容埋点上线前的存量数据。
+            _known_roles = {r["key"] for r in ROLES}
+            ev_parts: list[str] = ["event_type=?", "COALESCE(target, '') <> ''"]
+            ev_params: list[Any] = [EventType.ECO_ROLE_SWITCH]
+            # 认人双口径：learning_events.wallet 存的是**当时操作的钱包**（学生点角色
+            # 卡即切到机构钱包，全班共用同一个值），只按本人钱包筛会漏掉“以节点身份
+            # 体验”那一段；新埋点另落 user_id（登录账号），两口径取并集。
+            owner_parts: list[str] = []
+            if filtered:
+                owner_parts.append(_in("wallet"))
+            _by_uid = bool(user_id) and _has_col(conn, "learning_events", "user_id")
+            if _by_uid and filtered:
+                owner_parts.append("lower(COALESCE(user_id, '')) = ?")
+            if owner_parts:
+                ev_parts.append("(" + " OR ".join(owner_parts) + ")")
+                if filtered:
+                    ev_params += list(in_p)
+                if _by_uid and filtered:
+                    ev_params.append(str(user_id).lower())
+            if _sc_le:
+                ev_parts.append(_sc_le)
+                ev_params += list(_sc_le_p)
+            ev_rows = conn.execute(
+                "SELECT target, wallet FROM learning_events WHERE " + " AND ".join(ev_parts),
+                ev_params,
+            ).fetchall()
+            role_keys = {normalize_role_key(r["target"]) for r in ev_rows} & _known_roles
+            role_switches = len(ev_rows)                       # 真实切换动作次数（含切回普通用户）
+            role_wallets = len({str(r["wallet"] or "").lower() for r in ev_rows if r["wallet"]})
+            for _r in conn.execute(
+                "SELECT DISTINCT role_key FROM eco_role_selections" + wallet_filter,
+                wallet_params,
+            ).fetchall():
+                role_keys.add(normalize_role_key(_r["role_key"]))
+            distinct_roles = len(role_keys & _known_roles)     # 「resident」不在 ROLES 内，自然被过滤
 
             # ===== 能量发放：次数、总点数、不同 role_key 发放的角色数（F项核心）======
             row = conn.execute(
@@ -156,7 +251,7 @@ def _load_eco_brief(wallet: str = "", user_id: str | None = None) -> dict[str, A
             energy_distinct_roles = row["distinct_roles"] if row else 0
 
             # 每种角色具体发了多少次（排序）
-            if wallet:
+            if filtered:
                 breakdown_rows = conn.execute(
                     "SELECT role_key, COUNT(*) AS n, COALESCE(SUM(points),0) AS s "
                     "FROM eco_energy_records " + wallet_filter + " "
@@ -179,16 +274,16 @@ def _load_eco_brief(wallet: str = "", user_id: str | None = None) -> dict[str, A
             # 闭环口径（持有 ∪ 已售）：挂牌时后端已校验资产归属，能卖出必曾兑换；
             # 仅按 owner 统计会导致「卖出资产后 G 项分数倒退」，与鼓励流通的业务导向矛盾。
             # 注意：eco_certificates 表用 owner 列存钱包，不是 wallet。
-            if wallet:
+            if filtered:
                 row = conn.execute(
                     "SELECT COUNT(*) AS n, COALESCE(SUM(cost_energy),0) AS s, "
                     "COUNT(DISTINCT species_id) AS distinct_trees FROM ("
-                    "  SELECT id, species_id, cost_energy FROM eco_certificates WHERE owner = ?"
+                    f"  SELECT id, species_id, cost_energy FROM eco_certificates WHERE {_in('owner')}"
                     "  UNION"
                     "  SELECT c.id, c.species_id, c.cost_energy FROM eco_market_listings m"
                     "  JOIN eco_certificates c ON c.id = m.asset_id"
-                    "  WHERE m.asset_type='certificate' AND m.status='sold' AND m.seller = ?"
-                    ")", (wallet, wallet)
+                    f"  WHERE m.asset_type='certificate' AND m.status='sold' AND {_in('m.seller')}"
+                    ")", (*in_p, *in_p)
                 ).fetchone()
             else:
                 row = conn.execute(
@@ -203,14 +298,14 @@ def _load_eco_brief(wallet: str = "", user_id: str | None = None) -> dict[str, A
 
             # ===== 勋章 & 骑行券（同为闭环口径：持有 ∪ 自己曾兑换后售出的） =====
             def _badge_count(badge_type: str) -> int:
-                if wallet:
+                if filtered:
                     r = conn.execute(
                         "SELECT COUNT(*) AS n FROM ("
-                        "  SELECT id FROM eco_badges WHERE badge_type=? AND owner=?"
+                        f"  SELECT id FROM eco_badges WHERE badge_type=? AND {_in('owner')}"
                         "  UNION"
                         "  SELECT asset_id FROM eco_market_listings"
-                        "  WHERE asset_type=? AND status='sold' AND seller=?"
-                        ")", (badge_type, wallet, badge_type, wallet)
+                        f"  WHERE asset_type=? AND status='sold' AND {_in('seller')}"
+                        ")", (badge_type, *in_p, badge_type, *in_p)
                     ).fetchone()
                 else:
                     r = conn.execute(
@@ -223,15 +318,15 @@ def _load_eco_brief(wallet: str = "", user_id: str | None = None) -> dict[str, A
 
             # ===== 绿色资产市场流通（业务闭环最后一环：挂牌 → 成交 → 能量结算）======
             try:
-                if wallet:
+                if filtered:
                     mrow = conn.execute(
                         "SELECT "
-                        "COALESCE(SUM(CASE WHEN seller=? THEN 1 ELSE 0 END),0) AS listed_n, "
-                        "COALESCE(SUM(CASE WHEN status='sold' AND seller=? THEN 1 ELSE 0 END),0) AS sold_n, "
-                        "COALESCE(SUM(CASE WHEN status='sold' AND buyer=? THEN 1 ELSE 0 END),0) AS bought_n, "
-                        "COALESCE(SUM(CASE WHEN status='sold' AND seller=? THEN price_energy ELSE 0 END),0) AS income, "
-                        "COALESCE(SUM(CASE WHEN status='sold' AND buyer=? THEN price_energy ELSE 0 END),0) AS spent "
-                        "FROM eco_market_listings", (wallet, wallet, wallet, wallet, wallet)
+                        f"COALESCE(SUM(CASE WHEN {_in('seller')} THEN 1 ELSE 0 END),0) AS listed_n, "
+                        f"COALESCE(SUM(CASE WHEN status='sold' AND {_in('seller')} THEN 1 ELSE 0 END),0) AS sold_n, "
+                        f"COALESCE(SUM(CASE WHEN status='sold' AND {_in('buyer')} THEN 1 ELSE 0 END),0) AS bought_n, "
+                        f"COALESCE(SUM(CASE WHEN status='sold' AND {_in('seller')} THEN price_energy ELSE 0 END),0) AS income, "
+                        f"COALESCE(SUM(CASE WHEN status='sold' AND {_in('buyer')} THEN price_energy ELSE 0 END),0) AS spent "
+                        "FROM eco_market_listings", (*in_p,) * 5
                     ).fetchone()
                 else:
                     mrow = conn.execute(
@@ -263,15 +358,19 @@ def _load_eco_brief(wallet: str = "", user_id: str | None = None) -> dict[str, A
                 ).fetchone()
                 eco_contracts[cname] = {"deployed": bool(row), "address": row["address"] if row else ""}
 
-            # ===== 操作日志统计 =====
-            if wallet:
+            # ===== 操作日志统计（P1-26：按操作者 actor_* 归因，存量行退回钱包口径）=====
+            actor_ok = _has_col(conn, "eco_operation_logs", "actor_wallet")
+            lf, lp = "", []
+            if filtered:
+                lf, lp = (_actor_scope(candidates, user_id or "") if actor_ok
+                          else (_in("wallet"), list(in_p)))
                 log = conn.execute(
                     "SELECT COUNT(*) AS total, "
                     "COALESCE(SUM(CASE WHEN level='error' THEN 1 ELSE 0 END),0) AS ec, "
                     "COALESCE(SUM(CASE WHEN level='warn' THEN 1 ELSE 0 END),0) AS wc, "
                     "COALESCE(SUM(CASE WHEN level='success' THEN 1 ELSE 0 END),0) AS sc "
-                    "FROM eco_operation_logs WHERE wallet = ?",
-                    (wallet,)
+                    "FROM eco_operation_logs WHERE " + lf,
+                    lp
                 ).fetchone()
             else:
                 log = conn.execute(
@@ -289,13 +388,13 @@ def _load_eco_brief(wallet: str = "", user_id: str | None = None) -> dict[str, A
 
             # ===== 学习质量维度 H：搭链教程进度 & 耗时分布（探索型学生奖励）======
             try:
-                if wallet:
+                if filtered:
                     t_rows = conn.execute(
                         "SELECT step, done, output, started_at, finished_at "
-                        "FROM chain_tutorial_progress WHERE wallet = ?"
+                        "FROM chain_tutorial_progress WHERE " + _in("wallet")
                         + (" AND " + _sc_tp if _sc_tp else "")
                         + " ORDER BY step",
-                        (wallet, *_sc_tp_p),
+                        (*in_p, *_sc_tp_p),
                     ).fetchall()
                 else:
                     t_rows = conn.execute(
@@ -348,15 +447,15 @@ def _load_eco_brief(wallet: str = "", user_id: str | None = None) -> dict[str, A
                 "interface_invoke": 0,    # ≥1 次 +2
             }
             try:
-                if wallet:
+                if filtered:
                     b_rows = conn.execute(
                         "SELECT event_type, COUNT(*) AS n FROM learning_events "
-                        "WHERE wallet = ? AND event_type IN "
+                        "WHERE " + _in("wallet") + " AND event_type IN "
                         f"('{EventType.IDE_OPEN_BUILTIN}','{EventType.IDE_SAVE_PROJECT}',"
-                        f"'{EventType.CONTRACT_COMPILE_OK}','{EventType.CONTRACT_COMPILE_FAIL}','{EventType.INTERFACE_INVOKE})'"
+                        f"'{EventType.CONTRACT_COMPILE_OK}','{EventType.CONTRACT_COMPILE_FAIL}','{EventType.INTERFACE_INVOKE}')"
                         + (" AND " + _sc_le if _sc_le else "")
                         + " GROUP BY event_type",
-                        (wallet, *_sc_le_p),
+                        (*in_p, *_sc_le_p),
                     ).fetchall()
                 else:
                     b_rows = conn.execute(
@@ -376,17 +475,23 @@ def _load_eco_brief(wallet: str = "", user_id: str | None = None) -> dict[str, A
                 pass
 
             # 最近的错误/警告（最多 20 条）
-            if wallet:
+            if filtered:
                 log_rows = conn.execute(
-                    "SELECT * FROM eco_operation_logs WHERE level IN ('warn','error') AND wallet = ? "
-                    "ORDER BY id DESC LIMIT 20",
-                    (wallet,)
+                    "SELECT * FROM eco_operation_logs WHERE level IN ('warn','error') AND "
+                    + lf + " ORDER BY id DESC LIMIT 20",
+                    lp
                 ).fetchall()
             else:
                 log_rows = conn.execute(
                     "SELECT * FROM eco_operation_logs WHERE level IN ('warn','error') "
                     "ORDER BY id DESC LIMIT 20"
                 ).fetchall()
+            # P1-27：回显前再过一道脱敏（存量未清洗的行 / 未经脱敏的历史写入）
+            recent_issues = []
+            for _r in log_rows:
+                _d = dict(_r)
+                _d["detail"] = redact_secrets(_d.get("detail") or "")
+                recent_issues.append(_d)
 
         return {
             # 角色 & 切换
@@ -417,7 +522,7 @@ def _load_eco_brief(wallet: str = "", user_id: str | None = None) -> dict[str, A
                 "warn_count": log_warns,
                 "success_count": log_success,
                 "error_rate": log_error_rate,
-                "recent_issues": [dict(r) for r in log_rows],
+                "recent_issues": recent_issues,
             },
             # 学习质量 V2：搭链进度 + 耗时分布
             "tutorial_progress": progress,
@@ -425,6 +530,9 @@ def _load_eco_brief(wallet: str = "", user_id: str | None = None) -> dict[str, A
             "behavior": beh,
         }
     except Exception as e:
+        # 生态维度整体降级为空结构：评分会随之落到接近 0，必须进日志不能静默
+        # （与本批修复同一原则：降级可以，不可隐藏的失败会造成误判）
+        logger.exception("_load_eco_brief 降级（钱包候选集=%s）", candidates)
         return {
             "role_wallets": 0, "role_switches": 0, "distinct_roles": 0,
             "energy_issues": 0, "energy_total": 0,
@@ -952,25 +1060,31 @@ def _aggregate_data(wallet: str = "", user_id: str | None = None) -> dict[str, A
     """聚合实训报告所有数据（搭链进度、合约、交易、NFT、高级实战、评分）。
 
     V3：支持 per-wallet 过滤（wallet 非空时仅统计该钱包数据）。
+    V4（P0-3）：过滤口径统一改为**钱包候选集**并集——链上交易的 from_addr 是密钥库
+      真实 0x 地址，而 JWT wallet 是 userId，单值匹配会让 B 项（链上交易 15 分）
+      与 A/C 项长期恒 0，学生做到满步也拿不到分。
     多租户 scope 浅接线（任务 #15）：wallet 非空且 user_id 非空时，对确认带租户列的表
     （deployed_contracts / nfts / nft_trades / wallet_balances）叠加 db.scope_where
     （本用户 + 未登记旧行）；全局聚合分支（wallet 为空）不叠加，行为不变。
     """
     c = get_chain_client()
     height = c.block_number()
-    
-    # 构建钱包过滤条件
-    wallet_filter = ""
-    wallet_params = ()
-    if wallet:
-        wallet_filter = " WHERE from_addr = ? OR to_addr = ?"
-        wallet_params = (wallet, wallet)
-    
-    # 获取交易列表（按钱包过滤）
-    # 注：list_txs 仅支持 (limit, offset)，按地址过滤必须走 list_txs_by_address，
+
+    # P0-3：本人全部钱包口径并集（userId / stu: 别名 / 密钥库真实地址 / 已认领历史钱包）
+    # 修「教师 / 管理员的全局报告被当成 0xlearner 报告」：wallet 为空是本函数既有的
+    # 「全局聚合」约定，但 resolve_wallet_candidates 在 raw 为空时会兜底并入演示
+    # 钱包 0xlearner，使 filtered 意外为真→特权账号打开报告页只统计共享演示钱包
+    # （实测总分被算成 5/100）。故：空钱包 = 不给候选集 = 真全局。
+    with get_conn() as conn:
+        cands = resolve_wallet_candidates(conn, wallet, user_id or "") if wallet else []
+    in_h, in_p = lower_wallet_in(cands)
+    filtered = bool(in_p)
+
+    # 获取交易列表（按钱包候选集过滤）
+    # 注：list_txs 仅支持 (limit, offset)，按地址过滤必须走 list_txs_by_address(es)，
     # 否则 EVM 模式下个人报告会整体落入「数据异常」兜底（TypeError）
-    if wallet:
-        txs = c.list_txs_by_address(wallet, limit=5000)
+    if filtered:
+        txs = c.list_txs_by_addresses(cands, limit=5000)
     else:
         txs = c.list_txs(5000)
 
@@ -978,19 +1092,20 @@ def _aggregate_data(wallet: str = "", user_id: str | None = None) -> dict[str, A
     with get_conn() as conn:
         # 多租户 scope 片段（确认带 user_id 列的表才叠加，见 db.scope_where）
         _sc_dc, _sc_dc_p = scope_where("deployed_contracts", user_id=user_id)
-        if wallet:
+        if filtered:
             contracts = conn.execute(
                 "SELECT address, name, standard, deployer, created_at, tx_hash "
-                "FROM deployed_contracts WHERE deployer = ?"
+                f"FROM deployed_contracts WHERE lower(deployer) IN ({in_h})"
                 + (" AND " + _sc_dc if _sc_dc else "")
                 + " ORDER BY created_at DESC",
-                (wallet, *_sc_dc_p),
+                (*in_p, *_sc_dc_p),
             ).fetchall()
             std_rows = conn.execute(
-                "SELECT COUNT(*) AS n, standard FROM deployed_contracts WHERE deployer = ?"
+                "SELECT COUNT(*) AS n, standard FROM deployed_contracts "
+                f"WHERE lower(deployer) IN ({in_h})"
                 + (" AND " + _sc_dc if _sc_dc else "")
                 + " GROUP BY standard",
-                (wallet, *_sc_dc_p),
+                (*in_p, *_sc_dc_p),
             ).fetchall()
         else:
             contracts = conn.execute(
@@ -1035,18 +1150,18 @@ def _aggregate_data(wallet: str = "", user_id: str | None = None) -> dict[str, A
             _sc_nft, _sc_nft_p = scope_where("nfts", user_id=user_id)
             _sc_ntd, _sc_ntd_p = scope_where("nft_trades", user_id=user_id)
             _sc_wb, _sc_wb_p = scope_where("wallet_balances", user_id=user_id)
-            if wallet:
+            if filtered:
                 nft_count = (conn.execute(
-                    "SELECT COUNT(*) AS n FROM nfts WHERE author = ?"
+                    f"SELECT COUNT(*) AS n FROM nfts WHERE lower(author) IN ({in_h})"
                     + (" AND " + _sc_nft if _sc_nft else ""),
-                    (wallet, *_sc_nft_p),
+                    (*in_p, *_sc_nft_p),
                 ).fetchone())["n"]
                 # 原 OR 条件加括号：避免叠加 scope 的 AND 因优先级改变语义
                 nft_trade_count = (conn.execute(
                     "SELECT COUNT(*) AS n FROM nft_trades "
-                    "WHERE (from_addr = ? OR to_addr = ?)"
+                    f"WHERE (lower(from_addr) IN ({in_h}) OR lower(to_addr) IN ({in_h}))"
                     + (" AND " + _sc_ntd if _sc_ntd else ""),
-                    (wallet, wallet, *_sc_ntd_p),
+                    (*in_p, *in_p, *_sc_ntd_p),
                 ).fetchone())["n"]
             else:
                 nft_count = (conn.execute("SELECT COUNT(*) AS n FROM nfts").fetchone())["n"]
@@ -1058,13 +1173,14 @@ def _aggregate_data(wallet: str = "", user_id: str | None = None) -> dict[str, A
     # ERC20 余额 TOP 5（按钱包过滤）
     try:
         with get_conn() as conn:
-            if wallet:
+            _sc_wb, _sc_wb_p = scope_where("wallet_balances", user_id=user_id)
+            if filtered:
                 bal_rows = conn.execute(
                     "SELECT wallet, token_address, balance FROM wallet_balances "
-                    "WHERE wallet = ?"
+                    f"WHERE lower(wallet) IN ({in_h})"
                     + (" AND " + _sc_wb if _sc_wb else "")
                     + " ORDER BY CAST(balance AS REAL) DESC LIMIT 5",
-                    (wallet, *_sc_wb_p),
+                    (*in_p, *_sc_wb_p),
                 ).fetchall()
             else:
                 bal_rows = conn.execute(
@@ -1075,14 +1191,14 @@ def _aggregate_data(wallet: str = "", user_id: str | None = None) -> dict[str, A
     except Exception:
         top_balances = []
 
-    # 高级实战数据（传入钱包参数 + scope 身份）
-    eco = _load_eco_brief(wallet, user_id)
+    # 高级实战数据（传入钱包参数 + scope 身份 + 候选集）
+    eco = _load_eco_brief(wallet, user_id, candidates=cands)
 
     # 闭环：绿色资产本身就是链上 NFT（植树证书 ERC721 / 勋章·骑行券 ERC1155），
     # 绿色市场成交同样计入 C 项「NFT 交易」：钱包视角算买+卖，全局视角每笔成交只算一次。
     try:
         mkt = eco.get("market") or {}
-        nft_trade_count += int(mkt.get("trades") if wallet else mkt.get("sold")) or 0
+        nft_trade_count += int(mkt.get("trades") if filtered else mkt.get("sold")) or 0
     except Exception:
         pass
 
@@ -1125,6 +1241,9 @@ def _aggregate_data(wallet: str = "", user_id: str | None = None) -> dict[str, A
         "top_balances": top_balances,
         "eco": eco,
         "score": score,
+        # P0-3 / P1-27：报告取数到底用了哪些钱包口径（可核对，不再“恒 0 不知道为什么”）
+        "identity": {"wallet": wallet, "user_id": user_id or "",
+                     "wallet_candidates": cands},
     }
 
 
@@ -1134,6 +1253,11 @@ def report_aggregate(wallet: Optional[str] = None, user: dict = Depends(get_curr
 
     身份来源：JWT 验签（不再信任 X-Wallet 自报头）；学生仅能取自己钱包的数据，
     教师 / 管理员可按 wallet 参数查他人（不传则全局聚合）。聚合逻辑本身不变。
+
+    P1-8：本接口从此**只读不写成绩**——旧版在此隐式调 _auto_draft_grade 写
+    student_grades，导致“看一眼报告”就能盖掉教师正式分。草稿现在需由学生
+    显式 POST /api/grades/draft/refresh 产生（只进 grade_draft），教师显式
+    POST /api/grades/draft/apply 才进成绩册。查看行为本身仍埋点（report_view）。
     """
     target = _resolve_report_wallet(user, wallet)
     # 多租户 scope（任务 #15）：学生查自己时叠加 user_id 过滤，特权角色保持全局视图
@@ -1141,12 +1265,9 @@ def report_aggregate(wallet: Optional[str] = None, user: dict = Depends(get_curr
     # 行为埋点：学生查看实训报告（对应 alliance_gov 维度的 report_view 指标）
     _track(EventType.REPORT_VIEW, target="aggregate", wallet=target)
     try:
-        data = _aggregate_data(target, uid)
-        # 闭环：报告生成时自动为学生创建/更新成绩草稿
-        if target:
-            _auto_draft_grade(target)
-        return data
+        return _aggregate_data(target, uid)
     except Exception as e:  # pragma: no cover - 兜底
+        logger.exception("实训报告聚合失败 wallet=%s", target)
         import traceback as _tb
         err = f"{type(e).__name__}: {e}"
         return {
@@ -1171,87 +1292,49 @@ def report_aggregate(wallet: Optional[str] = None, user: dict = Depends(get_curr
         }
 
 
-def _auto_draft_grade(wallet: str):
-    """报告生成时自动为学生创建/更新成绩草稿（打通 report→grades）。"""
-    try:
-        from .grades import _compute_training_score, _compute_final
-        from ..db import get_conn as _get_conn
-        w = wallet.strip()
-        if not w:
-            return
-        # 从 user_info 表查真实学号和姓名（wallet = userId）
-        with _get_conn() as conn:
-            row = conn.execute(
-                "SELECT student_id, name, username, class_id, school_id FROM user_info WHERE user_id=? OR wallet=?",
-                (w, w),
-            ).fetchone()
-        sid = row["student_id"] if row and row["student_id"] else f"W{w[:10]}"
-        sname = row["name"] if row and row["name"] else f"学生_{w[:6]}"
-        class_id = row["class_id"] if row else ""
-        school_id = row["school_id"] if row else ""
-        ts = now()
-        training_score, detail = _compute_training_score(w)
-        detail_json = json.dumps(detail, ensure_ascii=False)
-        final_score = _compute_final(training_score, 0)
-        with _get_conn() as conn:
-            existing = conn.execute(
-                "SELECT id FROM student_grades WHERE student_id=? AND course=?",
-                (sid, "区块链实训"),
-            ).fetchone()
-            if existing:
-                conn.execute(
-                    """UPDATE student_grades
-                       SET wallet=?, training_score=?, final_score=?,
-                           training_detail=?, class_id=?, school_id=?, updated_at=?
-                       WHERE id=?""",
-                    (w, training_score, final_score, detail_json, class_id, school_id, ts, existing["id"]),
-                )
-            else:
-                conn.execute(
-                    """INSERT INTO student_grades
-                       (student_id, student_name, course, score, wallet,
-                        training_score, final_score, training_detail,
-                        teacher_id, teacher_name, class_id, school_id, remark,
-                        created_at, updated_at)
-                       VALUES (?, ?, ?, 0, ?, ?, ?, ?, 'system', '系统自动', ?, ?, '实训报告自动生成草稿', ?, ?)""",
-                    (sid, sname, "区块链实训", w, training_score, final_score, detail_json,
-                     class_id, school_id, ts, ts),
-                )
-    except Exception:
-        # 不影响报告生成主流程
-        pass
+def _auto_draft_grade(wallet: str):  # pragma: no cover - 已废弃占位
+    """**已废弃（P1-8 / P1-25）**：旧版由 GET /report/aggregate 隐式调用，直接
+    写 student_grades（teacher_id='system'），会命中并覆写教师正式行，且把综合
+    分按「教师分=0」重算。现草稿链路整体迁到 grades 模块：
+      学生显式刷新 → POST /api/grades/draft/refresh（只写 grade_draft）
+      教师显式采纳 → POST /api/grades/draft/apply（才写 student_grades）
+    本函数保留为一个**不做任何写入**的空壳，仅为外部旧引用不致 AttributeError；
+    不再被本模块任何路径调用。
+    """
+    logger.warning(
+        "report._auto_draft_grade 已废弃（不再写成绩表），请改用 /api/grades/draft/refresh"
+    )
+    return None
 
 
 @router.get("/wallet/{wallet}")
 def report_by_wallet(wallet: str, user: dict = Depends(get_current_user)):
     """按钱包地址生成个人实训报告（per-wallet 聚合）。
-    
+
     用于学生端查看自己的实训成绩和报告，数据仅包含该钱包的活动。
-    越权防护：学生仅能查本人钱包（路径参数必须与 JWT 身份一致），教师/管理员可查任意人。
+    越权防护：学生仅能查本人钱包（路径参数必须落在 JWT 身份的钱包候选集内，
+    P0-2），教师/管理员可查任意人。本接口同样只读不写成绩（P1-8）。
     """
     wallet_clean = wallet.strip()
     if not wallet_clean:
         return {"error": "钱包地址不能为空"}
 
-    # 身份来源：JWT 验签（不再信任 X-Wallet 自报头）
-    role = int(user.get("role_id") or 0)
-    if role not in PRIVILEGED_ROLES:
-        own = (user.get("wallet") or user.get("user_id") or "").strip()
-        if wallet_clean != own:
-            raise HTTPException(status_code=403, detail="仅能查看本人的实训报告")
-    
+    # 身份来源：JWT 验签 + 候选集归属判定（与 /aggregate 同一口径，避免两处不一致）
+    wallet_clean = _resolve_report_wallet(user, wallet_clean)
+
     # 行为埋点：学生查看个人报告
     _track(EventType.REPORT_VIEW, target=f"wallet:{wallet_clean[:10]}...", wallet=wallet_clean)
 
     # 多租户 scope（任务 #15）：学生查自己时叠加 user_id 过滤，特权角色保持全局视图
     uid = _scope_uid(user)
-    
+
     try:
         data = _aggregate_data(wallet_clean, uid)
         data["wallet"] = wallet_clean
         data["is_personal_report"] = True
         return data
     except Exception as e:
+        logger.exception("个人实训报告聚合失败 wallet=%s", wallet_clean)
         import traceback as _tb
         err = f"{type(e).__name__}: {e}"
         return {

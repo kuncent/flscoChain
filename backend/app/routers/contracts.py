@@ -115,7 +115,7 @@ class DeployReq(BaseModel):
     source: str
     abi: List[Any]
     bytecode: str
-    deployer: str = "0xlearner"
+    deployer: str = ""   # 留空 = 按 JWT 本人钱包（真实地址）；不再默认 0xlearner 别名
     standard: Optional[str] = None
     ctor_args: Optional[List[Any]] = None  # 构造函数参数
 
@@ -228,7 +228,7 @@ class CallReq(BaseModel):
     address: str
     method: str
     args: List[Any] = []
-    caller: str = "0xlearner"
+    caller: str = ""     # 留空 = 按 JWT 本人钱包（真实地址）
     abi: Optional[List[Any]] = None
 
 

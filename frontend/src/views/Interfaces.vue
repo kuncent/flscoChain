@@ -4,8 +4,19 @@
     <div class="left dq-card">
       <div class="dq-card-title">合约接口（自动生成）</div>
       <el-select v-model="addr" filterable placeholder="选择已部署合约" @change="loadContract" style="width:100%;margin-bottom:10px">
-        <el-option v-for="c in contracts" :key="c.address" :label="`${c.name} (${c.standard || '自定义'})`" :value="c.address" />
+        <!-- 按「当前链上是否有代码」分组：链实例重置后 DB 里的历史部署记录已无法调用，
+             若照常可选，学生点进去只会得到 reverted，并在调用监听器里留下异常记录。 -->
+        <el-option-group v-if="liveContracts.length" label="当前链上可用">
+          <el-option v-for="c in liveContracts" :key="c.address" :label="`${c.name} (${c.standard || '自定义'})`" :value="c.address" />
+        </el-option-group>
+        <el-option-group v-if="staleContracts.length" label="历史部署（当前链上已失效，不可调用）">
+          <el-option v-for="c in staleContracts" :key="'stale-' + c.address" :label="`${c.name} (${c.standard || '自定义'}) — 已失效`" :value="c.address" disabled />
+        </el-option-group>
       </el-select>
+      <div v-if="staleContracts.length" class="stale-tip">
+        链实例已重置（后端重启会重建 EVM 状态），{{ staleContracts.length }} 份历史合约在当前链上已无代码，
+        调用必然失败并在「调用监听器」里留下异常记录；需要调试自己的合约时，请到「合约 IDE」重新编译并部署。
+      </div>
 
       <div class="iface-list" v-if="interfaces.length">
         <div
@@ -55,7 +66,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onActivated, onMounted } from 'vue'
+import { ref, computed, onActivated, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { contractApi } from '@/api'
 import { useAppStore } from '@/stores/app'
@@ -77,8 +88,19 @@ const loadContracts = async () => {
   if (route.query.addr) {
     addr.value = route.query.addr as string
     await loadContract()
+    return
+  }
+  // 无指定地址时默认选中第一份「当前链上可用」的合约，避免空页面
+  if (!addr.value && liveContracts.value.length) {
+    addr.value = liveContracts.value[0].address
+    await loadContract()
   }
 }
+
+/* live 由后端 /contracts/deployed 给出（has_code 实测），旧数据缺字段时按可用处理 */
+const isLive = (c: any) => c?.live !== false
+const liveContracts = computed(() => contracts.value.filter(isLive))
+const staleContracts = computed(() => contracts.value.filter((c: any) => !isLive(c)))
 
 const loadContract = async () => {
   if (!addr.value) return
@@ -147,6 +169,11 @@ onActivated(loadContracts)
 }
 .empty-tip { font-size: 12px; color: var(--dq-text-dim); text-align: left; padding: 0 12px 12px; line-height: 1.6;
   &.center { text-align: center; }
+}
+.stale-tip {
+  font-size: 12px; line-height: 1.7; color: var(--dq-warn);
+  background: rgba(255, 207, 77, 0.07); border: 1px dashed rgba(255, 207, 77, 0.4);
+  border-radius: 6px; padding: 8px 10px; margin-bottom: 10px;
 }
 .right { overflow: auto; }
 .debug { display: flex; flex-direction: column; gap: 14px; }

@@ -5,6 +5,7 @@ import { AUTH_TOKEN_KEY } from '@/api/http'
 // 任务 #21/#25：登录成功后建立 SSE 推送连接，登出时断开（单例幂等）
 import { eventStream } from '@/api/events'
 import { safeGet, safeSet, safeDel } from '@/utils/storage'
+import { isChainAddress } from '@/utils/address'
 import { useAppStore } from '@/stores/app'
 
 export type UserRole = 1 | 3 | 4 // 1=管理员 3=教师 4=学生
@@ -22,7 +23,8 @@ export interface AuthUser {
   schoolName?: string
   collegeId?: string
   majorId?: string
-  wallet?: string           // 一人一钱包：登录账号本人钱包（学生 = stu: 专属别名，教师/管理员 = 账号 ID），对应「我的钱包」普通用户身份
+  wallet?: string           // 一人一钱包：登录账号本人的**真实链上地址**（0x + 40 hex），对应「我的钱包」
+  studentWallet?: string     // 学生专属钱包别名（stu:xxx，仅展示 / 密钥库反查）
 }
 
 const STORAGE_KEY = 'auth_user'
@@ -100,8 +102,15 @@ export const useAuthStore = defineStore('auth', () => {
       if (!cached) throw new Error('登录会话已失效，请使用账号密码登录')
       _persist(cached)
     }
-    // 会话恢复成功：确保 SSE 连接在场（reconnect 幂等重启：已存活连接先拆后建，
-    // 若曾因失败上限停机则清零重启）
+    // 会话恢复：后端已重新校验 / 补发学生钱包，本人地址与本地缓存不一致时以本人地址
+    // 为准（旧版只验签不同步钱包 → 升级后缓存里仍是 stu: 别名，资产页读写两套口径）
+    const addr = String(res?.student_wallet_address || '').trim()
+    if (user.value && isChainAddress(addr) && user.value.wallet !== addr) {
+      _persist({ ...user.value, wallet: addr, studentWallet: String(res?.student_wallet || '') })
+      try { useAppStore().setWallet(addr) } catch { /* pinia 未就绪时忽略 */ }
+    }
+    // 任务 #25：登录成功 → 以新 token 重启 SSE 推送连接（reconnect 清零失败计数并解除停机；
+    // 未登录/环境不支持时 connect 内部自行短路，单例语义不变）
     eventStream.reconnect()
     return user.value as AuthUser
   }
@@ -124,15 +133,23 @@ export const useAuthStore = defineStore('auth', () => {
     _persist(u)
     // 保存后端签发的平台 JWT（24h 有效），后续请求由拦截器自动注入
     _persistToken(data.token || null)
-    // 一人一钱包：登录后切到本人钱包（学生 = 后端发放的 stu: 专属别名，
-    // 教师/管理员 = userId）。不能沿用 localStorage 残留值——同一浏览器换账号登录时，
-    // 残留的公共演示钱包（0xlearner）会导致不同账号看到相同的资产与实训进度。
+    // 一人一钱包：登录后切到本人钱包（一律用后端下发的**真实链上地址**，
+    // 不再用 stu: 别名 / userId：带冒号连字符的内部标识不是钱包，写进资产表就是 P0-2 根因）。
+    // 不能沿用 localStorage 残留值——同一浏览器换账号登录时，残留的公共演示钱包
+    // （0xlearner）会导致不同账号看到相同的资产与实训进度。
     try {
-      const own = String(data.student_wallet || data.wallet || u.userId || '')
+      const own = [
+        String(data.student_wallet_address || ''),
+        String(data.wallet || ''),
+      ].find(isChainAddress) || ''
       if (own) {
         useAppStore().setWallet(own)
-        u.wallet = own  // 持久化到用户信息，供「我的钱包」选项等读取本人钱包地址
+        u.wallet = own  // 持久化到用户信息，供「我的钱包」选项与角色联动读取
+        u.studentWallet = String(data.student_wallet || '') || u.studentWallet
         _persist(u)
+      } else if (data.roster_ok === false) {
+        // 后端未能落库 / 未发钱包：不猜测钱包，避免把 userId 当资产地址写进台账
+        console.warn('[auth] 登录未返回本人链上地址，请重新登录发放钱包')
       }
     } catch { /* pinia 未就绪等异常不影响登录主流程 */ }
     // 任务 #25：登录成功 → 以新 token 重启 SSE 推送连接（reconnect 清零失败计数并解除停机；

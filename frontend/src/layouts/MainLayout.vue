@@ -198,8 +198,9 @@
             <div class="wc-label">
               当前操作钱包
               <span v-if="app.currentRole?.role_key" class="dq-tag accent wc-role-badge">
-                {{ app.currentRole?.role?.icon || '' }} {{ app.currentRole?.role?.name || app.currentRole?.role_key || '' }}
+                {{ app.currentRole?.role?.icon || roleIcon }} {{ app.currentRole?.role?.name || app.currentRole?.role_key }}
               </span>
+              <span v-else-if="isMyWallet" class="dq-tag info wc-role-badge">普通用户</span>
             </div>
             <el-select
               v-model="walletModel"
@@ -211,11 +212,11 @@
                 v-for="w in walletOptions"
                 :key="w.addr"
                 :value="w.addr"
-                :label="w.name + '  ' + w.addr"
+                :label="w.name + ' ' + shortAddr(w.addr)"
               >
                 <div class="wc-opt">
                   <span class="wc-opt-name">{{ w.name }}</span>
-                  <span class="wc-opt-addr dq-mono">{{ w.addr }}</span>
+                  <span class="wc-opt-addr dq-mono">{{ shortAddr(w.addr) }}<em v-if="w.alias"> · {{ w.alias }}</em></span>
                   <span class="wc-opt-role dq-tag" :class="w.klass">{{ w.role }}</span>
                 </div>
               </el-option>
@@ -266,10 +267,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import { useWalletStore } from '@/stores/wallets'
+import { authApi } from '@/api'
+import { isChainAddress, shortAddr } from '@/utils/address'
 import Shortcuts from '@/components/Shortcuts.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, Check, Document, Refresh, QuestionFilled, Right, SwitchButton, User } from '@element-plus/icons-vue'
@@ -361,6 +365,24 @@ const progressMap: Record<string, number> = {
   '/monitor': 92, '/explorer': 96, '/grades': 88, '/report': 100, '/achievements': 98,
 }
 
+/* 侧边栏「整体学习进度」：原来直接按路由取 progressMap 里的写死常量，
+   导致一个字段都没做的学生打开「生成实训报告」也显示 100%，而做到 100% 的学生
+   打开「我的成绩」显示 0%（该路由不在表里）。现改成读后端真实进度，
+   progressMap 仅作为「当前页属于哪个学习阶段」的参考（进度的兜底值）。
+   学生 = 个人完成步数占比；教师/管理员 = 平台返回的对应口径（avg_progress_pct）。 */
+const realProgress = ref<number | null>(null)
+async function loadRealProgress() {
+  try {
+    const d: any = await authApi.platformProgress()
+    const pct = typeof d?.progress_pct === 'number'
+      ? d.progress_pct
+      : (typeof d?.avg_progress_pct === 'number' ? d.avg_progress_pct : null)
+    realProgress.value = pct === null ? null : Math.round(pct)
+  } catch {
+    realProgress.value = null   // 接口异常时退回阶段参考值，不阻断页面
+  }
+}
+
 const defaultOpen = ['g-learn', 'g-contract', 'g-explorer', 'g-practice', 'g-eco', 'g-achv', 'g-teach']
 
 const reportItem: RouteItem = { path: '/report', title: '生成实训报告', icon: 'Document', tag: '交付' }
@@ -379,6 +401,7 @@ const tagLabel = computed(() => {
   return m ? tagMap[m.path] || '' : ''
 })
 const learnProgress = computed(() => {
+  if (realProgress.value !== null) return realProgress.value
   const m = menus.find((x) => route.path.startsWith(x.path))
   return m ? progressMap[m.path] || 0 : 0
 })
@@ -433,43 +456,90 @@ async function onLogout() {
 }
 
 /* ---------- 绿色低碳联盟链钱包选择器 ----------
-   1 我的钱包（普通用户） + 6 联盟节点组织钱包。
-   「我的钱包」对应登录账号本人钱包（一人一钱包），承载普通用户（低碳居民）身份，
-   已合并原「学习者（0xlearner）」公共演示钱包；原 Bob / 铸造专员无业务用途已下线。
-   联盟节点钱包按治理角色从高到低排列，切换前端钱包同时联动切换生态角色。
-*/
-const walletList = [
-  { addr: '0xadmin',     name: '🛡️ 联盟管理员',   role: '超级管理员 / Owner',      klass: 'warn'   },
-  { addr: '0xmetro',     name: '🚇 地铁集团',     role: '发能量方 +50 / 次',         klass: 'primary' },
-  { addr: '0xbus',       name: '🚌 公交集团',     role: '发能量方 +20 / 次',         klass: 'primary' },
-  { addr: '0xbike',      name: '🚲 共享单车',     role: '发能量方 +15 / 次',         klass: 'primary' },
-  { addr: '0xtakeout',   name: '📦 外卖平台',     role: '发能量方 +10 / 次',         klass: 'primary' },
-  { addr: '0xrecycle',   name: '♻️ 回收公司',     role: '发能量方 +100 / 次',        klass: 'accent'  },
-]
+   选项 = 我的钱包（本人真实链上地址，承载普通用户 / 居民身份）
+        + 6 个联盟节点组织钱包（后端 /api/eco/roles 返回的 address）。
+   不写死 0xadmin / 0xmetro 这类密钥库**别名**：别名带不了资产口径（资产表只存
+   真实地址），前端只把它放在括号里作展示；地址↔角色映射统一取 useWalletStore，
+   与 EcoPractice 角色卡片共用一张表：上面切钱包 → 下面角色卡片高亮跟着变，
+   下面选组织钱包 → 这里选中项跟着变。*/
+const wallets = useWalletStore()
 
-/** 「我的钱包」= 登录账号本人钱包（学生为后端发放的 stu: 专属别名，教师/管理员为账号 ID） */
-const myWalletAddr = computed(() => auth.user?.wallet || '0xlearner')
+type WalletOption = { addr: string; name: string; role: string; klass: string; alias?: string }
 
-/** 下拉选项 = 我的钱包（置顶） + 6 联盟角色钱包；
- * 兜底：当前钱包不在列表中（如旧会话残留值）时补充为未命名选项，避免选中值显示为空 */
-const walletOptions = computed(() => {
-  const opts = [
-    { addr: myWalletAddr.value, name: '💼 我的钱包', role: '普通用户 · 低碳居民', klass: 'info' },
-    ...walletList,
-  ]
+/** 下拉里的职能一句话（发什么资产 / 只治理，按后端角色字段派生，不前端写名单） */
+function dutyLabel(a: any): string {
+  if (a.roleKey === 'admin') return '治理：目录 / 国库 / 部署'
+  const parts: string[] = []
+  if (a.canIssueEnergy) parts.push('能量')
+  if ((a.assets || []).includes('certificate')) parts.push('证书')
+  if ((a.assets || []).includes('badge')) parts.push('勋章')
+  if ((a.assets || []).includes('voucher')) parts.push('骑行券')
+  return parts.length ? `发行：${parts.join(' + ')}` : '联盟节点'
+}
+
+/** 下拉选项 = 我的钱包（置顶）+ 联盟角色钱包 */
+const walletOptions = computed<WalletOption[]>(() => {
+  const opts: WalletOption[] = []
+  const mine = wallets.myAddress
+  if (mine) opts.push({ addr: mine, name: '💼 我的钱包', role: '居民：获取 / 兑换 / 交易', klass: 'info' })
+  for (const a of wallets.alliance) {
+    if (a.address === mine) continue   // 本人就是该机构账号：不重复列一项
+    opts.push({
+      addr: a.address,
+      name: `${a.icon} ${a.name}`.trim(),
+      role: dutyLabel(a),
+      klass: a.roleKey === 'admin' ? 'warn' : (a.roleKey === 'recycling' ? 'accent' : 'primary'),
+      alias: a.alias,
+    })
+  }
+  // 兼容：当前钱包不在列表里（手工改过地址等）时补一项，避免选中值显示为空
   const cur = app.currentWallet
   if (cur && !opts.some((w) => w.addr === cur)) {
-    opts.push({ addr: cur, name: '未命名钱包', role: '当前使用', klass: 'danger' })
+    opts.push({ addr: cur, name: '未登记钱包', role: '按地址直接访问', klass: 'danger' })
   }
   return opts
 })
 
+/** 当前钱包是不是「我的钱包」（未选联盟角色时即普通用户身份） */
+const isMyWallet = computed(() =>
+  !!wallets.myAddress && app.currentWallet === wallets.myAddress)
+/** 当前角色图标（store 里的 role 有时只有 key，图标从后端角色表回补） */
+const roleIcon = computed(() =>
+  wallets.alliance.find((a) => a.roleKey === app.currentRole?.role_key)?.icon || '')
+
+/**
+ * 严格联动校验：当前钱包只能是「本人地址」或「联盟机构地址」。
+ * 其余一律收敛回本人（旧版 localStorage 残留的 0xlearner / stu:xxx / user_id
+ * 会让学生看到别人的台账）；联盟别名能解成地址的保留（分享链接场景）。
+ */
+async function syncWalletWithIdentity() {
+  await wallets.ensureRoles()
+  const cur = (app.currentWallet || '').toLowerCase()
+  if (cur && isChainAddress(cur)
+    && (cur === wallets.myAddress || !!wallets.roleKeyOf(cur))) {
+    return  // 已是合法选项（本人 / 联盟机构），不抢用户的选择
+  }
+  const resolved = wallets.normalize(cur) || wallets.myAddress
+  if (resolved && resolved !== cur) app.setWallet(resolved)
+}
+
 onMounted(() => {
   app.refreshStatus()
-  const t = setInterval(() => app.refreshStatus(), 15000)
+  syncWalletWithIdentity()
+  loadRealProgress()
+  const t = setInterval(() => { app.refreshStatus(); loadRealProgress() }, 15000)
   // 通知 shortcutsRef 暴露
   try { app.shortcutsOpen = shortcutsRef.value || null } catch {}
   return () => clearInterval(t)
+})
+
+// 切页时重拉一次：学生完成一个动作（如兑换 / 部署）后切页即可看到进度上升
+watch(() => route.path, () => { loadRealProgress() })
+
+// 登录 / 切账号 / 会话恢复后本人钱包会变：重新收敛一次（不收敛则新账号仍在读
+// 上一个账号的钱包，同一浏览器多人使用时资产串页）
+watch(() => [auth.user?.wallet, auth.isLoggedIn] as const, () => {
+  syncWalletWithIdentity()
 })
 </script>
 
@@ -765,12 +835,13 @@ onMounted(() => {
 }
 .wc-opt {
   display: flex; align-items: center; gap: 10px;
-  .wc-opt-name { font-weight: 600; color: var(--dq-text); min-width: 64px; }
+  .wc-opt-name { font-weight: 600; color: var(--dq-text); min-width: 96px; white-space: nowrap; }
   .wc-opt-addr {
     color: var(--dq-text-dim); font-size: 12px; flex: 1;
-    margin-right: auto;
+    margin-right: auto; white-space: nowrap;
+    em { font-style: normal; opacity: .6; }
   }
-  .wc-opt-role { padding: 1px 6px; font-size: 10px; }
+  .wc-opt-role { padding: 1px 6px; font-size: 10px; white-space: nowrap; }
 }
 .wc-popper.el-select-dropdown { padding: 6px; }
 

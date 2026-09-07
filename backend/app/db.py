@@ -41,6 +41,22 @@ _TENANT_COLS = """
 """
 
 
+def has_table(conn: sqlite3.Connection, name: str) -> bool:
+    """表是否已存在（跨模块建表时机不一时的降级判定）。
+
+    典型场景：chain_tutorial_progress 由教程首次执行时才建（tutorial_engine.
+    _ensure_progress_table），而学情看板 / 报告在任意时刻都可能被访问——
+    表不存在应等价于“还没人做过”（空数据），而不是一个 500。
+    """
+    try:
+        return conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
+            (name,),
+        ).fetchone() is not None
+    except Exception:
+        return False
+
+
 def scope_where(alias: str, user_id: str | None = None,
                 tenant_id: str | None = None) -> tuple[str, list]:
     """构造多租户 scope 过滤片段，返回 (WHERE 条件片段, 参数列表)。
@@ -530,6 +546,75 @@ def init_db() -> None:
             """ + _TENANT_COLS + """
         )""")
         c.execute("CREATE INDEX IF NOT EXISTS idx_ops_kpis_round ON ops_kpis(round_id)")
+
+        # ==================== 产品与逻辑问题修复（P0-1 / P0-2 / P1-25）新增三表 ====================
+        # wallet_alias：钱包别名 → 用户 的唯一归属表（P0-2「一人多口径」的收口）。
+        #   历史成因：登录写 wallet=userId、学生专属钱包 stu:{userId}、密钥库真实
+        #   0x 地址、演示钱包 0xlearner 四种口径分别落库，任何 WHERE wallet=? 的
+        #   统计都只在「半个学生」上算。此后所有读写统一经
+        #   security.resolve_wallet_candidates() 取本人别名并集，SQL 不再写单值等值。
+        #   kind：user_id（登录默认口径）| student_alias（stu: 专属别名）
+        #        | evm_addr（密钥库真实地址）| legacy（管理员显式认领的历史共享钱包）
+        #   注：内置演示钱包（0xlearner 等）只有在管理员显式认领后才挂到某个用户，
+        #   绝不无条件并入候选集——那会让全班学生的资产/进度互相污染。
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS wallet_alias (
+            alias       TEXT PRIMARY KEY,          -- 小写规范化的钱包标识
+            user_id     TEXT NOT NULL DEFAULT '',  -- 归属用户（user_info.user_id）
+            kind        TEXT NOT NULL DEFAULT '',  -- user_id | student_alias | evm_addr | legacy
+            created_at  TEXT NOT NULL DEFAULT '',
+            claimed_by  TEXT NOT NULL DEFAULT ''   -- legacy 认领操作人（审计用）
+        )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_wallet_alias_user ON wallet_alias(user_id)")
+
+        # class_teacher_bind：教师 → 班级 的人工绑定（P0-1）。
+        #   外部 SSO 对教师不返 classId（或返回 "0"），而三块学情看板都以
+        #   「教师所属班级」为过滤条件，无绑定时只能返回空列表。本表提供
+        #   一条不依赖 SSO 的绑定通道（教师自助 / 管理员代绑）。
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS class_teacher_bind (
+            teacher_user_id TEXT PRIMARY KEY,      -- 教师 userId
+            class_id        TEXT NOT NULL DEFAULT '',
+            bound_by        TEXT NOT NULL DEFAULT '',  -- 绑定操作人（本人或管理员）
+            bound_at        TEXT NOT NULL DEFAULT ''
+        )""")
+
+        # grade_draft：实训成绩草稿表（P1-8 / P1-25）。
+        #   草稿原先与教师正式成绩同表（student_grades，teacher_id='system'），
+        #   且由 GET /api/report/aggregate 的隐藏副作用写入；一旦花名册里有该生
+        #   真实学号，草稿的 UPDATE 就会命中教师正式行，把综合分重算成
+        #   「教师分按 0 计」（在库副本上实测 84.3 → 0.6）。草稿从此独立成表，
+        #   成绩册只放教师录入的行，教师显式动作才把草稿落到正式成绩。
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS grade_draft (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id         TEXT NOT NULL DEFAULT '',   -- 归属用户（稳定主键）
+            wallet          TEXT NOT NULL DEFAULT '',   -- 草稿计算口径钱包
+            student_id      TEXT NOT NULL DEFAULT '',   -- 学号
+            student_name    TEXT NOT NULL DEFAULT '',
+            course          TEXT NOT NULL DEFAULT '区块链实训',
+            class_id        TEXT NOT NULL DEFAULT '',
+            school_id       TEXT NOT NULL DEFAULT '',
+            training_score  REAL NOT NULL DEFAULT 0,
+            training_detail TEXT NOT NULL DEFAULT '{}',
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL,
+            UNIQUE(user_id, course)
+        )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_grade_draft_course ON grade_draft(course)")
+
+        # grade_merge_archive：成绩重复行归并留档（P0-2 一次性归并脚本的退路）。
+        #   归并脚本默认 dry-run，--apply 时先把被下线的手稿行原文存进来，
+        #   再删除/失活，保证任何一步都可人工恢复，不出现“归并丢数据”。
+        c.execute("""
+        CREATE TABLE IF NOT EXISTS grade_merge_archive (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            grade_id     INTEGER NOT NULL,
+            payload      TEXT NOT NULL,                 -- 被归并行的完整原值 JSON
+            merged_into  INTEGER NOT NULL DEFAULT 0,    -- 保留下来的那一行 id
+            reason       TEXT NOT NULL DEFAULT '',
+            created_at   TEXT NOT NULL
+        )""")
 
         # === 任务 #22 热修：租户三列在线迁移（修复真实库 /api/explorer/overview 500） ===
         # 早期建库早于 _TENANT_COLS 引入，CREATE TABLE IF NOT EXISTS 不会给已存在的表

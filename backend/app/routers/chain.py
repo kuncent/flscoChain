@@ -28,8 +28,16 @@ from ..security import (
     BUILTIN_WALLETS,
     PRIVILEGED_ROLES,
 )
-from ..learning.alliance_roles import ROLES as ECO_ROLES
+from ..learning.alliance_roles import ROLES as ECO_ROLES, wallet_address
+from ..roster import (
+    HINT_ROSTER_EMPTY,
+    candidates_for_student,
+    norm_class,
+    resolve_class_scope,
+    roster_students,
+)
 from ..learning.tutorial_steps import TUTORIAL, ROLE_ENERGY_RULES  # noqa: F401  (数据保持从本模块可引用)
+from ..wallet_id import address_variants
 from ..learning.tutorial_engine import exec_step_impl, exec_command_impl, _ensure_progress_table
 
 router = APIRouter(prefix="/api/chain", tags=["chain"])
@@ -112,8 +120,13 @@ def get_progress(
 def reset_progress(payload: dict, user: dict = Depends(get_current_user)):
     wallet = assert_actor_wallet(user, payload.get("wallet") or "", "wallet") or "default"
     _ensure_progress_table()
+    # 双口径删除：进度行可能仍以迁移前的别名落库，只删地址口径会「重置了但还在」
+    marks, mp = lower_wallet_in(list(address_variants(wallet)))
     with get_conn() as conn:
-        conn.execute("DELETE FROM chain_tutorial_progress WHERE wallet=?", (wallet,))
+        conn.execute(
+            f"DELETE FROM chain_tutorial_progress WHERE lower(wallet) IN ({marks})",
+            mp,
+        )
     return {"ok": True, "reset": wallet}
 
 
@@ -215,7 +228,11 @@ def tutorial_rolematrix():
             "key": r.get("key", ""),
             "name": r.get("name", ""),
             "icon": r.get("icon", ""),
-            "wallet": r.get("wallet", ""),
+            # wallet = 机构钱包真实地址；链上 CLI 账户别名（0xmetro，教程里要敲的）
+            # 改名 wallet_alias，不再占用 wallet 这个名字（资产口径只认地址）
+            "wallet": wallet_address(str(r.get("key") or "")) or "",
+            "wallet_alias": r.get("wallet", ""),
+            "address": wallet_address(str(r.get("key") or "")) or "",
             "desc": r.get("desc", ""),
             "perm": {
                 "can_issue_badge": bool(r.get("can_issue_badge")),
@@ -242,8 +259,9 @@ def tutorial_progress_class(
 ):
     """班级搭链进度聚合（仅管理员 / 教师）。
 
-    - 参数 class_id 为空时：教师取自身 class_id（定位逻辑与 auth.py class-students 一致），
-      管理员返回全部学生；教师无 class_id 返回空（避免越权）
+    - 参数 class_id 为空时：走 roster.resolve_class_scope 解析链（显式绑定 →
+      user_info → JWT 快照 → 成绩册派生）；管理员未指定班级返回全部学生
+    - 教师未确定班级时：明确返回 class_unbound + hint（P0-1：不再与“全班没人做”同形）
     - 每生聚合 chain_tutorial_progress：done 步数、首个未 done 步骤（卡点）、
       平均步骤耗时（由 started_at/finished_at 时间戳差推导，表无耗时数值字段；
       解析失败或缺失时跳过，无可用样本则该指标为 None）
@@ -262,54 +280,44 @@ def tutorial_progress_class(
             return None
 
     with get_conn() as conn:
-        # 1) 定位当前用户自身班级（user_info 优先，JWT class_id 兕底）
-        my_class = ""
-        if x_user_id:
-            row = conn.execute(
-                "SELECT class_id FROM user_info WHERE user_id=?", (x_user_id,)
-            ).fetchone()
-            if row:
-                my_class = row["class_id"] or ""
-        if not my_class:
-            my_class = str(user.get("class_id") or "")
-        # 越权防护：教师（rid=3）传入的 class_id 必须等于自身班级（JWT/user_info），
+        # 1) 定位当前用户自身班级（P0-1 统一解析链，与另两块看板同源）
+        scope = resolve_class_scope(conn, user)
+        my_class = norm_class(scope["class_id"])
+        # 越权防护：教师（rid=3）传入的 class_id 必须等于自身班级（绑定/成绩册），
         # 不匹配返回 403；未传时用自己的班级。管理员（rid=1）不限。
+        req_class = norm_class(class_id)
         if rid == 3:
-            req_class = (class_id or "").strip()
             if req_class and req_class != my_class:
                 raise HTTPException(status_code=403, detail="教师仅能查看本人班级的搭链进度")
             class_id = my_class
-        elif not class_id:
+        elif not req_class:
             # 管理员未传 class_id：按自身 user_info 班级（通常为空 → 返回全部学生）
             class_id = my_class
-        # 2) 学生名单（role_id=4；教师限定同班，管理员可跨班）
-        if class_id:
-            students = conn.execute(
-                "SELECT user_id, name, student_id, class_id, wallet FROM user_info "
-                "WHERE role_id=4 AND class_id=? ORDER BY student_id",
-                (class_id,),
-            ).fetchall()
-        elif rid == 1:
-            students = conn.execute(
-                "SELECT user_id, name, student_id, class_id, wallet FROM user_info "
-                "WHERE role_id=4 ORDER BY class_id, student_id"
-            ).fetchall()
         else:
+            class_id = req_class
+        # 2) 学生名单（role_id=4；教师限定同班，管理员可跨班）
+        #    user_info 为空时降级用成绩册派生名单并标注来源（P0-1 / P0-4）
+        roster_source = "empty"
+        if scope["class_unbound"]:
             students = []
+        else:
+            students, roster_source = roster_students(
+                conn, class_id, all_classes=(rid == 1 and not class_id)
+            )
         # 3) 逐生聚合进度（范本：auth.py class-students 进度统计段）。
-        #    按生构造钱包候选集：user_info.wallet=userId 而教程进度写路径
-        #    多落在演示钱包 0xlearner，单值查询恒 0。
+        #    按生构造钱包候选集（P0-2）：user_info.wallet 可能是 userId / stu: 别名 /
+        #    真实地址，单值查询恒 0（旧实现把空钱包兜底成 0xlearner，会把演示
+        #    钱包的数据当成该生的进度）。
         total_steps = len(TUTORIAL)
         items = []
         total_done = 0
         for s in students:
-            w = s["wallet"] or "0xlearner"
-            h, lc = lower_wallet_in(resolve_wallet_candidates(conn, w, s["user_id"] or ""))
+            h, lc = lower_wallet_in(candidates_for_student(conn, s))
             rows = conn.execute(
                 f"SELECT step, done, started_at, finished_at FROM chain_tutorial_progress "
                 f"WHERE lower(wallet) IN ({h}) ORDER BY step",
                 lc,
-            ).fetchall()
+            ).fetchall() if lc else []
             done_set = {r["step"] for r in rows if r["done"]}
             done_count = len(done_set)
             total_done += done_count
@@ -324,11 +332,11 @@ def tutorial_progress_class(
                 if st and ft and ft > st:
                     durations.append((ft - st).total_seconds())
             items.append({
-                "user_id": s["user_id"],
-                "name": s["name"],
-                "student_id": s["student_id"],
-                "class_id": s["class_id"],
-                "wallet": w,
+                "user_id": s.get("user_id") or "",
+                "name": s.get("name") or "",
+                "student_id": s.get("student_id") or "",
+                "class_id": s.get("class_id") or "",
+                "wallet": s.get("wallet") or "",
                 "done_steps": done_count,
                 "total_steps": total_steps,
                 "progress_pct": round(done_count * 100 / total_steps, 1) if total_steps else 0,
@@ -350,8 +358,16 @@ def tutorial_progress_class(
                     "%s 条记录，可能存在钱包口径错位（查询者=%s），请核对候选集归一是否命中",
                     class_id, any_rows, x_user_id,
                 )
+    hints = [scope["hint"]] if scope["hint"] else []
+    if roster_source == "grade_book":
+        hints.append(HINT_ROSTER_EMPTY)
     return {
         "class_id": class_id,
+        "class_source": scope["class_source"],
+        "class_unbound": scope["class_unbound"],
+        "roster_source": roster_source,
+        "hints": hints,
+        "hint": "；".join(hints),
         "total": len(items),
         "avg_done_steps": round(total_done / len(items), 1) if items else 0,
         "items": items,

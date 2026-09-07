@@ -15,6 +15,7 @@ from app import events_bus, verifier
 from app.db import get_conn
 from app.routers.notify import stream as notify_stream
 from app.security import create_token
+from app.wallet_id import to_address
 
 UC = {"user_id": "u1", "wallet": "0xlearner", "class_id": "c1",
       "tenant_id": "", "role_id": 1}
@@ -332,5 +333,16 @@ class TestEnergyIssueConcurrent:
                 "WHERE proof_no='TRIP-DUP-1' AND role_key='metro'",
             ).fetchall()
         assert len(rows) == 1
-        assert rows[0]["points"] == 50
+        # 计价口径（按量核算）：地铁基础 50 点 + 超出 10km 门槛部分每 km +2 点
+        # → 20km 核算 70 点（旧实现不论业务量恒发 50 点，属缺陷 B7）
+        assert rows[0]["points"] == 70
         assert rows[0]["tx_hash"] == "0xmock"  # 占位行已回填真实 tx_hash
+        # 余额 = Σ 流水：5 并发只应落 1 笔发行流水（无双重 mint 入账）
+        # 流水的 wallet 是资产口径（真实链上地址），别名只在请求入参里出现
+        flows = conn.execute(
+            "SELECT * FROM eco_energy_flows WHERE lower(wallet) IN (?,?)",
+            ("0xlearner", to_address("0xlearner").lower()),
+        ).fetchall()
+        assert len(flows) == 1
+        assert flows[0]["ref"] == f"energy:{rows[0]['id']}"
+        assert flows[0]["amount"] == 70 and flows[0]["kind"] == "issue"

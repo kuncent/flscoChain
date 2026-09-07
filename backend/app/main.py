@@ -49,6 +49,8 @@ async def lifespan(app: FastAPI):
     init_db()
     eco.init_eco_db()
     seed_init_data()
+    # 种子直写业务表（不走 API）补上能量流水，保证「余额 = Σ 流水」口径不断链
+    eco.reconcile_energy_flows()
     yield
 
 

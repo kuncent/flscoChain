@@ -10,13 +10,25 @@ from pydantic import BaseModel
 from ..config import settings
 from ..chain_client import get_chain_client
 from ..db import get_conn, now
+from ..learning.alliance_roles import TREASURY_WALLET, wallet_address
 from ..security import assert_actor_wallet, get_current_user
 from ..tx_decoder import compile_source
+from ..wallet_id import short as short_wallet
 
 router = APIRouter(prefix="/api/wallet", tags=["wallet"])
 
-# 联盟管理员钱包：新代币发行仅限该身份操作（治理闭环）
-ADMIN_WALLET = "0xadmin"
+# 联盟管理员钱包：新代币发行仅限该身份操作（治理闭环）。
+# ADMIN_WALLET 是密钥库**别名**（仅用于文案与链上签名），资产与接口口径是它的真实地址。
+ADMIN_WALLET = TREASURY_WALLET
+
+
+def admin_wallet_ids() -> set:
+    """管理员身份的合法标识：别名 + 真实链上地址。
+
+    发币校验不能再只比别名串：assert_actor_wallet 现在统一返回真实地址，
+    只比 ``0xadmin`` 会让管理员（哪怕已切到管理员钱包）永远 403。
+    """
+    return {t for t in (ADMIN_WALLET.lower(), (wallet_address("admin") or "").lower()) if t}
 
 
 class IssueReq(BaseModel):
@@ -24,7 +36,7 @@ class IssueReq(BaseModel):
     symbol: str
     decimals: int = 18
     total_supply: str
-    owner: str = "0xlearner"
+    owner: str = ""   # 留空 = 按 JWT 本人钱包；不再默认 0xlearner（密钥库内部别名）
 
 
 @router.post("/issue")
@@ -36,10 +48,11 @@ def issue(req: IssueReq, user: dict = Depends(get_current_user)):
     # 避免学生随意发币造成账本混乱；学生可使用管理员发行的绿色能量参与生态流转
     owner = assert_actor_wallet(user, (req.owner or "").strip(), "owner")  # 发行者身份从 JWT 解析
     req.owner = owner
-    if owner.lower() != ADMIN_WALLET:
+    if str(owner or "").lower() not in admin_wallet_ids():
         raise HTTPException(
             403,
-            f"发行新代币仅限联盟管理员钱包（{ADMIN_WALLET}）操作，当前发行者 {owner or '未填写'}。"
+            f"发行新代币仅限联盟管理员钱包（{short_wallet(wallet_address('admin') or ADMIN_WALLET)}）操作，"
+            f"当前发行者 {short_wallet(owner) or '未填写'}。"
             "请在页面右上角「当前操作钱包」切换为管理员身份后再发行",
         )
     # 发币限制：名称 / 符号 / 总量合法性校验

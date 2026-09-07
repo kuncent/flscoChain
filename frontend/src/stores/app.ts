@@ -6,14 +6,18 @@ import { safeGet, safeSet } from '@/utils/storage'
 export const useAppStore = defineStore('app', () => {
   const chainMode = ref<'fisco' | 'evm' | 'mock'>(safeGet<'fisco' | 'evm' | 'mock'>('chain_mode_override', 'evm'))
   const chainHeight = ref(0)
-  const currentWallet = ref(localStorage.getItem('wallet') || '0xlearner')
+  // 当前操作钱包：一律是**真实链上地址**（0x + 40 hex）。
+  // 默认值不再写死 '0xlearner'（密钥库内部别名）：登录后 auth 会下发本人地址并覆盖，
+  // 未登录时只是个空占位，任何资产读写前都会先被 MainLayout 的联动校验收敛。
+  const currentWallet = ref(localStorage.getItem('wallet') || '')
   const currentRole = ref<any>(null)           // 当前选中角色（EcoPractice selectRole 后同步写入）
   const shortcutsOpen = ref<{ open?: () => void; close?: () => void } | null>(null)
 
   function setWallet(w: string) {
-    currentWallet.value = w
-    localStorage.setItem('wallet', w)
-    // 切钱包后重置角色（新钱包可能没有角色或角色不同，需重新选择）
+    // 统一小写去空白：地址大小写不同会被当成两个钱包（候选集 / 高亮判定全失配）
+    currentWallet.value = (w || '').trim().toLowerCase()
+    localStorage.setItem('wallet', currentWallet.value)
+    // 切钱包后重置角色（新钱包可能没有角色或角色不同，需由页面按钱包重新派生）
     currentRole.value = null
   }
 

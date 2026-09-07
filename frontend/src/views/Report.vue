@@ -395,7 +395,9 @@
         <h3 class="sub-title">最近 20 条异常记录（warn / error）</h3>
         <el-table :data="(eco.logs||{}).recent_issues || []" size="small" border stripe>
           <el-table-column label="#" type="index" width="50" align="center" />
-          <el-table-column prop="created_at" label="时间" width="160" />
+          <el-table-column label="时间" width="170">
+            <template #default="{ row }"><span class="mono">{{ fmtDateTime(row.created_at) }}</span></template>
+          </el-table-column>
           <el-table-column prop="module" label="模块" width="90" align="center" />
           <el-table-column prop="action" label="动作" width="120" />
           <el-table-column label="级别" width="80" align="center">
@@ -462,6 +464,7 @@ import {
   Refresh, Download, Document, Warning, Reading,
 } from '@element-plus/icons-vue'
 import { reportApi } from '@/api'
+import { fmtDateTime } from '@/utils/time'
 
 const router = useRouter()
 

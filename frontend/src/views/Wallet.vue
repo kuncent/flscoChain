@@ -15,7 +15,7 @@
           <div class="fs-no">01</div>
           <div class="fs-info">
             <div class="fs-title">发行 Token（管理员治理）</div>
-            <div class="fs-desc">在真实链部署 ERC20 合约，构造函数将总量铸造到发行者地址；发行权仅限联盟管理员（0xadmin），绿色能量（GE）即管理员发行的平台唯一流通货币</div>
+            <div class="fs-desc">在真实链部署 ERC20 合约，构造函数将总量铸造到发行者地址；发行权仅限联盟管理员（{{ adminLabel }}），绿色能量（GE）即管理员发行的平台唯一流通货币</div>
             <div class="fs-tags"><span class="fs-kw">deploy</span><span class="fs-kw">constructor</span><span class="fs-kw">治理闭环</span></div>
           </div>
         </div>
@@ -74,7 +74,7 @@
         <div class="dq-card-title">我的钱包 <span class="dq-live" style="margin-left:auto"><span class="dot"></span>真实链</span></div>
         <el-form label-width="80px" size="small">
           <el-form-item label="地址">
-            <el-input v-model="wallet" @change="setWallet" />
+            <el-input :model-value="wallet" @update:model-value="setWallet" />
           </el-form-item>
         </el-form>
         <div class="bal-list">
@@ -107,8 +107,8 @@
           :closable="false"
           show-icon
           style="margin-bottom: 10px"
-          title="发行权限仅限联盟管理员钱包（0xadmin）"
-          description="当前钱包不是管理员，请先点击右上角「当前操作钱包」切换为 0xadmin 后再发行"
+          :title="`发行权限仅限联盟管理员钱包（${adminLabel}）`"
+          description="当前钱包不是管理员，请先点击右上角「当前操作钱包」切换为联盟管理员后再发行"
         />
         <el-form label-width="90px" size="small">
           <el-form-item label="名称"><el-input v-model="issue.name" placeholder="如 LearnToken" /></el-form-item>
@@ -161,8 +161,8 @@
           <span class="dq-live" style="margin-left:auto"><span class="dot"></span>GreenEnergy ERC20</span>
         </div>
         <div class="ge-balance dq-glass">
-          <div class="ge-num">{{ greenEnergyBalance }}</div>
-          <div class="ge-sub">绿色能量余额（链上真实查询）</div>
+          <div class="ge-num">{{ energyHeadline.num }}</div>
+          <div class="ge-sub">{{ energyHeadline.sub }}</div>
         </div>
         <div class="ge-hint dq-tip">
           <span class="dt-label">获取能量:</span>
@@ -237,12 +237,21 @@
             <el-option
               v-for="r in energyRoles"
               :key="r.key"
-              :label="`${r.icon} ${r.name} · ${r.energy_rule.action} +${r.energy_rule.points} 能量`"
+              :label="`${r.icon} ${r.name} · ${r.energy_rule.action} ${energyRuleText(r.energy_rule)}`"
               :value="r.key"
             />
           </el-select>
           <div class="dq-tip" style="margin-top: 4px">
-            <span class="dt-label">说明:</span>该能量由所选联盟业务方（地铁 / 公交 / 单车 / 外卖 / 回收）代表发放，当前钱包作为居民接收。
+            <span class="dt-label">说明:</span>能量由所选联盟业务方（地铁 / 公交 / 单车 / 外卖 / 回收）按行为核算发行，当前钱包以<b>居民（获取方）</b>身份接收；
+            申请不会改变你的钱包角色（不会把你变成发行节点）。
+          </div>
+        </el-form-item>
+        <el-form-item v-if="walletIsIssuer" label="身份提示">
+          <div class="dq-tip issuer-tip">
+            <span class="dt-label">注意:</span>
+            当前钱包已绑定 <b>{{ walletRoleName }}</b> 发行方身份，本次将以「角色扮演」模式由你扮演的节点向自己发能量；
+            真实业务中发行方与接收方应分离（该钱包也无法兑换 / 交易）。建议先切回普通用户。
+            <el-button size="small" text type="primary" :loading="clearingRole" @click="switchToResident">切回普通用户</el-button>
           </div>
         </el-form-item>
         <template v-if="curEnergyRole">
@@ -266,9 +275,8 @@
             <el-input v-else v-model="energyProof[f.key]" :placeholder="f.placeholder" />
           </el-form-item>
           <el-form-item>
-            <div class="energy-threshold dq-tip">
-              ⚠️ 发放条件：{{ energyThresholdHint }}；凭证校验通过后发放
-              <b>{{ curEnergyRule?.points }} 点</b>绿色能量。
+            <div class="energy-threshold dq-tip" :class="{ 'is-bad': energyEst.belowMin }">
+              ⚠️ 发放条件：{{ energyThresholdHint }}；凭证校验通过后{{ energyPayoutText }}。
             </div>
           </el-form-item>
         </template>
@@ -278,8 +286,13 @@
       </el-form>
       <template #footer>
         <el-button @click="energyDlg = false">取消</el-button>
-        <el-button type="primary" :loading="issuingEnergy" @click="doGetEnergy">
-          校验并获取能量
+        <el-button
+          type="primary"
+          :loading="issuingEnergy"
+          :disabled="!!curEnergyRule && energyEst.belowMin"
+          @click="doGetEnergy"
+        >
+          校验并获取能量{{ curEnergyRule ? ` · 预计 +${energyEst.points}${energyEstSuffix}` : '' }}
         </el-button>
       </template>
     </el-dialog>
@@ -323,6 +336,10 @@
 import { ref, reactive, computed, watch, onActivated, onMounted } from 'vue'
 import { walletApi, ecoApi } from '@/api'
 import { useAppStore } from '@/stores/app'
+import { useWalletStore } from '@/stores/wallets'
+import { normAddr, shortAddr } from '@/utils/address'
+import { fmtDateTime } from '@/utils/time'
+import { estimateEnergy, energyCalcText } from '@/utils/energy'
 import { ElMessage } from 'element-plus'
 import { Coin, Wallet as WalletIcon, Document, Refresh, UploadFilled, Promotion } from '@element-plus/icons-vue'
 import CountUp from '@/components/CountUp.vue'
@@ -330,7 +347,9 @@ import EmptyIllustration from '@/components/EmptyIllustration.vue'
 import TxTimeline from '@/components/TxTimeline.vue'
 
 const app = useAppStore()
-const wallet = computed(() => app.currentWallet)
+const wallets = useWalletStore()
+// 当前操作钱包：顶栏未收敛时回落本人真实链上地址（与后端资产台账同一口径）
+const wallet = computed(() => app.currentWallet || wallets.myAddress)
 const setWallet = (v: string) => { app.setWallet(v); loadAll() }
 
 const balances = ref<any[]>([])
@@ -362,7 +381,7 @@ const transferTimeline = computed(() => {
       token: `${t.name} (${t.symbol})`,
       gas: (21000 + 200 * 2000).toLocaleString(),
       tx_hash: t.tx_hash || `deploy_${t.address}`,
-      time: t.created_at || '-',
+      time: fmtDateTime(t.created_at),
       status: 'ok',
     })
   }
@@ -377,7 +396,7 @@ const transferTimeline = computed(() => {
       token: short(x.token_address),
       gas: x.gas_used ? String(x.gas_used) : undefined,
       tx_hash: x.tx_hash,
-      time: x.created_at || '-',
+      time: fmtDateTime(x.created_at),
       status: x.status === 'fail' || x.status === 'error' ? 'fail' : 'ok',
     })
   }
@@ -516,9 +535,15 @@ const loadEcoAssets = async () => {
 }
 
 /* ==================== 钱包内获取绿色能量（角色 + 业务凭证） ==================== */
-/** 联盟管理员钱包：发行新代币唯一身份（与后端 ADMIN_WALLET 一致） */
-const ADMIN_WALLET = '0xadmin'
-const isAdminWallet = computed(() => String(wallet.value || '').toLowerCase() === ADMIN_WALLET)
+/** 联盟管理员钱包：发行新代币的唯一身份。
+ *  判定口径 = 后端角色表下发的**真实链上地址**（与 wallet.py admin_wallet_ids() 同源）；
+ *  别名 0xadmin 只是密钥库内部标识，拿它比地址会永远不相等（管理员也发不了币）。 */
+const adminAddress = computed(() => wallets.addressOf('admin'))
+const adminLabel = computed(() => (adminAddress.value ? shortAddr(adminAddress.value) : '联盟管理员钱包'))
+const isAdminWallet = computed(() => {
+  const cur = normAddr(wallets.normalize(wallet.value) || wallet.value)
+  return !!cur && !!adminAddress.value && cur === normAddr(adminAddress.value)
+})
 
 const energyRoles = ref<any[]>([])
 const energyDlg = ref(false)
@@ -539,7 +564,66 @@ const energyThresholdHint = computed(() => {
   return `${r.proof_field} ≥ ${r.min} ${r.unit}`
 })
 
-/** 打开获取能量对话框：加载联盟角色（仅保留可发能量的业务角色） */
+/** 下拉里的核算文案：按量加成的节点不能写成「固定 +N」（与后端真实计价口径一致） */
+const energyRuleText = (rule: any): string => {
+  if (!rule) return ''
+  const per = Number(rule.bonus_per_unit || 0)
+  const cap = Number(rule.bonus_cap || rule.points || 0)
+  return per > 0 ? `+${rule.points} 起（超量加成，封顶 ${cap}）` : `+${rule.points} 能量`
+}
+/** 本次申请的预计发放：与后端 calc_energy_points 同公式，按已填业务量实时核算
+ * （旧实现只把规则原文展示给用户，里程 30km 与刚达门槛显示同一句，无法知道能拿多少） */
+const energyEst = computed(() => estimateEnergy(curEnergyRule.value, energyProof))
+/** 量未填时只能报根底线（+N 起），填了才报具体预计值 */
+const energyEstSuffix = computed(() => (energyEst.value.pending && energyEst.value.per > 0 ? ' 起' : ''))
+const energyPayoutText = computed(() => {
+  const e = energyEst.value
+  if (!curEnergyRule.value) return ''
+  if (e.pending) {
+    return e.per > 0
+      ? `按量核算：基础 ${e.base} 点起，每超 1 ${e.unit} +${e.per}（单次封顶 ${e.cap} 点）`
+      : `发放 ${e.base} 点绿色能量`
+  }
+  return `预计发放 ${e.points} 点绿色能量（${energyCalcText(e)}）`
+})
+
+/** 当前钱包若属于联盟发行节点：它的可用额度是**发行授信余量**，
+ *  而不是链上能量余额（发行方钱包不收能量、只向外发行，balanceOf 恒为 0）。
+ *  管理员 / 国库钱包不发行能量但确实持有回收能量，仍按真实余额展示。 */
+const energyHeadline = computed(() => {
+  const node = wallets.allianceOf(wallet.value)
+  const quota = Number(node?.energyQuota || 0)
+  if (node && quota > 0) {
+    const used = Number(node.energyIssued || 0)
+    return {
+      num: String(Math.max(0, quota - used)),
+      sub: `授信能量余额 · ${node.name}已发行 ${used} / 授信 ${quota}（发行方可用额度即授信余量）`,
+    }
+  }
+  return { num: String(greenEnergyBalance.value), sub: '绿色能量余额（链上真实查询）' }
+})
+
+/* 当前钱包已绑定的联盟角色（发行方身份）：居民申请发能量不应因此被改写角色 */
+const walletRole = ref<any>(null)
+const walletIsIssuer = computed(() => !!walletRole.value?.role_key)
+const walletRoleName = computed(() => walletRole.value?.role?.name || walletRole.value?.role_key || '')
+const clearingRole = ref(false)
+
+/** 切回普通用户（清除本钱包的联盟角色绑定），恢复居民职能 */
+const switchToResident = async () => {
+  clearingRole.value = true
+  try {
+    await ecoApi.clearRole(wallet.value)
+    walletRole.value = null
+    ElMessage.success('已切回普通用户（居民）身份')
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || e?.message || '切回普通用户失败')
+  } finally {
+    clearingRole.value = false
+  }
+}
+
+/** 打开获取能量对话框：加载联盟角色（仅保留可发能量的业务角色）+ 探测当前钱包身份 */
 const openEnergyDlg = async () => {
   if (!energyRoles.value.length) {
     try {
@@ -553,6 +637,11 @@ const openEnergyDlg = async () => {
   if (!energyRoleKey.value && energyRoles.value.length) {
     energyRoleKey.value = energyRoles.value[0].key
     resetEnergyProof()
+  }
+  try {
+    walletRole.value = await ecoApi.currentRole(wallet.value)
+  } catch {
+    walletRole.value = null
   }
   energyDlg.value = true
 }
@@ -569,7 +658,7 @@ const resetEnergyProof = () => {
   }
 }
 
-/** 提交业务凭证 → 角色绑定 → 后端校验 → 能量发放到当前钱包 */
+/** 提交业务凭证 → 后端按节点规则核算发行 → 能量到账当前钱包（不改写钱包角色） */
 const doGetEnergy = async () => {
   const role = curEnergyRole.value
   if (!role) {
@@ -577,10 +666,19 @@ const doGetEnergy = async () => {
     return
   }
   // 必填业务字段前端预校验
+  if (energyEst.value.belowMin) {
+    ElMessage.warning(energyCalcText(energyEst.value))
+    return
+  }
   const missing: string[] = []
   for (const f of energyProofFields.value) {
     if (!f.required) continue
     const v = energyProof[f.key]
+    // 开关型必填字段：未勾选（false）等于未提供凭证，不能当作“已填写”放行
+    if (f.type === 'switch') {
+      if (v !== true) missing.push(f.label || f.key)
+      continue
+    }
     if (v === undefined || v === null || v === '' || (typeof v === 'string' && !v.trim())) {
       missing.push(f.label || f.key)
     }
@@ -591,8 +689,9 @@ const doGetEnergy = async () => {
   }
   issuingEnergy.value = true
   try {
-    // 业务闭环：先绑定当前钱包为所选联盟角色（后台校验发放身份），再发起能量发放
-    await ecoApi.selectRole(wallet.value, role.key)
+    // 四维度口径：本钱包是能量「获取方」（居民），不是发行方；
+    // 旧实现先 selectRole(wallet, role.key) 再发放，会把学生钱包永久改成联盟节点，
+    // 使其失去兑换 / 交易职能（发行方与使用方互斥），故此处不再绑定角色。
     const r: any = await ecoApi.issueEnergy(wallet.value, role.key, energyProof)
     ElMessage.success(
       `${role.icon} ${role.name} 发放成功：+${r?.points ?? role.energy_rule.points} 绿色能量（已到账当前钱包）`,
@@ -608,7 +707,7 @@ const doGetEnergy = async () => {
 
 const doIssue = async () => {
   if (!isAdminWallet.value) {
-    ElMessage.warning(`发行新代币仅限联盟管理员钱包（${ADMIN_WALLET}），请先切换「当前操作钱包」`)
+    ElMessage.warning(`发行新代币仅限联盟管理员钱包（${adminLabel.value}），请先切换「当前操作钱包」`)
     return
   }
   if (!issue.name || !issue.symbol) return ElMessage.warning('请填写名称与符号')
@@ -634,11 +733,25 @@ const doTransfer = async () => {
 
 const loadAll = () => { loadBalances(); loadTokens(); loadTransfers(); loadEcoAssets() }
 /* 首次进入触发 onMounted，KeepAlive 缓存后再次进入触发 onActivated，两者都执行加载 */
-onMounted(loadAll)
-onActivated(loadAll)
+const loadAllAndRoles = () => { wallets.ensureRoles(); loadAll() }
+onMounted(loadAllAndRoles)
+onActivated(loadAllAndRoles)
 </script>
 
 <style scoped lang="scss">
+/* ---- 获取能量：发行方身份提示与核算口径 ---- */
+.energy-threshold.is-bad {
+  color: #ff7849;
+  border-color: rgba(255, 120, 73, 0.45);
+  background: rgba(255, 120, 73, 0.08);
+}
+.issuer-tip {
+  background: rgba(255, 207, 77, 0.06);
+  border-color: rgba(255, 207, 77, 0.35);
+  line-height: 1.7;
+}
+.energy-threshold { line-height: 1.7; }
+
 /* ---- 顶部 KPI ---- */
 .kpi-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
 .kpi { padding: 12px 14px;

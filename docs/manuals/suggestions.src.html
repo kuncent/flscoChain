@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>区块链联盟链实训平台 · 产品与逻辑问题建议清单</title>
+<link rel="stylesheet" href="manual.css">
+<style>/* 本页表格多且宽：固定布局使列宽不随被拆分的行集变化，消除跨页装箱抖动 */
+table { table-layout: fixed; }
+td, th { word-break: break-word; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<section class="page cover">
+  <div class="cover-inner">
+    <div class="brand">FISCO CHAIN · TRAINING PLATFORM</div>
+<h1>产品与逻辑问题建议清单<br><span style="color:#00e6c3">29 条实机取证 · 5 个结构性根因 · 3 批修复路线</span></h1>
+    <div class="sub">取证方法 · 分级口径 · 逐条现象与根因 · 短期绕过与长期方案 · 验收标准</div>
+    <div class="glow">读者：产品研发 / 实训教研负责人 / 平台管理员</div>
+    <div class="meta" style="margin-top:16mm">
+      <div><b>取证来源</b>《学生使用手册》《教师使用手册》编写过程中的全平台实机体验</div>
+      <div><b>取证账号</b>学生 tzs001 / 教师 tzt001（含演示钱包 <span class="mono">0xlearner</span>）</div>
+      <div><b>交叉核验</b>界面实机 + 只读接口取数 + 后端源码比对，三源一致才收录</div>
+      <div><b>收录标准</b>只收"可复现、有代码位置、能被绕过或修复"的问题</div>
+    </div>
+    <p class="small muted" style="margin-top:12mm">
+      本清单中的编号（如 <span class="mono">P0-1</span>）与学生手册、教师手册正文中的标注一一对应：手册里标注的每条问题都能在这里找到根因与方案；
+      另有 <b>3 条纯研发侧问题</b>（<span class="mono">P1-26 / P1-27 / P2-28</span>，不影响师生操作）未写入手册，在总览表的"手册对应"列以 <span class="mono">—</span> 标出。
+      手册负责"怎么绕过去把课上完"，本清单负责"根因是什么、要怎么改掉、怎么验收"。
+      取证过程未修改任何学生真实数据。
+    </p>
+  </div>
+</section>
+
+<section class="page">
+  <div class="hdr"><span>FISCOChain 联盟链实训平台 · 问题建议清单</span><span>HOW TO READ THIS DOCUMENT</span></div>
+
+  <div class="kicker">READ FIRST</div>
+  <h2>怎么用这份清单</h2>
+  <p class="lead">这不是一份"缺陷抱怨列表"，而是一份<b>带修复决策的排期输入</b>。每条问题都给了：可复现步骤、代码位置、
+  对分数/教学的量化影响、教师学生当前怎么绕、研发短期与长期分别怎么改、以及改完怎么验收。</p>
+
+  <div class="grid3">
+    <div class="card"><h4>研发同学</h4><p class="small">直接看第 <b>03</b> 章逐条详述的"根因 + 方案 + 验收"三行，再看第 <b>04</b> 章批次；批次 1 的 11 条可本迭代清空。</p></div>
+    <div class="card"><h4>教研负责人</h4><p class="small">看第 <b>01</b> 章结论摘要与第 <b>02</b> 章五个根因，判断"先修哪一类"；第 <b>05</b> 章三个岔路需要你拍板。</p></div>
+    <div class="card"><h4>一线教师</h4><p class="small">不必通读。用手册附录 B 的定位 + 本清单"短期绕过"一行；未修复前，按手册流程上课即可规避绝大多数影响。</p></div>
+  </div>
+
+  <h3><span class="num">0.1</span>分级与影响面定义（本清单唯一口径）</h3>
+  <table>
+    <thead><tr><th style="width:14mm">级别</th><th style="width:34mm">名称</th><th style="width:52mm">判定标准</th><th>处置时限建议</th></tr></thead>
+    <tbody>
+      <tr><td class="c"><span class="tag tag--e">P0</span></td><td>阻断教学 / 数据不可信</td><td>核心角色（教师或学生）无法完成本职工作，或平台给出的数字与事实相反且会被写进成绩</td><td>本迭代必修，不允许长期存在</td></tr>
+      <tr><td class="c"><span class="tag tag--w">P1</span></td><td>高：影响分数或安全边界</td><td>会错扣分 / 会越界改写或删除他人数据 / 界面动作实际无效却提示成功</td><td>1–2 个迭代内，且必须先在手册中公示绕法</td></tr>
+      <tr><td class="c"><span class="tag tag--i">P2</span></td><td>中：需人工绕过</td><td>功能可用但口径不一致、数据过期、环境参数导致天花板，需要固定操作习惯弥补</td><td>排入版本计划；期间由手册兜底</td></tr>
+      <tr><td class="c"><span class="tag tag--p">P3</span></td><td>低：展示与文案</td><td>读得懂、不改变结论，但显得不专业或引起追问</td><td>顺手改，随任何一次前端发布</td></tr>
+    </tbody>
+  </table>
+  <div class="note note--info">
+    <span class="t">编号规则</span>
+    形如 <span class="mono">P1-18</span>：<b>前缀</b>是严重级别，<b>后缀</b>是发现顺序号（全局连续，不随级别重排）。
+    两个手册正文引用编号时不再重复描述根因，因此修完某条后请同步更新手册对应小节（附录四给了交叉索引）。
+  </div>
+  <div class="ftr"><span>FISCOChain 联盟链实训平台 · 问题建议清单</span><span>02 / 25</span></div>
+</section>
+
+<section class="page">
+  <div class="hdr"><span>结论摘要与统计</span><span>EXECUTIVE SUMMARY</span></div>
+
+  <div class="kicker">SUMMARY</div>
+  <h2>结论摘要：三句话</h2>
+
+  <div class="grid4">
+    <div class="card stat"><div class="lbl">P0 阻断</div><div class="big">4</div><p class="small">含 1 条改一行 SQL 即可修好的 P0-4</p></div>
+    <div class="card stat"><div class="lbl">P1 高</div><div class="big" style="color:var(--warn)">11</div><p class="small">含 2 条安全越界（P1-26 / P1-27）</p></div>
+    <div class="card stat"><div class="lbl">P2 中</div><div class="big" style="color:var(--info)">10</div><p class="small">多数可用固定操作习惯绕过</p></div>
+    <div class="card stat"><div class="lbl">P3 低</div><div class="big" style="color:var(--muted)">4</div><p class="small">展示与文案，一次发布可清完</p></div>
+  </div>
+
+  <h3><span class="num">1.1</span>三条判断</h3>
+  <ol class="steps">
+    <li><b>平台的"真链、真评分"是可信的，但"看得见"是不可信的。</b>
+      学生 0xlearner 实际有 19 份已部署合约、13 次角色切换（实时重算 88.8 分），但<b>个人报告的链上交易笔数恒为 0</b>（P0-3），
+      同一份数据在成绩册显示 84.3、在个人报告显示 43、在全局报告显示 80（P1-7 / P2-10）。
+      教学产品里，"学生不信任分数"比"没有分数"破坏性更大——建议把 <b>P0-2 / P0-3 / P1-7</b> 作为同一个专项一起修，而不是拆成三条各修一半。</li>
+    <li><b>教师侧最痛的不是缺功能，而是"看不到本班 + 改不动范围"。</b>
+      班级归属为空导致三块看板恒空（P0-1），但同一份数据在成绩列表又是"全校不过滤"；
+      而一键刷新（P1-18）、删除成绩（P1-19）、跨教师覆盖（P2-20）三个写动作<b>都不受班级与录入人约束</b>。
+      读不到 scope、写不限 scope，是同一个缺失的两面：平台没有贯穿读写的"教学作用域（班级 / 学校 / 录入教师）"。</li>
+    <li><b>界面把"演示态"当"真实态"呈现，教师会照它讲错。</b>
+      侧边栏"整体学习进度"是固定值（P1-5）、登录页区块流是动画（P2-12）、云桌面 1–5 步是仿真（P2-11）、
+      引擎切换按钮点了没有后端接口却提示成功（P1-17）、平均 Gas 恒为 0（P3-15）。
+      建议统一一条产品规范：<b>凡是与链上真实状态无关的展示，必须带"演示"标识</b>（见 5.3 命名规范）。</li>
+  </ol>
+
+  <h3><span class="num">1.2</span>最坏情况（已在库副本复现）</h3>
+  <div class="note note--bad">
+    <span class="t">一条链式放大：学生打开报告页 → 教师成绩被改写</span>
+    <span class="mono">/api/report/aggregate</span> 每次访问都会调用 <span class="mono">_auto_draft_grade()</span> 写成绩表（P1-8）。
+    只要 <span class="mono">user_info</span> 里<b>有</b>该生真实学号、且教师已用同一课程名录过分，它的 UPDATE 分支就会命中<b>教师的正式成绩行</b>。
+    我们在<b>数据库文件级副本</b>上按这个条件跑了一次：教师行由 <span class="mono">实训 88.8 · 综合 84.3 · 班级1</span> 变成
+    <span class="mono">实训 1.0 · 综合 0.6 · 班级被清空</span>——<b>教师给的 40% 权重与手填班级同时消失，界面上没有任何提示</b>（即 <b>P1-25</b>）。
+    线上今天还没发生，只有一个原因：花名册表<b>从未写进去过一行</b>——<b>P0-4</b> 的 INSERT 必抛 <span class="mono">17 values for 16 columns</span>，
+    又被 <span class="mono">except: pass</span> 吞掉。<b>因此 P0-4 严禁单独修</b>：修好花名册的那一刻，这条链就会开始发生（顺序约束见 4.2）。
+  </div>
+  <div class="note note--warn">
+    <span class="t">同一时刻，未登录也能读到的两张表</span>
+    <span class="mono">GET /api/eco/errors/list</span> 与 <span class="mono">GET /api/eco/wallet/{wallet}</span> 未挂任何鉴权依赖，
+    实测不带 token 直接返回 200（其余 <span class="mono">/grades/list</span>、<span class="mono">/report/aggregate</span>、<span class="mono">/auth/platform-progress</span> 均正确 401）。
+    而 <span class="mono">errors/list</span> 会把 <span class="mono">eco_operation_logs.detail</span> 整段返回——该字段由前端写入时携带了完整的
+    axios 请求配置，<b>其中包含 <span class="mono">Authorization: Bearer &lt;JWT&gt;</span>、学号、姓名、班级</b>（实测 18 条 error 行的 detail 均含令牌）。
+    <span class="mono">deploy/nginx.chain.conf:90</span> 对 <span class="mono">/api/</span> 全量透传且无来源白名单，<b>公网部署即等于凭据外泄</b>（P1-27）。
+  </div>
+  <div class="ftr"><span>FISCOChain 联盟链实训平台 · 问题建议清单</span><span>03 / 25</span></div>
+</section>
+
+<section class="page">
+  <div class="hdr"><span>根因归类</span><span>FIVE STRUCTURAL ROOT CAUSES</span></div>
+
+  <div class="kicker">ROOT CAUSE</div>
+  <h2>29 条问题背后，其实只有 5 个根因</h2>
+  <p class="lead">逐条打补丁会留下更多不一致。下面每个根因给一条<b>结构性方案</b>，能一次带走多条问题——
+  排期紧张时，请按根因排，而不是按编号排。</p>
+
+  <table>
+    <thead><tr><th style="width:8mm">#</th><th style="width:44mm">结构性根因</th><th style="width:50mm">一次带走的问题</th><th>结构性方案（治本）</th></tr></thead>
+    <tbody>
+      <tr><td class="c">R1</td><td><b>身份主键不唯一</b><br>userId / <span class="mono">stu:</span>别名 / 0x 真实地址 / <span class="mono">0xlearner</span> 兜底 四套并存，且花名册表根本没落库</td><td class="mono">P0-1 P0-2 P0-3 P0-4 P1-8 P1-25 P1-26 P2-21 P3-23 P3-24</td><td>定义唯一主键 <span class="mono">principal = user_id</span>，其余全部作为<b>别名表</b>（<span class="mono">wallet_alias(user_id, alias, kind)</span>）；所有读写经一个 <span class="mono">resolve_principal()</span> 收口，禁止 SQL 里直接 <span class="mono">wallet = ?</span>；花名册写入必须可观测（失败要能告警）</td></tr>
+      <tr><td class="c">R2</td><td><b>读路径与写路径不同源</b><br>快照 vs 实时、精确匹配 vs 候选集、个人 vs 全局</td><td class="mono">P0-3 P1-6 P1-7 P2-10 P2-12 P2-22 P2-28 P3-15 P3-16</td><td>成绩/报告<b>只允许一处计算</b>（服务端 <span class="mono">compute_score(principal)</span>），列表页存 <span class="mono">scored_at</span> 并显示"截至"；同一套阈值常量供报告页、成绩页、文档三处引用</td></tr>
+      <tr><td class="c">R3</td><td><b>没有教学作用域</b><br>取不到班级，写操作也就不过滤班级</td><td class="mono">P0-1 P0-4 P1-18 P1-19 P1-27 P2-20</td><td>登录即确定 <span class="mono">scope(role_id, school_id, class_id, teacher_id)</span>，在中间件层注入；成绩类接口一律 <span class="mono">WHERE</span> 带 scope，班级为空时<b>报错而不是不过滤</b></td></tr>
+      <tr><td class="c">R4</td><td><b>演示态与真实态混用</b><br>假数据、假动作、假进度不带标记</td><td class="mono">P1-5 P1-17 P2-11 P2-12 P3-15</td><td>产品规范：<span class="mono">demo</span>/<span class="mono">mock</span> 来源的数据必须走统一"演示"角标组件；无效按钮要么补接口要么下线，不允许"提示成功但 404"</td></tr>
+      <tr><td class="c">R5</td><td><b>惩罚口径打在学生的正常探索上</b><br>只读失败、环境缺料都算学生错</td><td class="mono">P2-9 P2-13 P2-14</td><td>错误率只统<b>状态变更类</b>失败；环境缺料（树种、能量单价）属配置问题，应在开课前自检接口里暴露（教师手册 3.1 已按此设计）</td></tr>
+    </tbody>
+  </table>
+  <div class="note note--tip">
+    <span class="t">如果只能做一件事</span>
+    先做 <b>R1 + R2 的最小闭环</b>：一个 <span class="mono">resolve_principal()</span> + 一处算分。
+    它同时解掉"学生做了看不见"（P0-3）、"同屏两个分数"（P1-7）、"系统草稿污染"（P1-8 / P1-25 的触发面），
+    这三条是一线教师被学生问住的全部来源。
+  </div>
+  <div class="ftr"><span>FISCOChain 联盟链实训平台 · 问题建议清单</span><span>04 / 25</span></div>
+</section>
+
+<section class="page">
+  <div class="hdr"><span>问题总览</span><span>ISSUE REGISTER</span></div>
+
+  <div class="kicker">REGISTER</div>
+  <h2>29 条问题一览（按域分组）</h2>
+  <p class="small muted">域：A 身份与数据主权 · B 计分与成绩口径 · C 教学功能与权限边界 · D 界面真实性与提示。批次见第 04 章。</p>
+  <table>
+    <thead><tr><th style="width:16mm">编号</th><th style="width:12mm">级别</th><th style="width:8mm">域</th><th style="width:66mm">一句话</th><th style="width:12mm">批次</th><th>手册对应</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">P0-1</td><td class="c"><span class="tag tag--e">P0</span></td><td class="c">A</td><td>教师班级归属为空，三块学情看板恒空</td><td class="c mono">2/3</td><td>师 3.1 / 7.1</td></tr>
+      <tr><td class="mono">P0-2</td><td class="c"><span class="tag tag--e">P0</span></td><td class="c">A</td><td>钱包标识四套并存，同一人不同口径分差 5–80</td><td class="c mono">2</td><td>生 2.2 / 师 1.2</td></tr>
+      <tr><td class="mono">P0-3</td><td class="c"><span class="tag tag--e">P0</span></td><td class="c">B</td><td>个人报告链上交易笔数恒 0，B 项 15 分拿不到</td><td class="c mono">2</td><td>生 8.2 / 师 7.2</td></tr>
+      <tr><td class="mono">P0-4</td><td class="c"><span class="tag tag--e">P0</span></td><td class="c">A</td><td>花名册 <span class="mono">user_info</span> 恒空：登录写库抛错被静默吞掉</td><td class="c mono">2</td><td>师 3.1 / 7.1 · 附 B（并入 P0-1 绕法）</td></tr>
+      <tr><td class="mono">P1-4</td><td class="c"><span class="tag tag--w">P1</span></td><td class="c">D</td><td>密码错误被包装成"SSO 登录接口 HTTP 401"</td><td class="c mono">1</td><td>生 12 / 师 2.1</td></tr>
+      <tr><td class="mono">P1-5</td><td class="c"><span class="tag tag--w">P1</span></td><td class="c">D</td><td>侧边栏"整体学习进度"是界面固定值</td><td class="c mono">1</td><td>师 2.4</td></tr>
+      <tr><td class="mono">P1-6</td><td class="c"><span class="tag tag--w">P1</span></td><td class="c">C</td><td>报告页无学生选择器；教师导出恒为全局卷</td><td class="c mono">1</td><td>师 8.1 / 7.2</td></tr>
+      <tr><td class="mono">P1-7</td><td class="c"><span class="tag tag--w">P1</span></td><td class="c">B</td><td>同屏"成绩 88.8 / 报告 43"两套口径无解释</td><td class="c mono">1/2</td><td>生 11.2 / 师 11.1</td></tr>
+      <tr><td class="mono">P1-8</td><td class="c"><span class="tag tag--w">P1</span></td><td class="c">A</td><td>学生一打开报告页，成绩册多一行"系统自动"草稿</td><td class="c mono">2</td><td>师 5.5</td></tr>
+      <tr><td class="mono">P1-17</td><td class="c"><span class="tag tag--w">P1</span></td><td class="c">D</td><td>引擎切换无后端接口（404）却提示切换成功</td><td class="c mono">1</td><td>师 2.4</td></tr>
+      <tr><td class="mono">P1-18</td><td class="c"><span class="tag tag--w">P1</span></td><td class="c">C</td><td>"刷新实训成绩"是全库动作，不分班级与录入人</td><td class="c mono">1</td><td>师 5.5</td></tr>
+      <tr><td class="mono">P1-19</td><td class="c"><span class="tag tag--w">P1</span></td><td class="c">C</td><td>删除成绩仅校验角色，硬删除、无回收站</td><td class="c mono">1</td><td>师 5.5 / 附 A</td></tr>
+      <tr><td class="mono">P1-25</td><td class="c"><span class="tag tag--w">P1</span></td><td class="c">A</td><td>草稿 UPDATE 命中教师正式行，综合分丢掉 40% 权重</td><td class="c mono">2</td><td>师 5.5 / 附 B</td></tr>
+      <tr><td class="mono">P1-26</td><td class="c"><span class="tag tag--w">P1</span></td><td class="c">A</td><td>审计日志按"被操作钱包"归属，学生替教师背错扣分</td><td class="c mono">2</td><td class="mono">—</td></tr>
+      <tr><td class="mono">P1-27</td><td class="c"><span class="tag tag--w">P1</span></td><td class="c">C</td><td>两个只读接口无鉴权，日志内含完整 JWT</td><td class="c mono">1</td><td class="mono">—</td></tr>
+      <tr><td class="mono">P2-9</td><td class="c"><span class="tag tag--i">P2</span></td><td class="c">B</td><td>只读调用失败也计错误，最多扣满 −10</td><td class="c mono">1/5</td><td>生 8.1 / 师 11.1</td></tr>
+      <tr><td class="mono">P2-10</td><td class="c"><span class="tag tag--i">P2</span></td><td class="c">B</td><td>成绩列表是录入快照，学生后续操作不回填</td><td class="c mono">1</td><td>师 5.5</td></tr>
+      <tr><td class="mono">P2-11</td><td class="c"><span class="tag tag--i">P2</span></td><td class="c">D</td><td>云桌面 1–5 步为仿真回放，但界面称"真实执行"</td><td class="c mono">3</td><td>生 4.1 / 师 3.1</td></tr>
+      <tr><td class="mono">P2-12</td><td class="c"><span class="tag tag--i">P2</span></td><td class="c">D</td><td>登录页区块流是动画，与真实块高无关</td><td class="c mono">1</td><td>生 2.1</td></tr>
+      <tr><td class="mono">P2-13</td><td class="c"><span class="tag tag--i">P2</span></td><td class="c">B</td><td>环境仅 1 个树种 + 证书 1000 能量，G-1 天花板 4 分</td><td class="c mono">1/3</td><td>生 7.4 / 师 3.1</td></tr>
+      <tr><td class="mono">P2-14</td><td class="c"><span class="tag tag--i">P2</span></td><td class="c">B</td><td>生态合约只读调用大面积 reverted（实测 10 调 5 败）</td><td class="c mono">2</td><td>生 8.1 / 师 11.1</td></tr>
+      <tr><td class="mono">P2-20</td><td class="c"><span class="tag tag--i">P2</span></td><td class="c">C</td><td>同（学号+课程）跨教师互相覆盖，录入人被改写</td><td class="c mono">1/3</td><td>师 5.3</td></tr>
+      <tr><td class="mono">P2-21</td><td class="c"><span class="tag tag--i">P2</span></td><td class="c">A</td><td>完成步数两套计数语义（行数 vs 按步去重），可重复计数</td><td class="c mono">2</td><td>师 7.2</td></tr>
+      <tr><td class="mono">P2-22</td><td class="c"><span class="tag tag--i">P2</span></td><td class="c">B</td><td>成绩页色阶 90/80/60 与报告页等级 90/75/60/40 不一致</td><td class="c mono">1</td><td>师 6.2</td></tr>
+      <tr><td class="mono">P2-28</td><td class="c"><span class="tag tag--i">P2</span></td><td class="c">D</td><td>库内残留测试身份（e2e / alice / u123）混入统计</td><td class="c mono">2</td><td class="mono">—</td></tr>
+      <tr><td class="mono">P3-15</td><td class="c"><span class="tag tag--p">P3</span></td><td class="c">D</td><td>区块链浏览器"平均 Gas"恒为 0</td><td class="c mono">1</td><td>生 8.2</td></tr>
+      <tr><td class="mono">P3-16</td><td class="c"><span class="tag tag--p">P3</span></td><td class="c">B</td><td>文档写的等级区间与代码实现不一致</td><td class="c mono">1</td><td>生 11.2</td></tr>
+      <tr><td class="mono">P3-23</td><td class="c"><span class="tag tag--p">P3</span></td><td class="c">A</td><td>成就榜以 UUID 裸展示，教师本人也进榜</td><td class="c mono">1</td><td>生 附 A / 师 12 FAQ</td></tr>
+      <tr><td class="mono">P3-24</td><td class="c"><span class="tag tag--p">P3</span></td><td class="c">A</td><td>四维明细部分指标无中文标签（<span class="mono">energy_issue</span> 等）</td><td class="c mono">1</td><td>师 5.4</td></tr>
+    </tbody>
+  </table>
+  <div class="ftr"><span>FISCOChain 联盟链实训平台 · 问题建议清单</span><span>05 / 25</span></div>
+</section>
+
+<section class="page">
+  <div class="hdr"><span>逐条详述</span><span>ISSUE DETAILS</span></div>
+
+  <div class="kicker">CHAPTER 03</div>
+  <h2>逐条详述：现象 · 根因 · 方案 · 验收</h2>
+  <p class="lead">按四个域分组，共 29 条。每条固定六段，研发可直接把<b>加粗段名</b>当作工单模板：</p>
+  <div class="grid4">
+    <div class="card"><h4>现象</h4><p class="small">用户看到什么，含实测数值</p></div>
+    <div class="card"><h4>复现</h4><p class="small">接口 / 数据 / 操作三步内可复现</p></div>
+    <div class="card"><h4>根因</h4><p class="small">定位到文件 + 函数，必要时给行号</p></div>
+    <div class="card"><h4>影响</h4><p class="small">折算到分数、课时或风险面</p></div>
+  </div>
+  <div class="grid2" style="margin-top:4mm">
+    <div class="card"><h4>短期绕过</h4><p class="small">不改代码就能上课的做法，已写进哪一节手册</p></div>
+    <div class="card"><h4>长期修复 + 验收</h4><p class="small">改什么、改到什么程度算完、回归用例放哪里</p></div>
+  </div>
+  <div class="note note--info">
+    <span class="t">取证边界</span>
+    所有结论均由<b>界面实机 + 只读接口 + 后端源码</b>三源交叉验证；未复现的问题不入本清单，只做"风险推断"的已在正文标注为"当前未暴露"。
+    取证全程对线上库只读；唯一的写入演练发生在 <span class="mono">chain.sqlite3</span> 的<b>文件级副本</b>上（做法见附件附一），写接口（如 <span class="mono">/api/eco/role/clear</span>）除 P1-25 描述的系统自动行为外未主动调用。
+  </div>
+
+  <h3><span class="num">3.1</span>A 域 · 身份与数据主权（9 条）</h3>
+  <p class="small muted">本域是 5 个根因里 R1 的全部体现：平台没有稳定的"这个人是谁"。四个 P0 有三个落在本域，其中 <b>P0-4 是 P0-1 / P0-2 / P3-23 的共同上游</b>。</p>
+
+  <div class="card">
+    <span class="sev sev--p0"></span>
+    <h4><span class="mono">P0-1</span> 教师班级归属为空，三块学情看板恒空 <span class="tag tag--e">P0</span><span class="tag tag--i">批次 2/3</span></h4>
+    <p class="small"><b>现象</b>　教师 tzt001 登录后，首页"班级学情"、成绩页"班级分布"、任务页"本班完成率"三块区域全部为 0，但接口都返回 200、无任何报错。</p>
+    <p class="small"><b>复现</b>　<span class="mono">GET /api/auth/platform-progress</span> → <span class="mono">{"scope":"class","class_id":"","total":0,"items":[]}</span>；
+      <span class="mono">GET /api/auth/class-students</span> → <span class="mono">total=0 class_id=''</span>；
+      <span class="mono">GET /api/chain/tutorial/progress/class</span> → <span class="mono">class_id="0", total=0</span>（<b>同一个教师，两个入口一个空串一个 "0"</b>）。</p>
+    <p class="small"><b>根因</b>　<b>直接原因即 P0-4</b>：花名册写库每次必抛异常、又被 <span class="mono">except Exception: pass</span> 吞掉，<span class="mono">user_info</span> 全库 <b>0 行</b>——看板不是筛不到人，而是<b>连人都不存在</b>（异常原文与行号见 P0-4）。次因：SSO 对教师不返 classId，<span class="mono">auth.py:57</span> 把缺失值落成空串，而三块看板都以 <span class="mono">WHERE role_id=4 AND class_id=?</span> 过滤，两种情况都是 0 行。</p>
+    <p class="small"><b>影响</b>　教师最核心的"看本班"能力完全不可用；更糟的是"空"在界面上等同于"你们班没人做"，会被讲成错误结论。</p>
+    <p class="small"><b>短期绕过</b>　教师手册 3.2 / 7.1 已改为：用<b>成绩册 + 班级筛选器</b>人工核对，三块看板课上不展示。</p>
+    <p class="small"><b>长期修复</b>　① 教师账号必须有班级：SSO 无班级时由管理员在平台绑定，登录响应加 <span class="mono">class_unbound: true</span>；
+      ② 拆掉 <span class="mono">_upsert_user_info</span> 的宽泛 try/except，失败写审计日志并在 <span class="mono">/auth/session</span> 暴露；
+      ③ scope 缺失时看板显示"未绑定班级 · 去绑定"而不是 0。<b>验收</b>　未绑定班级时三块看板显示引导文案；绑定后 total&gt;0；新增 <span class="mono">tests/test_auth_class_scope.py</span>。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p0"></span>
+    <h4><span class="mono">P0-4</span> 花名册从未落库：登录写库异常被静默吞掉 <span class="tag tag--e">P0</span><span class="tag tag--i">批次 2</span></h4>
+    <p class="small"><b>现象</b>　用 tzs001 / tzt001 反复登录，接口全部 200、界面毫无提示，但 <span class="mono">user_info</span> 表始终 <b>0 行</b>——而它是全平台唯一的"谁在哪个班"来源。</p>
+    <p class="small"><b>复现</b>　① <span class="mono">POST /api/auth/login</span> → 200；② <span class="mono">SELECT COUNT(*) FROM user_info</span> → 0；③ 在<b>库副本</b>上直接调用 <span class="mono">_upsert_user_info(data)</span>，即可拿到被吞掉的原始异常 <span class="mono">sqlite3.OperationalError: 17 values for 16 columns</span>。</p>
+    <p class="small"><b>根因</b>　<span class="mono">auth.py:89-103</span>：列清单 16 项、VALUES 写了 17 项（<span class="mono">login_count</span> 既在列清单里又以字面量 <span class="mono">1</span> 占位）、实参只有 15 个；异常被 <span class="mono">auth.py:274-277</span> 整体吞掉。UPDATE 分支（<span class="mono">auth.py:74</span>）因为永远没有首行而<b>从未被执行</b>。</p>
+    <p class="small"><b>影响</b>　四条下游链一次全断：① <span class="mono">/auth/class-students</span>（<span class="mono">auth.py:373</span> 直接读该表）恒空 → 教师看不到本班（P0-1）；② <span class="mono">_auto_draft_grade()</span> 取不到真实学号，只能用 <span class="mono">W{wallet[:10]}</span> 造主键 → 成绩册里的 <span class="mono">W0xlearner</span>、<span class="mono">Wstu:0ae778</span>（P0-2）；③ 成就榜 join 不到姓名，只能显示裸 UUID（P3-23）；④ 它恰好是<b>目前唯一挡住 P1-25 引爆的因素</b>。</p>
+    <p class="small"><b>短期绕过</b>　不依赖花名册：教师以成绩册里手填的姓名 / 班级为准（师 3.2、5.3），班级名单用线下名册核对。<b>切勿</b>为了看板好看手工往 <span class="mono">user_info</span> 塞数据——那会立即触发 P1-25。</p>
+    <p class="small"><b>长期修复</b>　① 对齐列数 / 占位符 / 实参（三处必须一致，建议改命名字段绑定 <span class="mono">VALUES(:user_id, …)</span> 防复发）；② 删掉宽泛 <span class="mono">except: pass</span>，失败写审计日志并在 <span class="mono">/auth/session</span> 暴露 <span class="mono">roster_persist_failed</span>；③ 修复后一次性回填历史用户（脚本带干跑模式）。<b>验收</b>　任一角色登录后 <span class="mono">user_info</span> 有且仅有 1 行、<span class="mono">login_count</span> 随登录递增；<b>且必须晚于 P1-8 / P1-25 上线</b>（见 4.2）。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p0"></span>
+    <h4><span class="mono">P0-2</span> 钱包标识四套并存，同一人不同口径分差 5–80 <span class="tag tag--e">P0</span><span class="tag tag--i">批次 2</span></h4>
+    <p class="small"><b>现象</b>　同一个 tzs001 在 <span class="mono">student_grades</span> 里占 <b>4 行</b>：wallet 分别为
+      <span class="mono">0ae7783d-d59d-…</span>（training 1.0）、<span class="mono">stu:0ae7783d-…</span>（25.0）、<span class="mono">0xlearner</span>（53.3 草稿）、<span class="mono">0xlearner</span>（84.3 正式）。
+      <span class="mono">/api/grades/stats</span> 因此给出 <b>avg_final 31.58</b>，而该生真实综合分是 84.3。</p>
+    <p class="small"><b>根因</b>　四条写入路径没有统一主键：<span class="mono">auth.py:59</span> 首次登录把 <span class="mono">wallet</span> 直接写成 userId（UUID）；
+      <span class="mono">auth.py:112 _ensure_student_wallet()</span> 又写 <span class="mono">stu:{userId}</span> 别名；<span class="mono">auth.py:109 _DEMO_LEARNER_WALLET="0xlearner"</span> 是演示兜底；
+      <span class="mono">keystore.json</span> 里另有真实 0x 地址。读侧 <span class="mono">security.py:296 resolve_wallet_candidates()</span> 只返回
+      [请求值, user_id, user_info.wallet]，<b>不含 keystore 真实地址</b>。</p>
+    <p class="small"><b>影响</b>　一切 <span class="mono">WHERE wallet = ?</span> 的统计都在"半个学生"上算；班级平均分被拉低 52.7 分（84.3 → 31.58）。</p>
+    <p class="small"><b>短期绕过</b>　手册已要求：以 <b>student_name 为真实姓名、录入人为具体教师</b> 的那一行为准，忽略"系统自动"行。</p>
+    <p class="small"><b>长期修复</b>　定 <span class="mono">principal = user_id</span> + <span class="mono">wallet_alias(user_id, alias, kind)</span> 别名表；
+      所有读写经 <span class="mono">resolve_principal()</span> 收口，禁止 SQL 直接 <span class="mono">wallet = ?</span>；扩展候选集纳入 keystore 地址；
+      一次性归并脚本 + 唯一索引 <span class="mono">(student_id, course, teacher_id)</span>。<b>验收</b>　成绩册每人 1 行；归并演练后行数 5 → 2。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p1"></span>
+    <h4><span class="mono">P1-8</span> 学生一打开报告页，成绩册多一行"系统自动"草稿 <span class="tag tag--w">P1</span><span class="tag tag--i">批次 2</span></h4>
+    <p class="small"><b>现象</b>　实测 5 行成绩里 <b>4 行</b> 的 <span class="mono">teacher_name="系统自动"、remark="实训成绩自动生成草稿"</span>，学生每打开一次报告页就可能新增/更新一行。</p>
+    <p class="small"><b>根因</b>　<span class="mono">report.py:1131-1147 report_aggregate()</span> 在 <b>GET</b> 接口里做写操作：
+      <span class="mono">_track(...)</span> 记事件后 <span class="mono">if target: _auto_draft_grade(target)</span>；读接口不幂等，且草稿与教师正式行同表无区分键。</p>
+    <p class="small"><b>影响</b>　成绩册噪音率 80%；<span class="mono">/grades/stats</span> 均分被系统性拉低；且它是 P1-25 数据损坏的唯一触发器。</p>
+    <p class="small"><b>短期绕过</b>　教师手册 5.5：列表按"录入人 = 本人"筛选后再看；不要按默认视图判断全班水平。</p>
+    <p class="small"><b>长期修复</b>　草稿改写独立表 <span class="mono">grade_draft</span>（成绩册只放教师录入）；"同步实训分"改为教师显式动作；GET 一律无副作用（框架层加 <span class="mono">assert method != GET</span> 的写库守卫）。
+      <b>验收</b>　连开 10 次报告页，<span class="mono">student_grades</span> 行数不变。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p1"></span>
+    <h4><span class="mono">P1-25</span> 草稿 UPDATE 命中教师正式行，综合分丢掉 40% 权重 <span class="tag tag--w">P1</span><span class="tag tag--i">批次 2</span></h4>
+    <p class="small"><b>现象</b>　教师给的 77.5 与学生实训 88.8 合成的综合分 84.3，会在学生访问报告页后被改写。库副本实测：当报告口径钱包的实训分只有 1.0 时，<b>综合分 84.3 → 0.6</b>；口径与教师一致（88.8）时退化为 <b>53.3</b>（= 88.8×0.6 + 0×0.4）。</p>
+    <p class="small"><b>根因</b>　<span class="mono">report.py:1174-1222 _auto_draft_grade()</span>：先 <span class="mono">SELECT id FROM student_grades WHERE student_id=? AND course=?</span>，
+      命中则 <span class="mono">UPDATE ... SET wallet=?, training_score=?, final_score=?, class_id=?, school_id=? WHERE id=?</span>。
+      course 固定 <span class="mono">"区块链实训"</span> 与教师录入门课同名 → 命中<b>教师正式行</b>；<span class="mono">_compute_final(training_score, 0)</span> 把教师分当 0；<span class="mono">wallet</span> 也被改成报告口径值。</p>
+    <p class="small"><b>影响</b>　唯一一条由隐藏副作用造成成绩数据损坏的问题；教师无法从界面发现自己给的分被丢弃（40% 权重），连手填的 <span class="mono">class_id</span> 也会被一并抹成空串（实测 班级1 → 空）。</p>
+    <p class="small"><b>短期绕过</b>　教师手册 5.5：录分后不要让学生反复刷报告页；每轮评分结束导出一次成绩册留底。</p>
+    <p class="small"><b>长期修复</b>　① 草稿只 INSERT 到 <span class="mono">grade_draft</span>；② 若保留 upsert，必须先判 <span class="mono">teacher_id='system'</span>，非系统行禁写；
+      ③ <span class="mono">final_score</span> 只在两个分量都存在时计算，否则置 NULL 并在 UI 显示"待教师评分"。<b>验收</b>　教师录分后学生反复刷报告，<span class="mono">final_score</span> 恒不变。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p1"></span>
+    <h4><span class="mono">P1-26</span> 审计日志按"被操作钱包"归属，学生替教师背错扣分 <span class="tag tag--w">P1</span><span class="tag tag--i">批次 2</span></h4>
+    <p class="small"><b>现象</b>　<span class="mono">0xlearner</span> 名下 18 条 error 中有 <b>4 条</b> 是 <span class="mono">module=role / action=select_resident / message="Not Found"</span>，
+      其 <span class="mono">detail</span> 里的 JWT 属于<b>教师</b> <span class="mono">cbad6270-dd7a-…</span>（老师1号），时间是 08-30 21:32–21:33，请求 <span class="mono">POST /api/eco/role/clear</span>。</p>
+    <p class="small"><b>根因</b>　<span class="mono">eco.py:1328 record_error()</span> 用 <span class="mono">assert_actor_wallet(user, req.wallet)</span> 定归属，而
+      <span class="mono">security.py:364</span> 对特权角色 <span class="mono">if role_id in PRIVILEGED_ROLES: return p</span> 直接放行任意钱包写入 <span class="mono">wallet</span> 列；
+      <span class="mono">eco_operation_logs</span> <b>没有"操作人"列</b>。</p>
+    <p class="small"><b>影响</b>　<span class="mono">report.py:899 err_penalty = min(10, error_count)</span> → 学生的 −10 封顶扣分里有 4 分是教师点击造成的；学生申诉时无法自证。</p>
+    <p class="small"><b>短期绕过</b>　教师不要在学生钱包视图里点"清除角色"等动作；需要核实时以 <span class="mono">detail</span> 中的 JWT 作为归属证据。</p>
+    <p class="small"><b>长期修复</b>　日志表加 <span class="mono">actor_wallet / actor_role_id</span> 并由 JWT 强制填（前端不可指定）；扣分只统 <span class="mono">actor_wallet == wallet</span>；
+      <span class="mono">errors/list</span> 同时返回两个字段供追溯。<b>验收</b>　用教师 token 触发一次失败，该生 <span class="mono">error_count</span> 不变。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p2"></span>
+    <h4><span class="mono">P2-21</span> 完成步数两套计数语义（行数 vs 按步去重） <span class="tag tag--i">P2</span><span class="tag tag--i">批次 2</span></h4>
+    <p class="small"><b>现象</b>　<span class="mono">auth.py:478-483</span> 用 <span class="mono">SELECT COUNT(*) FROM chain_tutorial_progress WHERE lower(wallet) IN (…) AND done=1</span>（<b>行计数</b>）；
+      <span class="mono">chain.py:76-91</span> 先把结果按 <span class="mono">step</span> 收进 <span class="mono">state_by_step</span> 再计数（<b>按步去重</b>）。当前实测两者都返回 6 / 10（60%），<b>恰好一致，尚未暴露</b>。</p>
+    <p class="small"><b>复现（构造）</b>　库里已存在同一 step 的多钱包行（step 4–9 各有 <span class="mono">0xlearner</span> 与 <span class="mono">e2e_tutorial_verify</span> 两行）；
+      只要候选集能命中两个钱包，<span class="mono">COUNT(*)</span> 就会重复计数，<span class="mono">progress_pct</span> 可 &gt; 100%。</p>
+    <p class="small"><b>长期修复</b>　统一 <span class="mono">count_done_steps(conn, candidates) -&gt; COUNT(DISTINCT step)</span> 供两处调用；百分比处加 <span class="mono">min(100, ·)</span> 兜底并在越界时上报告警。
+      <b>验收</b>　同一用户两钱包各一行 step1 done，两接口都返回 1。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p3"></span>
+    <h4><span class="mono">P3-23</span> 成就榜以 UUID 裸展示，教师本人也进榜 <span class="tag tag--p">P3</span><span class="tag tag--i">批次 1</span></h4>
+    <p class="small"><b>现象</b>　教师手册 10.3 的榜单里出现 <span class="mono">cbad6270-dd7a-…</span>、<span class="mono">0x44bfd612…</span> 这类裸标识，且<b>教师自己排在学生前面</b>。</p>
+    <p class="small"><b>根因</b>　<span class="mono">achievements.py:770 /stats</span> 按 wallet / user_id 聚合后直接输出，未 join <span class="mono">user_info.name</span>，也没有 <span class="mono">role_id=4</span> 过滤。</p>
+    <p class="small"><b>长期修复</b>　榜单 SQL 关联花名册取 <span class="mono">name + student_id</span> 并 <span class="mono">WHERE role_id=4</span>；<b>无姓名者从榜单剔除</b>而不是显示 UUID；投屏模式默认隐藏标识列。
+      <b>验收</b>　榜单任何用户可见字段都不出现 36 位 UUID。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p3"></span>
+    <h4><span class="mono">P3-24</span> 四维明细部分指标无中文标签 <span class="tag tag--p">P3</span><span class="tag tag--i">批次 1</span></h4>
+    <p class="small"><b>现象</b>　成绩页"实训明细"里出现 <span class="mono">energy_issue</span>、<span class="mono">cert_count</span>、<span class="mono">deploy_ok</span> 等原始 key，教师手册 5.4 只能按英文字面解释。</p>
+    <p class="small"><b>根因</b>　<span class="mono">grades.py:73 _compute_training_score()</span> 的 detail 直接用指标 key 作字段名，前端对未知 key 原样输出，两侧没有标签表。</p>
+    <p class="small"><b>长期修复</b>　建 <span class="mono">METRIC_LABELS</span>（与 <span class="mono">verifier.py</span> 的事件类型同源），前端 <span class="mono">label ?? key</span> 并对未知 key 打开发警告；
+      新增指标未登记标签即 CI 失败。<b>验收</b>　明细 100% 中文标签。</p>
+  </div>
+
+  <h3><span class="num">3.2</span>B 域 · 计分与成绩口径（8 条）</h3>
+  <p class="small muted">本域是 R2（读写不同源）+ R5（惩罚口径错位）的交汇区，也是学生提问最多的一类："为什么两个页面分不同"。</p>
+
+  <div class="card">
+    <span class="sev sev--p0"></span>
+    <h4><span class="mono">P0-3</span> 个人报告链上交易笔数恒 0，B 项 15 分拿不到 <span class="tag tag--e">P0</span><span class="tag tag--i">批次 2</span></h4>
+    <p class="small"><b>现象</b>　学生报告页"链上交易 0 笔"，B 维 <span class="mono">score 0 / full 15</span>；同一时刻全局卷与浏览器显示全链共 <b>37</b> 笔。</p>
+    <p class="small"><b>根因</b>　<span class="mono">report.py:53 _resolve_report_wallet()</span> 对学生返回 <span class="mono">user.wallet or user_id</span>（= <span class="mono">0xlearner</span> 或 UUID），
+      而 <span class="mono">report.py:966/973</span> 用 <span class="mono">wallet_filter = " WHERE from_addr = ? OR to_addr = ?"</span> +
+      <span class="mono">c.list_txs_by_address(wallet, limit=5000)</span> 做<b>精确匹配</b>。链上 <span class="mono">from_addr</span> 是 keystore 里的真实 0x 地址，
+      永远不等于 <span class="mono">0xlearner</span>/UUID → 恒 0。（合约数走 DB 表 <span class="mono">deployed_contracts.deployer</span>，所以那边有 19 份。）</p>
+    <p class="small"><b>影响</b>　B 维 15 分固定归零：总分 43 而非 58，等级从"良好 🥈"掉到"待完善 🚧"。这是学生手册里"天花板 85 分"的主因之一。</p>
+    <p class="small"><b>短期绕过</b>　学生手册 8.2：以"我的合约"列表与区块链浏览器地址页为准，链上交易数不作为得分依据。</p>
+    <p class="small"><b>长期修复</b>　① 建 <span class="mono">addr_owner(0x 地址, user_id)</span> 映射，部署时同步写入；② <span class="mono">resolve_wallet_candidates()</span> 从该表扩展候选集；
+      ③ <span class="mono">list_txs_by_address</span> 改接候选集并集（或链上发起方统一用真实地址）。<b>验收</b>　tzs001 报告页 <span class="mono">tx_count &gt; 0</span> 且与浏览器一致，B 维得 15 分。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p1"></span>
+    <h4><span class="mono">P1-7</span> 同屏"成绩 88.8 / 报告 43"两套口径无解释 <span class="tag tag--w">P1</span><span class="tag tag--i">批次 1/2</span></h4>
+    <p class="small"><b>现象</b>　同一个账号同时存在三个数：实训 <b>88.8</b>（<span class="mono">/auth/platform-progress</span>）、报告 <b>43</b>（<span class="mono">/report/aggregate</span>）、综合 <b>84.3</b>（成绩册）。</p>
+    <p class="small"><b>根因</b>　<span class="mono">grades.py:73 _compute_training_score()</span>（四维加权）与 <span class="mono">report.py:696-933 _build_breakdown()</span>（九维 A–I + P 扣分，
+      实测 Σs = 53，再 −10 → 43）<b>是两套独立实现</b>，但界面都叫"实训得分"。</p>
+    <p class="small"><b>短期绕过</b>　手册 11.1 / 11.2 已固定口径：<b>最终成绩以成绩册综合分为准</b>，报告页是"过程性诊断 + 提分清单"。</p>
+    <p class="small"><b>长期修复</b>　一处计算：<span class="mono">compute_score(principal)</span> 唯一入口，报告页只做展示拆分；两页都标"口径版本 + 公式展开"。
+      <b>验收</b>　两页的分数能相互推导（43 = 88.8 − 未覆盖维度 − 只读失败扣分），且页内可展开到每一项。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p2"></span>
+    <h4><span class="mono">P2-9</span> 只读调用与历史重试均计入错误，最多扣满 −10 <span class="tag tag--i">P2</span><span class="tag tag--i">批次 1/5</span></h4>
+    <p class="small"><b>现象</b>　0xlearner 报告页扣分维度 <span class="mono">score −10 / full 0</span>（已扣满）。拆开 <span class="mono">eco_operation_logs</span> 的 18 条 error：
+      <b>12 条</b> <span class="mono">issue_energy</span>（早期"GreenEnergy 合约未部署"与"凭证校验：请提供 proof.distance_km ≥ 10km"的正常重试）、
+      <b>4 条</b> 教师触发（P1-26）、各 1 条 <span class="mono">list_asset</span> / <span class="mono">exchange_badge</span>。</p>
+    <p class="small"><b>根因</b>　<span class="mono">report.py:897-901</span> <span class="mono">err_penalty = min(10, err_n)</span>，err_n 是<b>历史累计次数</b>：不按教学周期重置、不区分动作类型、不区分操作人。</p>
+    <p class="small"><b>影响</b>　一个认真探索但早期碰壁的学生，比一个不作弊不尝试的学生分数更低；与"鼓动试错"的实训目标直接相左。</p>
+    <p class="small"><b>短期绕过</b>　学生手册 9.3：先部署系统合约再领能量、凭证按提示给足参数，避免重复失败；教师手册 6.2：评分时手动说明扣分原因。</p>
+    <p class="small"><b>长期修复</b>　只统<b>状态变更类</b>失败；按 <span class="mono">term_id</span> 周期统计；同因去重（同一 message 10 分钟内只计 1 次）；上限降到 −5 并在报告页给出可展开的扣分明细。
+      <b>验收</b>　新周期开始时老账号错扣自动归 0；只读失败不进入 err_n。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p2"></span>
+    <h4><span class="mono">P2-10</span> 成绩列表是录入快照，学生后续操作不回填 <span class="tag tag--i">P2</span><span class="tag tag--i">批次 1</span></h4>
+    <p class="small"><b>现象</b>　草稿行里的 training 1.0 / 7.8 / 25.0 都是当时算出的值，学生后续又跑了十几份合约，列表仍不动。</p>
+    <p class="small"><b>根因</b>　<span class="mono">grades.py:312 upsert_grade()</span> 将当时的 <span class="mono">training_score</span> 落库，<span class="mono">/grades/list</span>（:188）只读该列；
+      重算只能靠手动全库刷新（见 P1-18），且表里无 <span class="mono">scored_at</span> 可供判断新旧。</p>
+    <p class="small"><b>长期修复</b>　列表存 <span class="mono">scored_at</span> 并在 UI 显示"截至 09-06 21:14"；提供行内"重算"按钮（仅本行）；超过 N 天给"数据已过时"角标。
+      <b>验收</b>　任何一行都能看出它是多久前的数据，且能单行刷新。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p2"></span>
+    <h4><span class="mono">P2-13</span> 环境仅 1 个树种 + 证书 1000 能量，G-1 天花板 4 分 <span class="tag tag--i">P2</span><span class="tag tag--i">批次 1/3</span></h4>
+    <p class="small"><b>现象</b>　证书维度只拿到 4/10；学生怎么换都换不出第二份。</p>
+    <p class="small"><b>复现</b>　<span class="mono">eco_tree_species</span> 全表只有 1 行（杨树，<span class="mono">required_energy=1000</span>）；
+      <span class="mono">GET /api/eco/wallet/0xlearner</span> 返 <span class="mono">energy_balance="935"</span>、<span class="mono">certificates: 0</span> → 余额不够换唯一的一种。</p>
+    <p class="small"><b>根因</b>　环境初始化数据不足（<span class="mono">seed.py</span> 只负责建表与基础角色），属配置问题而非逻辑错误，但被算进了学生得分上限。</p>
+    <p class="small"><b>短期绕过</b>　教师手册 3.1 开课前自检（不足先补能量 / 补树种）；学生手册 7.4 按"先攒 1000 再兑换"的顺序做。</p>
+    <p class="small"><b>长期修复</b>　内置 ≥ 3 个树种并按 300 / 600 / 1000 能量分档；新增 <span class="mono">GET /api/eco/seed-check</span>，返回开课前缺料清单（树种、单价、商店存量）。
+      <b>验收</b>　fresh 环境下一星期内可拿满 G 维 10 分。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p2"></span>
+    <h4><span class="mono">P2-14</span> 生态合约只读调用大面积 reverted（10 调 5 败） <span class="tag tag--i">P2</span><span class="tag tag--i">批次 2</span></h4>
+    <p class="small"><b>现象</b>　<span class="mono">GET /api/eco/audit/overview</span> 返回 <span class="mono">calls: {total: 10, success: 5, failed: 5, success_rate: 50.0}</span>，
+      审计页"调用成功率"一半红。</p>
+    <p class="small"><b>复现</b>　<span class="mono">abnormal_calls.items</span> 里 5 条全部是 <span class="mono">name</span> / <span class="mono">decimals</span> 这类<b>只读</b>方法，
+      <span class="mono">status="reverted"</span>、<span class="mono">result="Tried to read 32 bytes, only got 0 bytes."</span>、<span class="mono">tx_hash=""</span>，
+      目标地址是 08-04～08-18 的旧合约；当前生效地址已换为 <span class="mono">0x207b…/0x49d1…/0xff8b…</span>。</p>
+    <p class="small"><b>根因</b>　链被重置（块高回到 12）后，<span class="mono">deployed_contracts</span> 里的旧行未标失效，只读扫描仍按旧地址发起 → 地址无代码 → 读空 revert；
+      这些失败又写进 <span class="mono">eco_operation_logs</span>，经 P2-9 变成学生扣分。</p>
+    <p class="small"><b>长期修复</b>　① 链重置时给旧行打 <span class="mono">stale=1</span> 并从只读扫描排除；② 只读前用 <span class="mono">eth_getCode</span> 探活；③ 只读失败记 <span class="mono">level="warn"</span>，不进 error_count。
+      <b>验收</b>　审计页成功率 ≥ 90%；P 扣分里不再出现只读项。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p2"></span>
+    <h4><span class="mono">P2-22</span> 成绩页色阶 90/80/60 与报告页等级 90/75/60/40 不一致 <span class="tag tag--i">P2</span><span class="tag tag--i">批次 1</span></h4>
+    <p class="small"><b>现象</b>　同样一份 65 分，成绩页是绿色（按 90/80/60 三档）、报告页是"合格 ✅"（按 90/75/60/40 五档），学生按颜色理解等级会误判。</p>
+    <p class="small"><b>根因</b>　<span class="mono">report.py:911-920</span> 五档常量与 <span class="mono">Grades.vue scoreClass</span> 三档阈值各自硬编码，无共享来源。</p>
+    <p class="small"><b>长期修复</b>　建 <span class="mono">backend/app/score_constants.py</span>（阈值 + 名称 + 色值单一来源），前端由 <span class="mono">GET /api/meta/thresholds</span> 拉取；
+      文档表格由该常量生成。<b>验收</b>　全仓只剩一处阈值定义；报告页与成绩页同分同色同文案。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p3"></span>
+    <h4><span class="mono">P3-16</span> 文档写的等级区间与代码实现不一致 <span class="tag tag--p">P3</span><span class="tag tag--i">批次 1</span></h4>
+    <p class="small"><b>现象</b>　<span class="mono">docs/API.md</span> 写四级（优/良/合格/不合格），代码实际返回五档（优秀 🏆/良好 🥈/合格 ✅/待完善 🚧/未完成 ❌）。</p>
+    <p class="small"><b>根因</b>　文档手写、未与代码同步（与 P2-22 同根）。</p>
+    <p class="small"><b>长期修复</b>　文档表格从常量生成；加一条测试断言 API.md 出现的阈值与 <span class="mono">score_constants</span> 一致。<b>验收</b>　改阈值不改文档会使 CI 失败。</p>
+  </div>
+
+  <h3><span class="num">3.3</span>C 域 · 教学功能与权限边界（5 条）</h3>
+  <p class="small muted">本域对应 R3：平台没有贯穿读写的"教学作用域"。四条写动作 + 一条读动作：读不到本班，写也不限本班。</p>
+
+  <div class="card">
+    <span class="sev sev--p1"></span>
+    <h4><span class="mono">P1-6</span> 报告页无学生选择器；教师导出恒为全局卷 <span class="tag tag--w">P1</span><span class="tag tag--i">批次 1</span></h4>
+    <p class="small"><b>现象</b>　教师导出的"个人报告"实际是全校汇总（80 分），而该生真实个人报告是 43 分；报告页上也找不到任何切换学生的入口。</p>
+    <p class="small"><b>根因</b>　<span class="mono">report.py:1715 report_download()</span> 中 <span class="mono">target = _resolve_report_wallet(user, None)</span>，
+      特权角色不传参时返回空串 → <span class="mono">_aggregate_data("")</span> 走<b>无过滤全局聚合</b>；前端也没有学生下拉。</p>
+    <p class="small"><b>短期绕过</b>　教师手册 8.1：用成绩册行内"重算 + 截图"代替导出；要查个人详情时在地址栏加 <span class="mono">?wallet=</span>（仅自用，不保证鉴权语义）。</p>
+    <p class="small"><b>长期修复</b>　报告页加学生选择器（仅列本班），<span class="mono">/download?wallet=</span> 经 <span class="mono">assert_actor_wallet</span> + 班级 scope 校验；
+      无 wallet 参数时教师端直接 422 而非默默给全局。<b>验收</b>　教师导出任何一份报告都能在学生端同一 wallet 下复现。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p1"></span>
+    <h4><span class="mono">P1-18</span> "刷新实训成绩"是全库动作，不分班级与录入人 <span class="tag tag--w">P1</span><span class="tag tag--i">批次 1</span></h4>
+    <p class="small"><b>现象</b>　教师手册 5.5 的那个按钮，一点就把<b>全校所有学生</b>的实训分重算一遍（包含其他教师录入的行）。</p>
+    <p class="small"><b>根因</b>　<span class="mono">grades.py:364 refresh_all_training(_=Depends(_require_teacher))</span> 遍历全表重算，既不过滤 <span class="mono">class_id</span> 也不限 <span class="mono">teacher_id</span>；
+      与 P1-25 叠加时，一次点击可能改写多个班的综合分。</p>
+    <p class="small"><b>长期修复</b>　默认只刷本班 + 本人录入行；全库刷新降为管理员动作，带二次确认、审计日志与耗时上限；后台任务化（不阻塞请求）。
+      <b>验收</b>　A 班教师点击后，B 班任意行的 <span class="mono">updated_at</span> 不变。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p1"></span>
+    <h4><span class="mono">P1-19</span> 删除成绩仅校验角色，硬删除、无回收站 <span class="tag tag--w">P1</span><span class="tag tag--i">批次 1</span></h4>
+    <p class="small"><b>现象</b>　任何教师可删除<b>任意学生</b>的成绩行（包括别人录入的），删后无法恢复。</p>
+    <p class="small"><b>根因</b>　<span class="mono">grades.py:518 delete_grade(grade_id, _=Depends(_require_teacher))</span> 直接
+      <span class="mono">DELETE FROM student_grades WHERE id=?</span>，只判角色不判归属，无 <span class="mono">deleted_at</span>。</p>
+    <p class="small"><b>短期绕过</b>　手册附 A：评分周期内先导出成绩册留底；删除前逐项截图。</p>
+    <p class="small"><b>长期修复</b>　软删除（<span class="mono">deleted_at / deleted_by</span>）+ 仅录入人可删（管理员可恢复）+ 删除前弹窗显示"学生姓名 / 课程 / 当前分"二次确认 + 进操作审计。
+      <b>验收</b>　非录入人返回 403；误删可在管理端恢复。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p1"></span>
+    <h4><span class="mono">P1-27</span> 两个只读接口无鉴权，日志内含完整 JWT <span class="tag tag--w">P1</span><span class="tag tag--i">批次 1</span></h4>
+    <p class="small"><b>现象</b>　不带任何 token：<span class="mono">GET /api/eco/errors/list?limit=2</span> → 200 返回全量操作日志（含 <span class="mono">detail</span> 全文）；
+      <span class="mono">GET /api/eco/wallet/0xlearner</span> → 200 返回任意钱包完整生态档案（实测 10321 字节）。对照：其余四个接口均正确 401。</p>
+    <p class="small"><b>根因</b>　<span class="mono">eco.py:1346 list_errors()</span> 与 <span class="mono">eco.py:1377 wallet_profile()</span> 未加 <span class="mono">Depends(get_current_user)</span>，
+      而 <span class="mono">main.py</span> 只有 CORS / tenant 中间件，<b>无全局鉴权</b>；写入侧 <span class="mono">record_error()</span> 把前端 axios
+      <span class="mono">error.config</span> 截 2000 字直接入库（内含 <span class="mono">Authorization: Bearer &lt;JWT&gt;</span>、<span class="mono">X-User-Id</span>、学号、姓名、班级）；
+      <span class="mono">deploy/nginx.chain.conf:90</span> 对 <span class="mono">/api/</span> 全量透传且无来源白名单，:115-116 还把 <span class="mono">/docs</span> 与 <span class="mono">/openapi.json</span> 暴露到公网。</p>
+    <p class="small"><b>影响</b>　令牌有效期内可以该生身份发起写操作（部署 / 兑换 / 上链）；任意人可枚举全校生态数据；接口清单公开便于批量扫描。
+      <b>若按 DEPLOY.md 公网部署，本条应升级为 P0。</b></p>
+    <p class="small"><b>短期（本周）</b>　① 前端停止上报 <span class="mono">error.config</span>，只留 message / status / url；② 一次性清洗
+      <span class="mono">UPDATE eco_operation_logs SET detail='' WHERE detail LIKE '%Bearer%'</span>（先备份）；③ 更换 JWT 密钥强制重登；
+      ④ nginx 对 <span class="mono">/api/eco/errors</span>、<span class="mono">/api/eco/wallet</span>、<span class="mono">/docs</span> 加内网 allow。</p>
+    <p class="small"><b>长期修复</b>　两接口挂 <span class="mono">get_current_user</span>（errors/list 仅教师/管理员且限本班 scope；wallet/{w} 走 <span class="mono">ensure_own_wallet</span>）；
+      detail 入库前递归脱敏（headers / authorization / cookie / token / password）；列表接口默认不返回 detail，详情单独授权；加一条全局测试：除白名单外所有路由无 token 必须 401。
+      <b>验收</b>　无 token 访问返回 401；<span class="mono">detail LIKE '%Bearer%'</span> 计数为 0；外网访问 <span class="mono">/docs</span> 返回 403。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p2"></span>
+    <h4><span class="mono">P2-20</span> 同（学号+课程）跨教师互相覆盖，录入人被改写 <span class="tag tag--i">P2</span><span class="tag tag--i">批次 1/3</span></h4>
+    <p class="small"><b>现象</b>　第二位教师给同一学生录同一门课时，前一位的分与录入人静默覆盖，无冲突提示、无历史。</p>
+    <p class="small"><b>根因</b>　<span class="mono">grades.py:312 upsert_grade()</span> 以 <span class="mono">student_id + course</span> 为唯一键 UPDATE，并同时覆写 <span class="mono">teacher_id / teacher_name / score</span>；
+      课程名是自由文本（当前固定"区块链实训"），不是实体。</p>
+    <p class="small"><b>长期修复</b>　唯一键加 <span class="mono">teacher_id</span>（或引入 <span class="mono">course_id</span> 实体）；冲突时返回 409 由前端二次确认；新增 <span class="mono">grade_history</span> 追加表保存每次改动。
+      <b>验收</b>　两教师并行录分互不覆盖，且可查任一行的变更链。</p>
+  </div>
+
+  <h3><span class="num">3.4</span>D 域 · 界面真实性与提示（7 条）</h3>
+  <p class="small muted">本域对应 R4：演示态与真实态不分。单条看都不致命，合起来会让教师照界面讲错。</p>
+
+  <div class="card">
+    <span class="sev sev--p1"></span>
+    <h4><span class="mono">P1-4</span> 密码错误被包装成"SSO 登录接口 HTTP 401" <span class="tag tag--w">P1</span><span class="tag tag--i">批次 1</span></h4>
+    <p class="small"><b>现象</b>　学生输错密码，界面弹<span class="mono">"SSO 登录接口 HTTP 401"</span>；学生会以为服务坏了，并反复重试。</p>
+    <p class="small"><b>根因</b>　<span class="mono">auth.py:257 raise HTTPException(502, f"SSO 登录接口 HTTP {r.status_code}")</span> 把上游 4xx（用户错）与 5xx（真故障）混为一条 502，
+      并将内部术语直接回显给用户。</p>
+    <p class="small"><b>短期绕过</b>　生 12 / 师 2.1 已给翻译表："看到 HTTP 401 就是密码错"。</p>
+    <p class="small"><b>长期修复</b>　上游 4xx → 本地 401 + <span class="mono">"账号或密码错误"</span>；上游 5xx / 超时 → 503 + <span class="mono">"统一认证暂不可用，请稍后重试或联系管理员"</span>；
+      文案走 i18n 常量，不回显上游 URL 与状态码。<b>验收</b>　错密码响应 detail 不含 "SSO"；断开 SSO 时返回 503。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p1"></span>
+    <h4><span class="mono">P1-5</span> 侧边栏"整体学习进度"是界面固定值 <span class="tag tag--w">P1</span><span class="tag tag--i">批次 1</span></h4>
+    <p class="small"><b>现象</b>　不管真实进度如何，侧边栏百分比始终不变。</p>
+    <p class="small"><b>根因</b>　<span class="mono">MainLayout.vue:357 progressMap: Record&lt;string, number&gt;</span> 按路由写死常量，<span class="mono">:381 learnProgress</span> 仅从该 map 取值，
+      <b>全程未调用</b> <span class="mono">/auth/platform-progress</span> 或 <span class="mono">/chain/tutorial/progress</span>。</p>
+    <p class="small"><b>长期修复</b>　删除硬编码 map，改 store 里的真实进度（登录后拉一次 + 关键事件后刷新）；确实需要静态值的教学引导必须带"示例"角标。
+      <b>验收</b>　完成一个教程步骤后侧边栏百分比在 5 秒内变化。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p1"></span>
+    <h4><span class="mono">P1-17</span> 引擎切换无后端接口（404）却提示切换成功 <span class="tag tag--w">P1</span><span class="tag tag--i">批次 1</span></h4>
+    <p class="small"><b>现象</b>　侧边栏"引擎"行 → "切换链执行引擎"弹层 → 二次确认文案承诺"当前块高、交易、合约部署记录将清空" → 提示"已切换到「X」模式"，
+      但块高与数据毫发无伤，且后端日志里是一个 404。</p>
+    <p class="small"><b>根因</b>　三段拼接：<span class="mono">MainLayout.vue:398 onSwitchMode()</span> 调 <span class="mono">app.ts:37 setChainMode()</span>，后者写 localStorage 后请求
+      <span class="mono">api/index.ts:173 POST /chain/mode</span>，但 <span class="mono">chain.py</span> 根本无 <span class="mono">/mode</span> 路由；失败被 <span class="mono">catch { }</span> 吞掉，
+      <span class="mono">MainLayout.vue:408</span> 无条件 <span class="mono">ElMessage.success</span>。</p>
+    <p class="small"><b>影响</b>　教师以为已切到 FISCO 真链并据此讲课；文案承诺的"清空块高"并未发生，数据观感与说法不一致。</p>
+    <p class="small"><b>短期绕过</b>　师 2.4：该按钮课上不用；如需确认模式，看侧边栏字段与 <span class="mono">/api/chain/status</span>。</p>
+    <p class="small"><b>长期修复</b>　要么补 <span class="mono">POST /api/chain/mode</span>（仅管理员，真实重置链上客户端），要么<b>直接下线该入口</b>；
+      <span class="mono">setChainMode</span> 失败必须回滚 store 并 <span class="mono">ElMessage.error</span>；前端禁止 <span class="mono">catch {}</span> 静默（lint 规则）。
+      <b>验收</b>　后端不可用时提示失败且模式回滚；成功切换后 <span class="mono">/chain/status</span> 返回新值。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p2"></span>
+    <h4><span class="mono">P2-11</span> 云桌面 1–5 步为仿真回放，但界面称"真实执行" <span class="tag tag--i">P2</span><span class="tag tag--i">批次 3</span></h4>
+    <p class="small"><b>根因</b>　<span class="mono">cloud.py</span> 只暴露 <span class="mono">/files</span>、<span class="mono">/tree</span>、<span class="mono">/autocomplete</span>（:677-707），
+      没有任何命令执行或步骤推进接口；<span class="mono">CloudDesktop.vue</span> 的步骤 1–5 由前端脚本回放，终端输入也只走本地仿真。</p>
+    <p class="small"><b>短期绕过</b>　生 4.1 / 师 3.1：把云桌面定位为"命令练习"，真实上链动作一律回生态实践页完成。</p>
+    <p class="small"><b>长期修复</b>　界面统一加"仿真环境"角标 + 首次进入弹一次说明；若要做真执行，走 <span class="mono">deploy/docker-compose.sandbox.yml</span> 并加超时 / 资源限制 / 命令白名单。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p2"></span>
+    <h4><span class="mono">P2-12</span> 登录页区块流是动画，与真实块高无关 <span class="tag tag--i">P2</span><span class="tag tag--i">批次 1</span></h4>
+    <p class="small"><b>根因</b>　纯前端动画，登录页不请求任何接口（连 <span class="mono">/health</span> 也不调），但视觉语义是"链在出块"。</p>
+    <p class="small"><b>影响</b>　新生入学会问"为什么登录后块高只有 12"（与 P3-15 同根：都是把装饰当数据）。</p>
+    <p class="small"><b>长期修复</b>　二选一：动画角落标"示意"，或登录页直接拉 <span class="mono">/health</span> + <span class="mono">/explorer/overview</span> 显示真实块高（后者更能"大气"且真实）。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p2"></span>
+    <h4><span class="mono">P2-28</span> 库内残留测试身份混入统计 <span class="tag tag--i">P2</span><span class="tag tag--i">批次 2</span></h4>
+    <p class="small"><b>现象</b>　<span class="mono">chain_tutorial_progress</span> 里存在 <span class="mono">e2e_tutorial_verify</span>（10 步全 done）、<span class="mono">alice</span>、<span class="mono">u123</span> 的行；
+      <span class="mono">student_grades</span> 里存在 <span class="mono">0x44bfd612…</span> 这类非平台账号钱包的草稿行。它们不属于任何班级与花名册。</p>
+    <p class="small"><b>根因</b>　测试与演示脚本直写生产库（<span class="mono">backend/tests/conftest.py</span> 本身用临时库，脏数据是历史手工 E2E 留下的），
+      无 <span class="mono">origin</span> 标记，而所有"不传 wallet 即全局"的统计（P1-6、<span class="mono">/grades/stats</span>）会把它们一并算进去。</p>
+    <p class="small"><b>长期修复</b>　① 加 <span class="mono">origin(web/e2e/seed)</span> 列并在所有聚合处排除非 web；② 一次性清理脚本（先备份，可幂等重跑）；
+      ③ E2E 改用独立库文件或带命名空间前缀的身份。<b>验收</b>　全局卷与成绩统计不再包含测试身份。</p>
+  </div>
+
+  <div class="card">
+    <span class="sev sev--p3"></span>
+    <h4><span class="mono">P3-15</span> 区块链浏览器"平均 Gas"恒为 0 <span class="tag tag--p">P3</span><span class="tag tag--i">批次 1</span></h4>
+    <p class="small"><b>根因</b>　<span class="mono">explorer.py:57 /overview</span> 根本不返回 gas 字段；<span class="mono">Explorer.vue:54-56</span> 的 <span class="mono">avgGas</span> 由交易
+      <span class="mono">gas_used</span> 汇总，而 py-evm 模式的合成交易 <span class="mono">gas_used</span> 记 0（FISCO 模式才有真值）。</p>
+    <p class="small"><b>长期修复</b>　evm / mock 模式要么由客户端估算真实 gasUsed，要么该卡片显示"当前链模式不提供 Gas 数据"，并接 P3-16 的同一张"能力矩阵"。
+      <b>验收</b>　不会出现"有数据语义但值恒 0"的卡片。</p>
+  </div>
+</section>
+
+<section class="page">
+  <div class="hdr"><span>修复路线图</span><span>REMEDIATION ROADMAP</span></div>
+
+  <div class="kicker">CHAPTER 04</div>
+  <h2>三批修复：先止血，再统一身份，最后做决策</h2>
+  <p class="lead">批次不是按严重度简单位排，而是按<b>要不要改数据模型</b>切分：批次 1 不碰库表结构，可本迭代清空；
+  批次 2 要建表 + 一次性迁移，必须整组上；批次 3 需要先有人拍板（第 05 章）。</p>
+
+  <h3><span class="num">4.1</span>批次划分</h3>
+  <table>
+    <thead><tr><th style="width:20mm">批次</th><th style="width:34mm">目标</th><th style="width:8mm">条</th><th>范围</th><th style="width:30mm">成本与风险</th></tr></thead>
+    <tbody>
+      <tr><td class="c"><span class="tag tag--e">批次 1</span></td><td><b>止血</b><br>不改数据模型</td><td class="c mono">14</td><td class="mono">P1-4 P1-5 P1-17 P1-18 P1-19 P1-27 P2-10 P2-12 P2-13 P2-22 P3-15 P3-16 P3-23 P3-24</td><td>文案 / 常量 / 权限依赖 / 按钮下线；无迁移，可逐个上线</td></tr>
+      <tr><td class="c"><span class="tag tag--w">批次 2</span></td><td><b>一个身份、一处算分</b><br>R1 + R2 闭环</td><td class="c mono">10</td><td class="mono">P0-2 P0-3 P0-4 P1-7 P1-8 P1-25 P1-26 P2-14 P2-21 P2-28</td><td>新建 <span class="mono">wallet_alias / addr_owner / grade_draft</span> + 一次性归并；<b>必须整组上并先跑备份</b></td></tr>
+      <tr><td class="c"><span class="tag tag--i">批次 3</span></td><td><b>需产品决策</b></td><td class="c mono">5</td><td class="mono">P0-1 P1-6 P2-9 P2-11 P2-20</td><td>取决于第 05 章三个岔路的结论；先定方案再估工</td></tr>
+    </tbody>
+  </table>
+  <div class="note note--warn">
+    <span class="t">批次与总览表的对应关系</span>
+    总览表里写成 <span class="mono">1/2</span>、<span class="mono">2/3</span> 的是"可拆条上"的条目：例如 <b>P1-6</b> 的参数校验（无 wallet 则 422）属批次 1，
+    总览表里写成 <span class="mono">1/2</span>、<span class="mono">2/3</span> 的是可拆条上的条目：例如 <b>P1-6</b> 的参数校验（无 wallet 则 422）属批次 1，而学生选择器 + 班级 scope 属批次 3；<b>P0-1</b> 的写库根因已由 <b>P0-4</b> 独立承接（批次 2），班级归属机制本身仍属批次 3。<b>不要等决策，先把能拆的那半做了。</b>
+  </div>
+
+  <h3><span class="num">4.2</span>批次 2 的内部顺序（不可颠倒）</h3>
+  <div class="flow">
+    <span class="n">备份数据库</span><span class="sep">→</span>
+    <span class="n">建别名表 + 归并脚本</span><span class="sep">→</span>
+    <span class="n">resolve_principal() 收口</span><span class="sep">→</span>
+    <span class="n">只读候选集接入链上查询</span><span class="sep">→</span>
+    <span class="n">GET 去副作用 + 草稿分表</span><span class="sep">→</span>
+    <span class="n">花名册落库（P0-4）</span><span class="sep">→</span>
+    <span class="n">一处算分</span>
+  </div>
+  <ol class="steps">
+    <li><b>先备份再动手</b>：归并脚本跑前必须对 <span class="mono">app/storage/db/chain.sqlite3</span> 做文件级备份（该目录下已有历史 <span class="mono">.corrupt-*.bak</span>，说明这里碎过）。</li>
+    <li><b>先读后写</b>：先把 <span class="mono">resolve_wallet_candidates()</span> 扩展（含 keystore 真实地址）并验证 P0-3 能读到交易，再改写路径，否则无法判断修复是否生效。</li>
+    <li><b>先去副作用，再开写库</b>：在 GET 不再写库（P1-8）、草稿分表（P1-25）落地之前<b>不得单独修 P0-4</b>——花名册一旦有行，<span class="mono">_auto_draft_grade()</span> 就会开始命中教师正式行并覆盖综合分（本清单唯一的顺序硬约束）。</li>
+    <li><b>再改算分</b>：成绩表里只剩教师写的值之后，统一算分（P1-7）才可验证。</li>
+    <li><b>最后清量</b>：测试身份清理（P2-28）与旧部署行标失效（P2-14）放在数据层稳定后做，避免归并脚本碰到无主行。</li>
+  </ol>
+
+  <h3><span class="num">4.3</span>回归用例（防止改一个漏三个）</h3>
+  <p class="small muted">现有 <span class="mono">backend/tests/</span> 已覆盖租户列迁移、验证器、教程引擎、事件总线与闭环报告；下列七个文件是本轮修复必须配套新增的。</p>
+  <table>
+    <thead><tr><th style="width:62mm">新增测试文件</th><th style="width:44mm">守住的问题</th><th>断言要点</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">test_readonly_endpoints_auth.py</td><td class="mono">P1-27</td><td>除白名单（/health、/docs（内网）、登录）外，所有路由无 token 必须 401；日志 detail 不含 Bearer</td></tr>
+      <tr><td class="mono">test_report_no_side_effect.py</td><td class="mono">P1-8 P1-25</td><td>连续 10 次 GET /report/aggregate 后 <span class="mono">student_grades</span> 行数与各列值完全不变</td></tr>
+      <tr><td class="mono">test_wallet_alias_migration.py</td><td class="mono">P0-2 P0-3 P2-21</td><td>一人四写法归并后唯一；同一 step 多钱包行只计 1 步；链上交易能按候选集读到</td></tr>
+      <tr><td class="mono">test_grades_scope.py</td><td class="mono">P1-18 P1-19 P2-20</td><td>跨班刷新与跨人删除必须 403；同键冲突返回 409 而非静默覆盖</td></tr>
+      <tr><td class="mono">test_score_single_source.py</td><td class="mono">P1-7 P2-22 P3-16</td><td>报告页、成绩页、API.md 三处引用的阈值完全来自 <span class="mono">score_constants</span>；改常量即全仓生效</td></tr>
+      <tr><td class="mono">test_audit_attribution.py</td><td class="mono">P1-26 P2-9 P2-14</td><td>教师代操作不入学生 error_count；只读失败不扣分；新周期错扣归 0</td></tr>
+      <tr><td class="mono">test_roster_persist.py</td><td class="mono">P0-4 P0-1 P3-23</td><td>登录后 <span class="mono">user_info</span> 恰好 1 行且 <span class="mono">login_count</span> 递增；写库失败必须抛给调用方而非静默；花名册有行之后教师正式成绩行的 <span class="mono">final_score</span> 仍不变（与上一行联合断言）</td></tr>
+    </tbody>
+  </table>
+  <div class="note note--tip">
+    <span class="t">一个可执行的验收习惯</span>
+    每修完一条，就把本清单该条的"验收"原文粘成测试函数名下的 docstring。本清单的验收语句全部是<b>可观察断言</b>
+    （行数不变 / 返回 401 / 不含 UUID / 两页同色），因此"清完批次 1"可以等价于"多了 14 个红转绿的用例"，而不是"改了 14 处代码"。
+  </div>
+</section>
+
+<section class="page">
+  <div class="hdr"><span>产品决策岔路</span><span>THREE DECISIONS</span></div>
+
+  <div class="kicker">CHAPTER 05</div>
+  <h2>三个必须由人拍板的岔路</h2>
+  <p class="lead">这三条研发不应自己定：它们定义的是"这个平台到底把什么当学生"。每个岔路给出两方案对比与推荐，结论直接决定批次 2/3 的表结构。</p>
+
+  <h3><span class="num">5.1</span>岔路一：学生身份的主键是什么？</h3>
+  <table>
+    <thead><tr><th style="width:26mm">方案</th><th style="width:52mm">含义</th><th style="width:44mm">得</th><th>失</th></tr></thead>
+    <tbody>
+      <tr><td><b>A　user_id 为主键</b><br>其余全作别名</td><td><span class="mono">principal = user_id</span>；0x 地址、<span class="mono">stu:</span>、<span class="mono">0xlearner</span> 进 <span class="mono">wallet_alias</span> 表</td><td>迁移成本最低；与花名册/学号天然对齐；成绩表不再需碰运气匹配；教师视角稳定</td><td>链上视角仍多一层映射，看浏览器时要反查</td></tr>
+      <tr><td><b>B　0x 地址为主键</b><br>登录即绑地址</td><td>每个学生一个真实地址，<span class="mono">user_info</span> 存地址，所有表以地址为键</td><td>链上语义最纯，浏览器里看到的地址就是身份；天然去重</td><td>要重铸历史数据（现大量行挂在 <span class="mono">0xlearner</span> 上）；SSO 重登与换设备需地址找回机制；工作量 ≥ 3 倍</td></tr>
+    </tbody>
+  </table>
+  <div class="note note--ok"><span class="t">推荐</span>先做 <b>A</b>（本迭代可落地），把 <b>B</b> 当作"链上视图"补齐：<span class="mono">addr_owner</span> 一张表同时满足两边，
+    不强迫在"教学身份"与"链上身份"中二选一。避免的是现状：两套都半做，于是所有查询都要猜。</div>
+
+  <h3><span class="num">5.2</span>岔路二：成绩的唯一键是什么？</h3>
+  <table>
+    <thead><tr><th style="width:26mm">方案</th><th style="width:52mm">键</th><th style="width:44mm">得</th><th>失</th></tr></thead>
+    <tbody>
+      <tr><td><b>A　加录入人</b></td><td><span class="mono">(student_id, course, teacher_id)</span></td><td>改动最小；立即消除 P2-20 跨教师覆盖与 P1-25 误命中正式行</td><td>仍靠课程名字符串，写错一个字就新增一行；多人协作仍会互看不顺眼</td></tr>
+      <tr><td><b>B　开课实体</b></td><td><span class="mono">(student_id, course_id)</span>，course_id 指向"学期+班+教师"</td><td>天然解决 P0-1（看板有默认 scope）；一屏可分班对比；可开选课/转班</td><td>需新增开课管理页与历史数据回填；一个学期一套表的运维习惯要配套</td></tr>
+    </tbody>
+  </table>
+  <div class="note note--ok"><span class="t">推荐</span>批次 2 先上 <b>A</b> 止血，批次 3 引入 <b>B</b>（开课实体）。<b>B 是 P0-1 的真解</b>：
+    教师看不到本班，根子不在查询条件，而在"平台里根本没有一堂课"这个对象。</div>
+
+  <h3><span class="num">5.3</span>岔路三：班级归属以谁为准？</h3>
+  <ul class="dash">
+    <li><b>现状</b>：SSO 对学生返 classId、对教师不返（实测教师登录响应里是 <span class="mono">"0"</span>）；更根本的是 <span class="mono">auth.py:43</span> 的花名册写入<b>从未成功过一次</b>（P0-4），所以库里不是空串、而是 0 行；同一人两个入口口径不同（JWT 里 <span class="mono">"0"</span>、接口返回空串）。</li>
+    <li><b>方案 A（SSO 为准）</b>：缺失即拒绝进入教学首页，给"未绑定班级·去绑定"页。成本低，但依赖上游改造。</li>
+    <li><b>方案 B（平台自建）</b>：管理员/教师在平台内维护"教师-班级"关系（导入表或手动），SSO 只管身份不管编制。与 5.2 方案 B 同构。</li>
+    <li><b>共同硬约束（两方案都必做）</b>：scope 为空时<b>不得退化为不过滤</b>；宁可为空页也不能拿全校数据冒充本班。</li>
+  </ul>
+  <div class="note note--ok"><span class="t">推荐</span><b>B 为主、A 为兑底</b>：平台自有关系表 <span class="mono">teacher_classes(teacher_id, school_id, class_id)</span>，
+    登录时若 SSO 无班级则读本表；两者均无则进入"未绑定"引导态，并在所有班级接口统一返 <span class="mono">409 class_unbound</span>。</div>
+
+  <h3><span class="num">5.4</span>附：一条产品规范（解决 R4 全部 5 条）</h3>
+  <table>
+    <thead><tr><th style="width:32mm">术语</th><th style="width:38mm">可用条件</th><th>强制要求</th></tr></thead>
+    <tbody>
+      <tr><td><b>真实执行</b></td><td>调用后端并产生链上交易或写库</td><td>展示可回溯凭据（tx_hash 或记录 id）；否则不得使用</td></tr>
+      <tr><td><b>仿真 / 演示</b></td><td>前端本地回放、预置脚本</td><td>页面右上角常驻角标 <span class="tag tag--a">DEMO</span>，首次进入弹一次说明</td></tr>
+      <tr><td><b>整体进度 / 全班</b></td><td>接口真实返回且 scope 明确</td><td>旁边必须显示"截至 HH:MM"与人数分母；scope 缺失时禁止显示百分比</td></tr>
+      <tr><td><b>已切换 / 已保存</b></td><td>后端 2xx 才能弹这个提示</td><td>失败必须回滚本地态并提示失败；禁止 <span class="mono">catch {}</span> 后继续报成功</td></tr>
+    </tbody>
+  </table>
+</section>
+<!-- 章节索引：0 使用说明 / 1 结论摘要 / 2 根因 / 3 详述 / 4 路线 / 5 决策 / 附一取证 / 附二脚本 / 附三交叉 / 附四术语 -->
+<section class="page">
+  <div class="hdr"><span>附一 · 取证方法与数据快照</span><span>APPENDIX A · EVIDENCE</span></div>
+
+  <div class="kicker">APPENDIX A</div>
+  <h2>取证方法与数据快照</h2>
+  <p class="lead">每一条结论都要求<b>三源一致</b>：① 用给定账号在界面上真机操作；② 用只读接口取数；③ 比对后端源码与数据库。
+  三源对不上的结论一律不收录。下表是全部量化结论共同引用的基线，<b>编号结论不依赖具体数字</b>（数字会随使用变化，口径不会）。</p>
+
+  <h3><span class="num">A.1</span>链上环境与学习行为（7 项）</h3>
+  <table>
+    <thead><tr><th style="width:26mm">口径</th><th style="width:40mm">界面所见（取证时刻）</th><th style="width:66mm">接口 / 库实测（快照）</th><th>关联编号</th></tr></thead>
+    <tbody>
+      <tr><td>链高度与交易</td><td>浏览器首页"块高 12"</td><td><span class="mono">blocks</span> 12 · <span class="mono">transactions</span> 37（全链口径，不按人过滤）</td><td class="mono">P2-28</td></tr>
+      <tr><td>已部署合约</td><td>报告页"合约 22"</td><td><span class="mono">deployed_contracts</span> 22 = <span class="mono">0xlearner</span> 19 + <span class="mono">0xrecycle / 0xbus / 0xadmin</span> 各 1（内置角色钱包）</td><td class="mono">P2-28</td></tr>
+      <tr><td>个人报告链上交易</td><td>个人报告 B 项 0 分</td><td>该生 keystore 真实地址 <span class="mono">0x44bfd612…</span> 名下确有交易，但读路径候选集不含它 → 查为 0</td><td class="mono">P0-3</td></tr>
+      <tr><td>教程完成度</td><td>侧边栏 6 / 10（60%）</td><td><span class="mono">chain_tutorial_progress</span> 中 <span class="mono">0xlearner</span> 6 行（step 4–9 done），step 1–3 <b>无行</b>；另有 <span class="mono">e2e_tutorial_verify</span> 10 行、<span class="mono">alice</span>、<span class="mono">u123</span></td><td class="mono">P2-21 P2-28</td></tr>
+      <tr><td>学习行为归属</td><td>看板按钱包聚合</td><td><span class="mono">learning_events</span> 162 行：<span class="mono">0xlearner</span> 55 · <span class="mono">stu:uuid</span> 15 · 裸 <span class="mono">uuid</span> 1（同一人三键）· wallet 为空 42（<span class="mono">report_view</span> 39 + <span class="mono">ide_open_builtin</span> 3）</td><td class="mono">P0-2 P0-4</td></tr>
+      <tr><td>绿色能量</td><td>生态页余额 935</td><td><span class="mono">eco_energy_records</span> 中 <span class="mono">0xlearner</span> 21 行、Σpoints = 1015（差值 80 为兑换 / 消费）→ <b>界面与库一致</b></td><td class="mono">—（基线）</td></tr>
+      <tr><td>种证书</td><td>只能选 1 个树种</td><td><span class="mono">eco_tree_species</span> 1 行（杨树 · <span class="mono">required_energy</span> 1000）· <span class="mono">eco_certificates</span> 0 行</td><td class="mono">P2-13</td></tr>
+    </tbody>
+  </table>
+  <h3><span class="num">A.2</span>分数、权限与花名册（6 项）</h3>
+  <table>
+    <thead><tr><th style="width:26mm">口径</th><th style="width:40mm">界面所见（取证时刻）</th><th style="width:66mm">接口 / 库实测（快照）</th><th>关联编号</th></tr></thead>
+    <tbody>
+      <tr><td>生态合约调用</td><td>审计概览成功率 50%</td><td><span class="mono">contract_calls</span> 10 = success 5 + reverted 5；5 条失败全为 <span class="mono">name</span> / <span class="mono">decimals</span> 只读调用且 <span class="mono">tx_hash</span> 为空，指向的是<b>已被链重置作废的旧合约地址</b></td><td class="mono">P2-14 P2-9</td></tr>
+      <tr><td>操作日志</td><td>报告页"错误 18"</td><td><span class="mono">eco_operation_logs</span> 109 = error 18 + warn 1 + success 90；error 构成 12 × <span class="mono">issue_energy</span> + <b>4 × select_resident（POST /api/eco/role/clear 的 404，detail 内 JWT 属教师）</b> + 1 × <span class="mono">list_asset</span> + 1 × <span class="mono">exchange_badge</span></td><td class="mono">P1-26 P1-27 P2-9</td></tr>
+      <tr><td>成绩册</td><td>列表 5 行（含 4 行"系统自动"）</td><td><span class="mono">student_grades</span> 5 行且<b>全部属于 tzs001 一人</b>：教师正式 1 行（实训 88.8 / 综合 84.3 / 班级1）+ 系统草稿 4 行（88.8→53.3、1.0、25.0、7.8，主键分别是 <span class="mono">0xlearner</span> / uuid / <span class="mono">stu:uuid</span> / <span class="mono">0x44bfd612…</span>）</td><td class="mono">P0-2 P1-8 P1-25</td></tr>
+      <tr><td>班级均分</td><td>成绩页平均 31.58</td><td><span class="mono">/grades/stats</span> <span class="mono">avg_final=31.58</span>（草稿行计入）vs 该生真实综合分 84.3</td><td class="mono">P0-2 P2-10</td></tr>
+      <tr><td>花名册</td><td>本班学生名单为空</td><td><span class="mono">user_info</span> <b>0 行</b>；tzs001 / tzt001 各成功登录（HTTP 200）后仍为 0 行</td><td class="mono">P0-4 → P0-1 P3-23</td></tr>
+      <tr><td>鉴权边界</td><td>界面无感</td><td><b>不带 token</b>：<span class="mono">/api/eco/errors/list</span> 200、<span class="mono">/api/eco/wallet/0xlearner</span> 200（约 10 KB）、<span class="mono">/api/explorer/txs</span> 200；而 <span class="mono">/grades/list</span>、<span class="mono">/report/aggregate</span>、<span class="mono">/auth/platform-progress</span>、<span class="mono">/eco/audit/overview</span> 均 401</td><td class="mono">P1-27</td></tr>
+    </tbody>
+  </table>
+  <div class="note note--info">
+    <span class="t">快照条件</span>
+    取证窗口 2026-09-05 → 09-06，快照 09-06 16:10；环境 <span class="mono">CHAIN_MODE=evm</span>、后端 <span class="mono">127.0.0.1:8000</span>、前端 <span class="mono">5173</span>；
+    教师 tzt001（roleId 3，<span class="mono">class_id</span> 取不到）、学生 tzs001（roleId 4，<span class="mono">user_id 0ae7783d-…</span>，演示钱包 <span class="mono">0xlearner</span>）。
+    <b>链重置或换环境后，请重跑附二脚本再引用本表数字</b>，编号本身仍然成立。
+  </div>
+  <div class="ftr"><span>FISCOChain 联盟链实训平台 · 问题建议清单</span><span>24 / 29</span></div>
+</section>
+
+<section class="page">
+  <div class="hdr"><span>附二 · 只读复现脚本</span><span>APPENDIX B · REPRODUCE</span></div>
+
+  <div class="kicker">APPENDIX B</div>
+  <h2>五段可复现脚本（对线上库只读）</h2>
+  <p class="lead">验收或复核时直接照抄。前五段完全只读；<b>只有第 5 段会写数据，且只写在库文件副本上</b>——这是本清单唯一一次写入演练。</p>
+
+  <h3><span class="num">B.1</span>取 token（学生 / 教师各一次）</h3>
+  <pre><span class="cmd">curl -s -X POST http://127.0.0.1:8000/api/auth/encrypt -H "Content-Type: application/json" -d "{\"pwd\":\"123qwe\"}"</span>
+<span class="cmd">curl -s -X POST http://127.0.0.1:8000/api/auth/login -H "Content-Type: application/json" -d "{\"username\":\"tzs001\",\"passwordEncode\":\"&lt;上一步返回的 data&gt;\"}"</span>
+<span class="c"># 响应含 userId / roleId / classId / wallet / token；后续请求带 -H "Authorization: Bearer &lt;token&gt;"</span></pre>
+
+  <h3><span class="num">B.2</span>鉴权边界（P1-27）</h3>
+  <pre><span class="cmd">for p in /api/eco/errors/list /api/eco/wallet/0xlearner /api/grades/list /api/report/aggregate; do</span>
+<span class="cmd">  printf "%-34s %s\n" "$p" "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000$p)"</span>
+<span class="cmd">done</span>
+<span class="y"># 实测 200 / 200 / 401 / 401 —— 前两个不该是 200（router 无鉴权依赖：eco.py:1346、1377）</span></pre>
+
+  <h3><span class="num">B.3</span>花名册恒空（P0-4）</h3>
+  <pre><span class="cmd">sqlite3 backend/app/storage/db/chain.sqlite3 "SELECT COUNT(*) FROM user_info"</span>
+<span class="c"># → 0（即使刚刚成功登录过多次）</span>
+<span class="c"># 把被吞掉的原始异常打出来：在库副本上直接调用该函数</span>
+<span class="cmd">python -c "import os,sys; os.environ['CHAIN_DB_PATH']='_sandbox.sqlite3'; sys.path.insert(0,'backend');</span>
+<span class="cmd">  from app.routers.auth import _upsert_user_info as u;</span>
+<span class="cmd">  u({'userId':'x1','username':'tzs001','name':'T','roleId':4,'studentId':'1','classId':''})"</span>
+<span class="y"># → sqlite3.OperationalError: 17 values for 16 columns  (auth.py:89)</span></pre>
+
+  <h3><span class="num">B.4</span>只读失败被算进学生错误（P2-14 / P1-26 / P2-9）</h3>
+  <pre><span class="cmd">curl -s -H "Authorization: Bearer &lt;token&gt;" http://127.0.0.1:8000/api/eco/audit/overview</span>
+<span class="c"># calls = {total: 10, success: 5, failed: 5, success_rate: 50.0}</span>
+<span class="cmd">sqlite3 backend/app/storage/db/chain.sqlite3 "SELECT name,status,tx_hash FROM contract_calls WHERE status='reverted'"</span>
+<span class="c"># 5 条均为 name / decimals，tx_hash 为空 → 从未上链，却计入 err_penalty = min(10, 18) = 10</span>
+<span class="cmd">sqlite3 backend/app/storage/db/chain.sqlite3 "SELECT module,action,COUNT(*) FROM eco_operation_logs WHERE level='error' GROUP BY 1,2"</span></pre>
+
+  <h3><span class="num">B.5</span>成绩损坏链复现（P1-25，仅在副本上）</h3>
+  <pre><span class="c"># ① 做一份文件级副本（在线备份，含 WAL，不锁库）</span>
+<span class="cmd">python -c "import sqlite3; a=sqlite3.connect('file:backend/app/storage/db/chain.sqlite3?mode=ro',uri=True);</span>
+<span class="cmd">  b=sqlite3.connect('_sandbox.sqlite3'); a.backup(b); b.close(); a.close()"</span>
+<span class="c"># ② 在副本里补一行花名册（等价于"P0-4 已修"）：user_id = wallet = 学生 userId，student_id = 真实学号</span>
+<span class="c"># ③ 调一次 _auto_draft_grade(学生 userId)，再查教师正式行</span>
+<span class="g"># 改前： wallet=0xlearner · training 88.8 · final 84.3 · class_id=班级1</span>
+<span class="y"># 改后： wallet=0ae7783d… · training  1.0 · final  0.6 · class_id=（空）</span>
+<span class="c"># 结论：教师给的 40% 权重与手填班级同时消失，且接口仍返回 200 —— 所以 P0-4 必须晚于 P1-25 上线</span></pre>
+  <div class="note note--warn">
+    <span class="t">跑 B.5 之前</span>
+    ① 确认路径写的是 <span class="mono">_sandbox.sqlite3</span> 而不是线上库；② 事后删除副本（本仓库 <span class="mono">.gitignore</span> 不含 <span class="mono">*.sqlite3</span>，容易误提交）；
+    ③ 线上库所在目录已有历史 <span class="mono">.corrupt-*.bak</span>，任何写操作前请先做一次同样的 <span class="mono">backup()</span>。
+  </div>
+  <div class="ftr"><span>FISCOChain 联盟链实训平台 · 问题建议清单</span><span>25 / 29</span></div>
+</section>
+
+<section class="page">
+  <div class="hdr"><span>附三 · 手册与清单交叉索引</span><span>APPENDIX C · CROSS INDEX</span></div>
+
+  <div class="kicker">APPENDIX C</div>
+  <h2>手册小节 ↔ 问题编号 对照</h2>
+  <p class="lead">用法：修完任意一条，回到这张表改对应小节即可，不必在两份手册里全文搜索。<b>生</b> = 学生使用手册，<b>师</b> = 教师使用手册。</p>
+  <table>
+    <thead><tr><th style="width:20mm">手册位置</th><th style="width:52mm">读者在那里看到什么</th><th style="width:30mm">编号</th><th>修好后这一段该怎么改</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">生 2.2</td><td>为什么"我的钱包"和成绩里的地址不一样</td><td class="mono">P0-2</td><td>删掉手工核对指引，改为"平台已统一显示学号 + 姓名"</td></tr>
+      <tr><td class="mono">生 4.1</td><td>云桌面 1–5 步操作（演示回放）</td><td class="mono">P2-11</td><td>角标补齐后保留操作，删去"以实物屏为准"的提醒</td></tr>
+      <tr><td class="mono">生 7.4</td><td>种树只能选杨树、1000 能量门槛</td><td class="mono">P2-13</td><td>补回多树种；删除"先攒够 1000 再回来"一句</td></tr>
+      <tr><td class="mono">生 8.2</td><td>报告页 B 项链上交易恒 0、平均 Gas 为 0</td><td class="mono">P0-3 P3-15</td><td>把"该项按 0 计属已知问题"整段删除，恢复为常规得分项</td></tr>
+      <tr><td class="mono">生 8.1 / 附 A</td><td>只读调用失败仍被记错误、扣满 −10；已知问题索引表</td><td class="mono">P2-9 P2-14</td><td>删除"不要反复点只读接口"的规避建议</td></tr>
+      <tr><td class="mono">生 11.2</td><td>成绩页 88.8 与报告页 43 并存</td><td class="mono">P1-7 P3-16</td><td>保留口径解释（两套分数仍有意义），删掉"以成绩页为准"的取舍</td></tr>
+      <tr><td class="mono">生 12 / 附 A</td><td>成就榜显示 UUID；密码错误提示 SSO</td><td class="mono">P3-23 P1-4</td><td>删"投屏时隐藏标识列"提醒；FAQ 与索引表各移除对应两条</td></tr>
+      <tr><td class="mono">师 1.2 / 2.1</td><td>开课前的两条前置说明</td><td class="mono">P0-2 P1-4</td><td>前置检查项从 6 条缩到 4 条</td></tr>
+      <tr><td class="mono">师 2.3 / 2.4</td><td>侧边栏整体进度、引擎切换按钮</td><td class="mono">P1-5 P1-17</td><td>删"课上不要点"的告警，恢复为正常功能讲解</td></tr>
+      <tr><td class="mono">师 3.1 / 3.2</td><td>开课前自检 + 自建花名册模板（附 C）</td><td class="mono">P0-1 P0-4 P2-13</td><td>花名册一节改为"平台已自带，仅做核对"；自检保留环境项</td></tr>
+      <tr><td class="mono">师 5.3 / 5.4 / 5.5</td><td>录分主键、四维明细无中文标签、刷新实训成绩</td><td class="mono">P2-20 P3-24 P1-18 P2-10</td><td>删"刷新会影响全校"的红字警告；主键说明改为开课实体</td></tr>
+      <tr><td class="mono">师 6.2</td><td>色阶与等级阈值不一致的说明</td><td class="mono">P2-22</td><td>合并为一句"阈值由常量文件统一供给"</td></tr>
+      <tr><td class="mono">师 7.1 / 7.2</td><td>学情三块看板的替代路径、步数口径</td><td class="mono">P0-1 P0-4 P2-21</td><td>看板恢复后，替代路径整节降为"附录：手工核对法"</td></tr>
+      <tr><td class="mono">师 8.1 / 7.2</td><td>教师导出恒为全局卷、个人报告只能走接口</td><td class="mono">P1-6</td><td>删"用截图代替导出"的绕法；恢复标准导出流程</td></tr>
+      <tr><td class="mono">师 8.2 / 11.1</td><td>教师导出的口径、只读失败与作废地址的答疑</td><td class="mono">P2-9 P2-14</td><td>删掉"逐项比对失败记录"的提醒，错误率直接取信监听器</td></tr>
+      <tr><td class="mono">师 12 FAQ / 11.1</td><td>成就榜、同屏两分的答疑话术</td><td class="mono">P3-23 P1-7</td><td>答疑话术改为"看截至时间"，不再需要解释口径分裂</td></tr>
+      <tr><td class="mono">师 附 A / 附 B</td><td>回收站缺失的补救、问题定位表</td><td class="mono">P1-19 P1-25</td><td>删除"录分后先备份成绩册"一条；定位表保留但标注已修复</td></tr>
+    </tbody>
+  </table>
+  <div class="note note--tip">
+    <span class="t">三条未写入手册的问题</span>
+    <span class="mono">P1-26 / P1-27 / P2-28</span> 属纯研发侧（审计归属、鉴权缺失、库内残留测试身份），师生无需绕行，
+    但 <b>P1-27 在公网部署前必须修</b>：它不是体验问题，是凭据外泄。
+  </div>
+  <div class="ftr"><span>FISCOChain 联盟链实训平台 · 问题建议清单</span><span>26 / 29</span></div>
+</section>
+
+<section class="page">
+  <div class="hdr"><span>附四 · 术语口径与版本说明</span><span>APPENDIX D · GLOSSARY</span></div>
+
+  <div class="kicker">APPENDIX D</div>
+  <h2>四个"分"，别混着用</h2>
+  <p class="lead">清单与手册里出现的每一个分数都按下表定义。绝大多数"平台算错了"的抱怨，实际是拿 A 列的数去比 B 列的口径。</p>
+  <table>
+    <thead><tr><th style="width:24mm">名称</th><th style="width:30mm">字段 / 接口</th><th style="width:52mm">算法</th><th>在哪一屏出现</th></tr></thead>
+    <tbody>
+      <tr><td><b>实训分</b></td><td class="mono">training_score</td><td>四维加权：环境搭建 0.20 + 合约开发 0.30 + 链上验证 0.25 + 联盟治理 0.25；<b>每次打开实时重算</b></td><td>成绩页、成绩册、API <span class="mono">/grades/list</span></td></tr>
+      <tr><td><b>教师评分</b></td><td class="mono">score</td><td>0–100 人工录入，覆盖即改，无区间约束</td><td>成绩页"教师评分"列</td></tr>
+      <tr><td><b>综合分</b></td><td class="mono">final_score</td><td>实训分 × 0.6 + 教师评分 × 0.4（教师未录分时按 0 计 → 见 P1-25）</td><td>成绩页、总览卡、导出 CSV</td></tr>
+      <tr><td><b>报告分</b></td><td class="mono">score.total</td><td>九维 A–I 合计 − P 扣分；<span class="mono">final = max(0, Σ − penalty)</span>，<span class="mono">penalty = min(15, error + warn×3÷10)</span></td><td>实训报告页、报告 PDF</td></tr>
+      <tr><td><b>等级</b></td><td class="mono">score.level</td><td>≥90 优秀 · ≥75 良好 · ≥60 合格 · ≥40 待完善 · 否则未完成（仅报告页）</td><td>报告页徽章</td></tr>
+      <tr><td><b>色阶</b></td><td class="mono">前端 class</td><td>≥90 主色 · ≥80 黄色 · ≥60 蓝色 · &lt;60 粉色（仅成绩页，<b>与等级阈值不同</b>）</td><td>成绩页分数底色</td></tr>
+    </tbody>
+  </table>
+  <div class="note note--warn">
+    <span class="t">同一学生同屏出现四个数是正常的，出现两个同名不同值不是</span>
+    四个数（实训 / 教师 / 综合 / 报告）口径本就不同；<b>不可接受</b>的是：两个都标注为"实训得分"的位置相差 45.8 分（成绩页 88.8 vs 报告页 43）却互不解释（P1-7），
+    或同一个"综合分"在学生刷新页面后被系统改写（P1-25）。前者是展示层要统一常量，后者是写路径要收口。
+  </div>
+
+  <h3><span class="num">D.1</span>版本与复核说明</h3>
+  <table>
+    <thead><tr><th style="width:22mm">项目</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td><b>版本</b></td><td>v1.1（2026-09-06）· 前版 v1.0：25 条 → 28 条 → 本版 29 条</td></tr>
+      <tr><td><b>本版变更</b></td><td>新增 <b>P0-4</b>（花名册 <span class="mono">user_info</span> 恒空，实测 <span class="mono">17 values for 16 columns</span>）；<b>P1-25</b> 由代码推断升级为<b>库副本已复现</b>（84.3 → 0.6）；<b>P2-21</b> 改写为"两套计数语义、当前恰好一致"；新增 P1-26 / P1-27 / P2-28 三条只读取证结论</td></tr>
+      <tr><td><b>必须复核的触发条件</b></td><td>① 任一 P0/P1 修复上线；② 链被重置或换 <span class="mono">CHAIN_MODE</span>；③ SSO 上游改造（会同时改变 P0-1 / P0-4 的表现）；④ 两份手册改版（交叉索引附三要同步）；⑤ 公网部署前（P1-27 一票否决）</td></tr>
+      <tr><td><b>不收录的内容</b></td><td>未复现的风险推断（只在正文标注"当前未暴露"）、纯样式偏好、无法定位到代码的观感意见</td></tr>
+      <tr><td><b>数据与凭据</b></td><td>本清单不含任何真实令牌；引用日志时一律写成 <span class="mono">&lt;JWT&gt;</span>。取证账号为平台预置演示账号，未使用任何师生个人凭据</td></tr>
+    </tbody>
+  </table>
+  <div class="note note--ok">
+    <span class="t">收工判据（给项目管理者）</span>
+    本清单不需要"全部关闭"才算完成：<b>批次 1（14 条）+ 批次 2（10 条）合并验收通过</b>即可宣布"平台可用于正式教学"；
+    剩余 5 条（批次 3）是产品决策项，可以带着它们开第二个学期，只要手册里的绕法仍然生效。
+  </div>
+  <div class="ftr"><span>FISCOChain 联盟链实训平台 · 问题建议清单</span><span>27 / 29</span></div>
+</section>
+
+<!-- 章节索引：0 使用说明 / 1 结论摘要 / 2 根因 / 3 详述 / 4 路线 / 5 决策 / 附录 -->
+</body>
+</html>

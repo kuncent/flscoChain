@@ -189,7 +189,9 @@
         <el-table-column prop="deployer" label="部署者" min-width="160">
           <template #default="{ row }"><span class="dq-mono dim">{{ short(row.deployer) }}</span></template>
         </el-table-column>
-        <el-table-column prop="created_at" label="部署时间" width="170" />
+        <el-table-column label="部署时间" width="170">
+          <template #default="{ row }"><span class="dq-mono dim">{{ fmtDateTime(row.created_at) }}</span></template>
+        </el-table-column>
       </el-table>
     </div>
 
@@ -474,6 +476,7 @@ import CountUp from '@/components/CountUp.vue'
 import EmptyIllustration from '@/components/EmptyIllustration.vue'
 import { useAppStore } from '@/stores/app'
 import { fmtTime as _fmtTime } from '@/utils/storage'
+import { fmtDateTime } from '@/utils/time'
 
 const app = useAppStore()
 const keyword = ref('')
