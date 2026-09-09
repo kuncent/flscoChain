@@ -41,6 +41,7 @@ declare module 'vue' {
     ElTabPane: typeof import('element-plus/es')['ElTabPane']
     ElTabs: typeof import('element-plus/es')['ElTabs']
     ElTag: typeof import('element-plus/es')['ElTag']
+    ElUpload: typeof import('element-plus/es')['ElUpload']
     EmptyIllustration: typeof import('./src/components/EmptyIllustration.vue')['default']
     EnergyProofForm: typeof import('./src/components/EnergyProofForm.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

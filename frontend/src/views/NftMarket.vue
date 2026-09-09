@@ -263,8 +263,40 @@
         <el-form-item label="作品描述">
           <el-input v-model="mintForm.description" type="textarea" :rows="2" placeholder="选填" />
         </el-form-item>
-        <el-form-item label="图片地址">
-          <el-input v-model="mintForm.image_url" placeholder="https://...（选填，留空使用默认占位）" />
+        <el-form-item label="作品图片">
+          <div class="img-upload-zone">
+            <!-- 已上传：缩略图 + 操作 -->
+            <div v-if="mintForm.image_url" class="img-preview">
+              <img :src="mintForm.image_url" alt="预览" />
+              <div class="img-actions">
+                <el-upload
+                  :show-file-list="false"
+                  :http-request="handleMintImageUpload"
+                  accept="image/*"
+                  :disabled="uploadingImage"
+                >
+                  <el-button size="small" :loading="uploadingImage">重新上传</el-button>
+                </el-upload>
+                <el-button size="small" @click="mintForm.image_url = ''">移除</el-button>
+              </div>
+            </div>
+            <!-- 未上传：空拖拽区 -->
+            <el-upload
+              v-else
+              class="img-dropzone"
+              :show-file-list="false"
+              :http-request="handleMintImageUpload"
+              accept="image/*"
+              :disabled="uploadingImage"
+              drag
+            >
+              <div class="dz-inner">
+                <el-icon class="dz-icon" :size="32"><UploadFilled /></el-icon>
+                <div class="dz-text">{{ uploadingImage ? '上传中…' : '点击或拖拽图片到此区域' }}</div>
+                <div class="dz-hint">支持 JPG / PNG / GIF / WebP，不超过 5 MB；留空则使用默认占位图</div>
+              </div>
+            </el-upload>
+          </div>
         </el-form-item>
         <el-form-item label="初始价格">
           <el-input-number v-model="mintForm.price" :min="0" :step="10" />
@@ -342,7 +374,7 @@ import { useAppStore } from '@/stores/app'
 import { useWalletStore } from '@/stores/wallets'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Picture, Promotion, User } from '@element-plus/icons-vue'
+import { Picture, Promotion, User, UploadFilled } from '@element-plus/icons-vue'
 import CountUp from '@/components/CountUp.vue'
 import EmptyIllustration from '@/components/EmptyIllustration.vue'
 import TxTimeline from '@/components/TxTimeline.vue'
@@ -613,9 +645,29 @@ const openBuy = (n: any) => {
 /* ==================== 铸造数字 NFT（原始 ERC721/1155，补齐供给侧入口） ==================== */
 const mintDlg = ref(false)
 const minting = ref(false)
+const uploadingImage = ref(false)
 const mintForm = reactive({ standard: 'ERC721', title: '', description: '', image_url: '', price: 0, amount: 1 })
 
 const openMint = () => { mintDlg.value = true }
+
+/** 图片上传：调用后端 /nft/upload 将文件落盘，返回 url 写入 mintForm.image_url */
+const handleMintImageUpload = async (opts: any) => {
+  const file: File = opts.file
+  if (file.size > 5 * 1024 * 1024) {
+    ElMessage.warning('图片大小不能超过 5 MB')
+    return
+  }
+  uploadingImage.value = true
+  try {
+    const r: any = await nftApi.upload(file)
+    mintForm.image_url = r.url
+    ElMessage.success('图片上传成功')
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || '上传失败，请重试')
+  } finally {
+    uploadingImage.value = false
+  }
+}
 
 /** 铸造：后端真实编译部署对应标准原始合约 + mint（须已选联盟角色，后端 403 提示透传）。
  * ERC1155 按 amount 多份铸造（半同质化特性）；成功后自动切到「数字 NFT」并刷新 */
@@ -863,4 +915,32 @@ watch(() => app.currentWallet, () => {
 .tip { color: var(--dq-text-dim); font-size: 12px; margin-top: 8px; }
 .detail { .d-thumb { width: 100%; aspect-ratio: 1; border-radius: 6px; overflow: hidden; margin-bottom: 14px; background: var(--dq-bg-2); display:flex; align-items:center; justify-content:center; img { width:100%; height:100%; object-fit: cover; } .placeholder { font-size: 60px; color: var(--dq-text-dim); } } .d-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--dq-border); font-size: 13px; span:first-child { color: var(--dq-text-dim); } } }
 .dim { color: var(--dq-text-dim); }
+
+/* ---- 铸造对话框：图片上传区 ---- */
+.img-upload-zone { width: 100%; }
+.img-dropzone {
+  width: 100%;
+  :deep(.el-upload-dragger) {
+    background: var(--dq-bg-2);
+    border: 1.5px dashed var(--dq-border-strong);
+    border-radius: 8px;
+    padding: 0;
+    width: 100%;
+    transition: border-color .2s, background .2s;
+    &:hover { border-color: var(--dq-accent); background: rgba(245,55,155,.04); }
+  }
+  .dz-inner { padding: 20px 16px; text-align: center; }
+  .dz-icon { color: var(--dq-text-dim); margin-bottom: 8px; }
+  .dz-text { font-size: 13px; color: var(--dq-text-dim); margin-bottom: 4px; }
+  .dz-hint { font-size: 11px; color: var(--dq-border-strong); }
+}
+.img-preview {
+  display: flex; align-items: flex-start; gap: 12px;
+  img {
+    width: 80px; height: 80px; object-fit: cover;
+    border-radius: 6px; border: 1px solid var(--dq-border);
+    background: var(--dq-bg-2); flex-shrink: 0;
+  }
+  .img-actions { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
+}
 </style>
