@@ -516,6 +516,36 @@ def _compensate_energy(c, ge_addr: str, ge_abi, from_wallet: str, to_addr: str, 
         return False
 
 
+def _try_repair_issuer(c, contract_addr: str, abi, contract_name: str,
+                       issuer_wallet: str) -> bool:
+    """mint revert 时自动补授链上发行白名单（幂等，best effort）。
+
+    适用场景：EVM 链重置 / 密钥库轮换后合约 issuers 映射内地址与新地址不对应，
+    导致业务节点钱包 mint 被 onlyIssuer 拒绝。本函数：
+    1. 只读确认 issuer_wallet 确实不在链上白名单（若是则失败另有原因，不补授）；
+    2. 调用 grant_issuers 补授（addIssuer 重复执行只是写一次 true，无副作用）。
+
+    返回 True 表示白名单已成功补授，调用方可以安全重试 mint。
+    只在合约支持 addIssuer 时生效（旧合约返回 False，走应用层校验）。
+    """
+    if not contract_addr or not has_issuer_control(abi):
+        return False
+    try:
+        # 只读 issuers(addr) getter：确认是否确实缺权（不是余额不足等其它原因）
+        if _abi_has(abi, "issuers"):
+            check = c.call_contract(contract_addr, "issuers", [issuer_wallet],
+                                    TREASURY_WALLET, abi)
+            # ok=True 且 result 为 truthy → 已在白名单，mint 失败另有原因，不重试
+            if check.get("ok") and check.get("result"):
+                return False
+        # 补授（幂等）：为全量 scope 钱包逐一 addIssuer，单次失败不阻断其余
+        grant = grant_issuers(c, contract_addr, abi, contract_name,
+                              operator=TREASURY_WALLET)
+        return bool(grant.get("granted"))
+    except Exception:
+        return False
+
+
 def _get_badge_type(conn, *, type_id: Optional[int] = None, badge_type: Optional[str] = None) -> Optional[dict]:
     """按类型 ID 或内置类型（badge/voucher 的默认类型）查询勋章/骑行券类型定义。"""
     row = None
@@ -1271,6 +1301,14 @@ def _issue_energy_core(req: "EnergyIssueReq", user: dict, uc: dict,
         [c.resolve_account(req.wallet), points, action],
         issuer_wallet, ge_abi,
     )
+    # mint revert 且链上白名单缺该发行方 → 自动补授后重试
+    # （修「密钥库轮换 / 链重置后持续 revert」：首次失败即自愈，无需人工介入）
+    if not r.get("ok") and _try_repair_issuer(c, ge_addr, ge_abi, "GreenEnergy", issuer_wallet):
+        r = c.call_contract(
+            ge_addr, "mint",
+            [c.resolve_account(req.wallet), points, action],
+            issuer_wallet, ge_abi,
+        )
     if not r.get("ok"):
         # mint 失败：删除占位行释放单号（下次可重试），再按原错误语义抛出
         with _DB_LOCK, get_conn() as conn:
@@ -1724,6 +1762,14 @@ def exchange_badge(req: BadgeExchangeReq, user: dict = Depends(get_current_user)
             [c.resolve_account(req.wallet), token_id, qty, bt["image_url"] or ""],
             issuer_wallet, eb_abi,
         )
+        # EcoBadge.mint revert 且链上白名单缺该发行方 → 自动补授后重试
+        # （此时能量已转入国库但未退回，补授成功则继续铸造，无需用户感知）
+        if not r_mint.get("ok") and _try_repair_issuer(c, eb_addr, eb_abi, "EcoBadge", issuer_wallet):
+            r_mint = c.call_contract(
+                eb_addr, "mint",
+                [c.resolve_account(req.wallet), token_id, qty, bt["image_url"] or ""],
+                issuer_wallet, eb_abi,
+            )
         if not r_mint.get("ok"):
             # 同上：能量已在链上转进国库，铸造失败时必须回滚，否则居民白付
             back = _compensate_energy(c, ge_addr, ge_abi, ADMIN_ALIAS,
@@ -1955,6 +2001,14 @@ def mint_badge(req: BadgeMintReq, user: dict = Depends(get_current_user)):
              bt["image_url"] or ""],
             issuer_wallet, eb_abi,
         )
+        # EcoBadge mint 失败且链上白名单缺该发行方 → 自动补授后重试
+        if not r.get("ok") and _try_repair_issuer(c, eb_addr, eb_abi, "EcoBadge", issuer_wallet):
+            r = c.call_contract(
+                eb_addr, "mint",
+                [c.resolve_account(req.to_wallet), int(bt["token_id"]), int(req.quantity),
+                 bt["image_url"] or ""],
+                issuer_wallet, eb_abi,
+            )
         if not r.get("ok"):
             raise HTTPException(400, f"铸造失败（交易发起方 {issuer_wallet}）: {r.get('error','')}")
     except HTTPException:
