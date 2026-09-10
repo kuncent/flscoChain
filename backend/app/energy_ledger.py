@@ -107,6 +107,22 @@ def balance_of(wallet: str) -> int:
         return max(0, flow_balance(conn, wallet))
 
 
+def ledger_balances(min_balance: int = 1) -> list:
+    """全部钱包的账本净额清单 [(wallet, net), ...]（按金额降序，净额 < min 的忽略）。
+
+    供「账本 → 链上」启动对账使用：沙盒链（py-evm）每次重启后链上余额全清零，
+    而账本在 SQLite 里是持久的，只有拿到全量余额才能把链上状态重建到与账本一致。
+    负数净额（历史脏数据）不进清单，由国库治理科目纠偏。
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT wallet, COALESCE(SUM(amount), 0) AS net FROM eco_energy_flows "
+            "GROUP BY wallet HAVING net >= ? ORDER BY net DESC",
+            (int(min_balance or 0),),
+        ).fetchall()
+    return [(str(r[0]), int(r[1] or 0)) for r in rows if r[0]]
+
+
 def _table_exists(conn: Any, table: str) -> bool:
     return bool(conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)

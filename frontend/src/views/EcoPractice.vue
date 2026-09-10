@@ -524,6 +524,20 @@
         <div class="dq-tip" v-if="!treasury.pending_burn_cap">
           <span class="dt-label">提示:</span>当前无已回收能量可销毁（居民兑换回收后才会产生国库流水）。
         </div>
+
+        <!-- 账本 → 链上能量对账：本地沙盒链（进程内内存链）每次重启后合约余额全清零，
+             而能量台账持久在库，不补齐就会出现「本页有能量、钱包页 0、兑换报链上余额不足」。
+             后端启动时已自动对一次，本按钮供管理员当场手执（幂等，已一致的钱包不发交易）。 -->
+        <el-form :inline="true" size="small" style="margin-top:2px">
+          <el-form-item>
+            <el-button :loading="reconciling" @click="reconcileChainEnergy">
+              🔁 按能量台账补齐链上余额
+            </el-button>
+          </el-form-item>
+          <el-form-item v-if="reconcileNote">
+            <span class="dim">{{ reconcileNote }}</span>
+          </el-form-item>
+        </el-form>
       </div>
 
       <div class="dq-card-title sub-title" style="margin-top: 14px">销毁台账（最近 {{ (treasury.burns || []).length }} 笔）</div>
@@ -640,7 +654,7 @@
                 v-if="canExchange"
                 size="small"
                 type="primary"
-                :disabled="t.sold_out || t.status === 'off' || energyBalance < t.required_energy"
+                :disabled="t.sold_out || t.status === 'off' || energyShort(t.required_energy)"
                 :loading="exchangingTree === t.id"
                 @click="exchangeCertificate(t.id)"
                 style="margin-top: 8px; width: 100%"
@@ -750,7 +764,7 @@
           </div>
           <el-button
             type="primary"
-            :disabled="bt.minted >= bt.supply || energyBalance < bt.cost_energy * qtyOf(bt)"
+            :disabled="bt.minted >= bt.supply || energyShort(bt.cost_energy * qtyOf(bt))"
             :loading="exchangingBadge === String(bt.id)"
             @click="exchangeBadgeType(bt)"
           >
@@ -1163,7 +1177,7 @@
               v-else
               size="small"
               type="primary"
-              :disabled="!canTrade || energyBalance < row.price_energy"
+              :disabled="!canTrade || energyShort(row.price_energy)"
               :loading="buyingMarketId === row.id"
               @click.stop="buyMarket(row)"
             >
@@ -1312,6 +1326,15 @@ const contractStatus = ref<any>({})
 /* 钱包地址 → 联盟角色 key 的映射已收敛到 useWalletStore.roleKeyByAddress
    （数据源 = 后端 /api/eco/roles 的真实 address），不再在本页硬编码 0x 别名表。*/
 const energyBalance = ref(0)
+/** 余额是否读到了可信数值。接口失败时绝不能把「读不到」当成「真的是 0」：
+ *  那样每个兑换 / 购买按钮都会变成「需 N 能量」，把一次查询故障伪装成用户能量不够。*/
+const energyKnown = ref(true)
+/** 链上待同步差额（账本 > 链上）：正常恒为 0，非 0 说明本地链刚重置过，
+ *  兑换时后端会自动补齐，此处只作可见的诊断信息。*/
+const energySyncGap = ref(0)
+/** 余额足够否的唯一口径：未知余额不拦人（链上扣款前后端会硬校验并给可诊断报错）*/
+const energyShort = (cost: number): boolean =>
+  energyKnown.value && energyBalance.value < Number(cost || 0)
 const energyRecords = ref<any[]>([])
 /** 能量台账累计（后端 SQL 聚合，不受列表 limit 截断）与笔数 */
 const energyTotalPoints = ref(0)
@@ -1499,13 +1522,14 @@ const qtyOf = (bt: any): number => {
 /** 单次可兑上限：剩余额度 与 当前能量可负担份数 取小 */
 const badgeMaxQty = (bt: any): number => {
   const remain = Math.max(0, Number(bt.supply ?? 0) - Number(bt.minted ?? 0))
-  const afford = Number(bt.cost_energy) > 0 ? Math.floor(energyBalance.value / Number(bt.cost_energy)) : 0
-  return Math.max(1, Math.min(remain || 1, afford || 1))
+  const afford = energyKnown.value && Number(bt.cost_energy) > 0
+    ? Math.floor(energyBalance.value / Number(bt.cost_energy)) : Infinity
+  return Math.max(1, Math.min(remain || 1, (Number.isFinite(afford) ? afford : remain) || 1))
 }
 const badgeBtnText = (bt: any): string => {
   if (!canExchange.value) return '仅需求方（居民）可兑换'
   if (Number(bt.minted) >= Number(bt.supply)) return '发行额度已用尽'
-  if (energyBalance.value < bt.cost_energy * qtyOf(bt)) return `需 ${bt.cost_energy * qtyOf(bt)} 能量`
+  if (energyShort(bt.cost_energy * qtyOf(bt))) return `需 ${bt.cost_energy * qtyOf(bt)} 能量`
   return `兑换 ${qtyOf(bt)} 份`
 }
 
@@ -1727,7 +1751,7 @@ const openListDlg = (asset_type: string, asset_id: number, name: string, held = 
 /** 购买按钮文案：先按职能判定，再按余额判定，避免让发行方看到可点的购买按钮 */
 const marketBuyText = (row: any): string => {
   if (!canTrade.value) return '仅居民可交易'
-  if (energyBalance.value < row.price_energy) return `需 ${row.price_energy} 能量`
+  if (energyShort(row.price_energy)) return `需 ${row.price_energy} 能量`
   return (row.quantity || 1) > 1 ? `购买 ${row.quantity} 份` : '购买'
 }
 
@@ -1798,7 +1822,7 @@ const buyMarket = async (g: any) => {
     ElMessage.warning(denyTip(CAP.market))
     return
   }
-  if (energyBalance.value < g.price_energy) {
+  if (energyShort(g.price_energy)) {
     ElMessage.warning(`绿色能量不足：需要 ${g.price_energy}，当前 ${energyBalance.value}`)
     return
   }
@@ -1996,7 +2020,33 @@ const loadTreasury = async () => {
   }
 }
 
-/** 国库销毁（不可逆：能量退出流通、总供应下降） */
+/** 治理：账本 → 链上能量一键对账（幂等；后端启动时已自动跑一次）*/
+const reconciling = ref(false)
+const reconcileNote = ref('')
+const reconcileChainEnergy = async () => {
+  reconciling.value = true
+  try {
+    const r: any = await ecoApi.reconcileEnergyChain()
+    const items: any[] = r?.items || []
+    const bad = items.filter((x) => !x.ok)
+    if (r?.total === 0) {
+      reconcileNote.value = '台账里没有任何能量余额，无需对账'
+    } else if (bad.length) {
+      reconcileNote.value = `${items.length} 个钱包中有 ${bad.length} 个补齐失败`
+      ElMessage.error(`能量对账失败 ${bad.length} 个：${bad[0]?.detail || '请查看联盟链服务日志'}`)
+    } else {
+      reconcileNote.value = `已核对 ${items.length} 个钱包，补齐 ${r?.aligned ?? 0} 个 / ${r?.minted_total ?? 0} 点`
+      ElMessage.success(`能量对账完成：补齐 ${r?.aligned ?? 0} 个钱包共 ${r?.minted_total ?? 0} 点`)
+    }
+    await Promise.all([loadEnergyBalance(), loadTreasury(), loadEnergyFlows()])
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || e?.message || '能量对账失败')
+  } finally {
+    reconciling.value = false
+  }
+}
+
+/** 国库销毁（不可逆：能量退出流通、总供应下降）*/
 const submitBurn = async () => {
   const cap = Number(treasury.value?.pending_burn_cap ?? 0)
   if (!burnForm.amount || burnForm.amount <= 0) {
@@ -2034,10 +2084,17 @@ const submitBurn = async () => {
 
 const loadEnergyBalance = async () => {
   try {
+    // 后端统一口径：balance = 能量账本净额（钱包页 / 联盟页 / 兑换前置校验同一个数），
+    // 并随附 chain_balance / needs_sync / sync_gap 供展示差异
     const r: any = await ecoApi.energyBalance(wallet.value)
     energyBalance.value = Number(r?.balance ?? r ?? 0)
-  } catch {
+    energyKnown.value = true
+    energySyncGap.value = r?.needs_sync ? Number(r?.sync_gap ?? 0) : 0
+  } catch (e: any) {
     energyBalance.value = 0
+    energyKnown.value = false
+    energySyncGap.value = 0
+    ElMessage.error(`绿色能量余额获取失败：${e?.response?.data?.detail || e?.message || '请稍后重试'}`)
   }
 }
 
@@ -2293,10 +2350,11 @@ const energyTile = computed(() => {
   }
   return {
     label: '绿色能量余额',
-    num: energyBalance.value,
-    sub: isMyWallet.value
-      ? 'GreenEnergy (ERC20)'
-      : 'GreenEnergy (ERC20) · 机构钱包实际持仓（管理员钱包即能量国库回收量）',
+    num: energyKnown.value ? energyBalance.value : '—',
+    sub: !energyKnown.value
+      ? '余额查询失败，请刷新重试（不拦兑换，提交后会给出真实失败原因）'
+      : (isMyWallet.value ? 'GreenEnergy (ERC20) · 能量台账净额' : 'GreenEnergy (ERC20) · 能量台账净额（管理员钱包即能量国库回收量）')
+      + (energySyncGap.value > 0 ? ` · 链上待同步 ${energySyncGap.value} 点（兑换时自动补齐）` : ''),
   }
 })
 
@@ -2475,7 +2533,7 @@ const treeBtnText = (t: any): string => {
   if (!canExchange.value) return '仅需求方（居民）可兑换'
   if (t.status === 'off') return '已下架'
   if (t.sold_out) return '发行额度已用尽'
-  if (energyBalance.value < t.required_energy) return `需 ${t.required_energy} 能量`
+  if (energyShort(t.required_energy)) return `需 ${t.required_energy} 能量`
   return '兑换植树证书'
 }
 

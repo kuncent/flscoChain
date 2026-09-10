@@ -7,6 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from ..alliance_contracts import ENERGY_TOKEN_NAME, ENERGY_TOKEN_SYMBOL
 from ..config import settings
 from ..chain_client import get_chain_client
 from ..db import get_conn, now
@@ -14,6 +15,10 @@ from ..learning.alliance_roles import TREASURY_WALLET, wallet_address
 from ..security import assert_actor_wallet, get_current_user
 from ..tx_decoder import compile_source
 from ..wallet_id import short as short_wallet
+# 绿色能量余额统一口径（账本为事实源 + 链上余额与待同步差额）：钱包页与联盟页
+# 过去各自取一个口径（一个读链上 balanceOf、一个读能量流水），同一个人两个页面
+# 两个余额；现在只留 `_energy_balance_view` 一个入口。
+from .eco import _energy_balance_view
 
 router = APIRouter(prefix="/api/wallet", tags=["wallet"])
 
@@ -126,37 +131,72 @@ def list_tokens():
     return {"items": [dict(r) for r in rows]}
 
 
+def _is_energy_token(name: str = "", symbol: str = "") -> bool:
+    """该 tokens 行是否就是流通中的绿色能量代币（按登记名 / 符号判定）。"""
+    return str(name or "") == ENERGY_TOKEN_NAME or str(symbol or "").upper() == ENERGY_TOKEN_SYMBOL
+
+
+def _chain_balance(wallet: str, token_address: str) -> dict:
+    """单个代币的链上 balanceOf（失败不伪造成 0，带上 query_ok / note 供前端提示）。"""
+    c = get_chain_client()
+    try:
+        abi = _load_abi(token_address)
+        r = c.call_contract(token_address, "balanceOf",
+                            [c.resolve_account(wallet)], wallet, abi)
+    except Exception as e:  # 链不可用 / 客户端异常
+        return {"balance": "0", "query_ok": False, "query_note": f"链上查询异常: {e}"}
+    if not r.get("ok"):
+        return {"balance": "0", "query_ok": False,
+                "query_note": str(r.get("error") or r.get("status") or "链上查询失败")}
+    return {"balance": str(r.get("result", "0")), "query_ok": True, "query_note": ""}
+
+
 @router.get("/balance")
 def balance(wallet: str, token_address: str):
-    """真实查询 ERC20 balanceOf。"""
-    c = get_chain_client()
-    abi = _load_abi(token_address)
-    try:
-        r = c.call_contract(token_address, "balanceOf", [c.resolve_account(wallet)], wallet, abi)
-        bal = r.get("result", "0") if r.get("ok") else "0"
-    except Exception as e:
-        bal = "0"
-    return {"wallet": wallet, "token_address": token_address, "balance": str(bal)}
+    """真实查询 ERC20 balanceOf（绿色能量走账本统一口径）。"""
+    with get_conn() as conn:
+        row = conn.execute("SELECT name,symbol FROM tokens WHERE address=?",
+                           (token_address,)).fetchone()
+    if row and _is_energy_token(row["name"], row["symbol"]):
+        v = _energy_balance_view(wallet)
+        return {"wallet": wallet, "token_address": token_address,
+                "balance": str(v["balance"]), "source": v["source"],
+                "ledger_balance": v["ledger_balance"], "chain_balance": v["chain_balance"],
+                "chain_known": v["chain_known"], "needs_sync": v["needs_sync"],
+                "sync_gap": v["sync_gap"], "query_ok": True,
+                "query_note": v["chain_error"]}
+    out = _chain_balance(wallet, token_address)
+    return {"wallet": wallet, "token_address": token_address, **out,
+            "source": "chain", "ledger_balance": None, "chain_balance": None,
+            "needs_sync": False}
 
 
 @router.get("/balances/{wallet}")
 def balances(wallet: str):
-    """查询钱包下所有 Token 真实余额（单个 token 失败不影响整体）。"""
-    c = get_chain_client()
+    """查询钱包下所有 Token 余额（单个代币查询失败不再伪造成 0）。
+
+    绿色能量（GreenEnergy）例外：余额取 `_energy_balance_view` 的账本口径，并附
+    chain_balance / needs_sync —— 沙盒链重启后链上余额会被清零，只读链上就会把
+    「刚提交凭证到账的能量」显示成 0（钱包页与联盟页余额长期不一致的根因）。
+    """
     with get_conn() as conn:
         rows = conn.execute("SELECT address,name,symbol,decimals FROM tokens").fetchall()
     items = []
     for row in rows:
-        try:
-            abi = _load_abi(row["address"])
-            r = c.call_contract(row["address"], "balanceOf", [c.resolve_account(wallet)], wallet, abi)
-            bal = r.get("result", "0") if r.get("ok") else "0"
-        except Exception:
-            bal = "0"
-        items.append({
-            "token_address": row["address"], "balance": str(bal),
-            "name": row["name"], "symbol": row["symbol"], "decimals": row["decimals"],
-        })
+        item = {"token_address": row["address"], "name": row["name"],
+                "symbol": row["symbol"], "decimals": row["decimals"],
+                "balance": "0", "source": "chain", "query_ok": True, "query_note": ""}
+        if _is_energy_token(row["name"], row["symbol"]):
+            v = _energy_balance_view(wallet)
+            item.update(balance=str(v["balance"]), source=v["source"],
+                        ledger_balance=v["ledger_balance"], chain_balance=v["chain_balance"],
+                        chain_known=v["chain_known"], needs_sync=v["needs_sync"],
+                        sync_gap=v["sync_gap"],
+                        query_ok=v["chain_known"] or v["source"] == "ledger",
+                        query_note=v["chain_error"])
+        else:
+            item.update(_chain_balance(wallet, row["address"]))
+        items.append(item)
     return {"wallet": wallet, "items": items}
 
 

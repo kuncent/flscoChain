@@ -88,13 +88,24 @@ class TestPublishSubscribe:
 class TestNotificationsMirror:
     def test_publish_mirrors_to_notifications(self, temp_db):
         """publish 镜像写 notifications（任务 #25：后台小批量聚合，
-        flush_pending 同步排空后断言；供 SSE 断线后经 /history 补看）。"""
-        events_bus.publish("energy_issued", {"points": 50},
+        flush_pending 同步排空后断言；供 SSE 断线后经 /history 补看）。
+
+        定位必须按**本用例自己那条事件**的 payload：镜像写入走进程级后台批量
+        线程，同一 pytest 会话里前序用例发布、但未自行 flush 的事件（如
+        test_targeted_event_only_visible_to_owner 的 energy_issued/user_id=u1）
+        可能晚一步才落到本用例刚建的临时库；只按 event_type 取第一行会
+        捞到别人的行，断言就变成了测时序。不修改队列与镜像实现，只把查询钉回
+        本用例的事件上。
+        """
+        marker = "mirror-u9-own-case"
+        events_bus.publish("energy_issued", {"points": 50, "case": marker},
                            user_id="u9", class_id="c9")
         events_bus.flush_pending()
         with get_conn() as conn:
             row = conn.execute(
-                "SELECT * FROM notifications WHERE event_type='energy_issued'",
+                "SELECT * FROM notifications WHERE event_type='energy_issued' "
+                "AND payload LIKE ?",
+                (f"%{marker}%",),
             ).fetchone()
         assert row is not None
         assert row["user_id"] == "u9" and row["class_id"] == "c9"

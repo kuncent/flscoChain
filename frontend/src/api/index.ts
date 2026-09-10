@@ -212,6 +212,9 @@ export const ecoApi = {
   energyRecords: (wallet?: string, by: 'receiver' | 'issuer' = 'receiver', limit?: number) =>
     http.get('/eco/energy/records', { params: { wallet, by, ...(limit ? { limit } : {}) } }) as Promise<any>,
   energyBalance: (wallet: string) => http.get('/eco/energy/balance', { params: { wallet } }),
+  /** 治理：按能量台账净额把全量余额补齐到链上 GreenEnergy（幂等，仅教师 / 平台管理员） */
+  reconcileEnergyChain: (wallet = '') =>
+    http.post('/eco/energy/reconcile-chain', { wallet }) as Promise<any>,
   trees: () => http.get('/eco/trees'),
   addTree: (data: any) => http.post('/eco/trees/add', data),
   /** 治理：调整树种发行额度（只可上调）/ 上下架 */

@@ -14,8 +14,8 @@ from ..chain_client import get_chain_client
 from ..db import get_conn, now
 from .files import validate_upload, _ensure_uploads_meta
 # 能量余额口径与绿色资产市场 / 联盟页兑换完全一致（同一事实源：业务账本优先，
-# 链上余额只读回退；写路径前先把账本回填到链上）
-from .eco import _get_energy_ledger_balance, _sync_chain_balance
+# 链上余额只读回退；写路径前先把账本回填到链上，失败即报可诊断中文）
+from .eco import _chain_deduct_hint, _require_chain_balance
 from ..security import assert_actor_wallet, get_current_user
 from ..tx_decoder import compile_source
 from ..wallet_id import address_variants, to_address
@@ -211,25 +211,17 @@ def buy(req: BuyReq, user: dict = Depends(get_current_user)):
     # 1. 绿色能量支付（买方 → 卖方）：先查余额友好提示，再真实 transfer
     ge_abi = _load_abi(req.token_contract)
     if price > 0:
-        # 先「账本 → 链上」回填，再以链上 balanceOf 为购买力事实源：
-        # 本地沙盒链重启后 GreenEnergy 是一份新合约（人人余额 0），
-        # 不回填就会把「账上有 270 点能量的居民」判成「余额不足」，
-        # 导致 NFT 市场永远成交不了（报告 C 项「交易 +5」结构性拿不到）。
-        _sync_chain_balance(req.buyer)
-        bal_r = c.call_contract(req.token_contract, "balanceOf",
-                                [c.resolve_account(req.buyer)], req.buyer, ge_abi)
-        try:
-            bal = int(str(bal_r.get("result", "0")))
-        except (TypeError, ValueError):
-            # 链上返回非数值（mock 链 / 异常节点）→ 回落账本净额（与市场 / 兑换同一口径）
-            bal = _get_energy_ledger_balance(req.buyer)
-        if bal < price:
-            raise HTTPException(400, f"绿色能量不足：需要 {price}，当前 {bal}")
+        # 余额口径与联盟页 / 兑换完全一致（账本为事实源），扣款前先把差额回填到链上：
+        # 本地沙盒链重启后 GreenEnergy 是一份新合约（人人余额 0），不回填就会把
+        # 「账上有 270 点能量的居民」判成「余额不足」，导致 NFT 市场永远成交不了
+        # （报告 C 项「交易 +5」结构性拿不到）。回填失败会抛可诊断中文 400，
+        # 不再把 `GE: insufficient balance` 这类合约 revert 原文直接冒给前端。
+        _require_chain_balance(req.buyer, price, "NFT 购买")
         r = c.call_contract(req.token_contract, "transfer",
                             [c.resolve_account(seller_wallet), price],
                             req.buyer, ge_abi)
         if not r.get("ok"):
-            raise HTTPException(400, "能量支付失败: " + str(r.get("error", "")))
+            raise HTTPException(400, "能量支付失败: " + _chain_deduct_hint(req.buyer, price, r))
         tx_hash = r.get("tx_hash", "")
     # 真实 NFT 转移（ERC721 transferFrom / ERC1155 safeTransferFrom，FROM = 当前持有人）
     nft_abi = _load_abi(nft["contract_address"])

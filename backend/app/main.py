@@ -51,6 +51,10 @@ async def lifespan(app: FastAPI):
     seed_init_data()
     # 种子直写业务表（不走 API）补上能量流水，保证「余额 = Σ 流水」口径不断链
     eco.reconcile_energy_flows()
+    # 沙盒链（进程内 py-evm）重启后链上余额全清零、账本仍是全量：启动时就把账本
+    # 余额全量补齐到链上，否则钱包页会显示 0（“提交凭证成功但能量没涨”），
+    # 且首次兑换只能在链上 transfer 吃一句 GE: insufficient balance。
+    eco.align_chain_balances()
     yield
 
 

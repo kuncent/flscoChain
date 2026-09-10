@@ -88,7 +88,9 @@
               <div class="dq-mono dim addr">{{ short(b.token_address) }}</div>
             </div>
             <div class="b-right">
-              <div class="b-val dq-mono">{{ b.balance }}</div>
+              <div class="b-val dq-mono">{{ b.query_ok === false ? '—' : b.balance }}</div>
+              <div v-if="b.query_ok === false" class="b-note warn">{{ b.query_note || '链上查询失败' }}</div>
+              <div v-else-if="b.needs_sync" class="b-note">链上待同步 {{ b.sync_gap }} 点</div>
             </div>
           </div>
         </div>
@@ -409,7 +411,14 @@ const transferTimeline = computed(() => {
   return out
 })
 
-const loadBalances = async () => { balances.value = ((await walletApi.balances(wallet.value)) as any).items || [] }
+const loadBalances = async () => {
+  try {
+    balances.value = ((await walletApi.balances(wallet.value)) as any).items || []
+  } catch (e: any) {
+    balances.value = []
+    ElMessage.error(`钱包余额获取失败：${e?.response?.data?.detail || e?.message || '请稍后重试'}`)
+  }
+}
 const loadTokens = async () => { tokens.value = ((await walletApi.tokens()) as any).items || [] }
 const loadTransfers = async () => { transfers.value = ((await walletApi.transfers(wallet.value)) as any).items || [] }
 
@@ -420,10 +429,20 @@ const isGreenEnergy = (b: any) =>
   String(b.symbol || '').toUpperCase() === 'GE' ||
   String(b.name || '').includes('绿色能量')
 
-const greenEnergyBalance = computed(() => {
-  const b = balances.value.find(isGreenEnergy)
-  return b ? Number(b.balance ?? 0) : 0
-})
+/** GreenEnergy 行：后端已把「能量台账净额」作为唯一余额口径（与联盟链页 / 兑换前置校验
+ *  同一个数），链上 balanceOf 只作为 chain_balance 诊断字段随附。*/
+const greenEnergyRow = computed<any>(() => balances.value.find(isGreenEnergy) || null)
+
+const greenEnergyBalance = computed(() =>
+  greenEnergyRow.value ? Number(greenEnergyRow.value.balance ?? 0) : 0,
+)
+/** 读不到 ≠ 没有：query_ok=false 时展示「—」而不是 0，避免把接口故障说成用户没能量 */
+const greenEnergyKnown = computed(() =>
+  !!greenEnergyRow.value && greenEnergyRow.value.query_ok !== false,
+)
+const greenEnergySyncGap = computed(() =>
+  greenEnergyRow.value?.needs_sync ? Number(greenEnergyRow.value.sync_gap || 0) : 0,
+)
 
 const myCertificates = ref<any[]>([])
 const myBadges = ref<any[]>([])
@@ -600,7 +619,13 @@ const energyHeadline = computed(() => {
       sub: `授信能量余额 · ${node.name}已发行 ${used} / 授信 ${quota}（发行方可用额度即授信余量）`,
     }
   }
-  return { num: String(greenEnergyBalance.value), sub: '绿色能量余额（链上真实查询）' }
+  return {
+    num: greenEnergyKnown.value ? String(greenEnergyBalance.value) : '—',
+    sub: (greenEnergyKnown.value
+      ? '绿色能量余额（能量台账净额 · 与联盟链页同口径）'
+      : '余额查询失败，请点下方「刷新余额」重试')
+      + (greenEnergySyncGap.value > 0 ? ` · 链上待同步 ${greenEnergySyncGap.value} 点（兑换时自动补齐）` : ''),
+  }
 })
 
 /* 当前钱包已绑定的联盟角色（发行方身份）：居民申请发能量不应因此被改写角色 */
@@ -688,16 +713,28 @@ const doGetEnergy = async () => {
     return
   }
   issuingEnergy.value = true
+  const before = greenEnergyBalance.value
+  const beforeKnown = greenEnergyKnown.value
   try {
     // 四维度口径：本钱包是能量「获取方」（居民），不是发行方；
     // 旧实现先 selectRole(wallet, role.key) 再发放，会把学生钱包永久改成联盟节点，
     // 使其失去兑换 / 交易职能（发行方与使用方互斥），故此处不再绑定角色。
     const r: any = await ecoApi.issueEnergy(wallet.value, role.key, energyProof)
-    ElMessage.success(
-      `${role.icon} ${role.name} 发放成功：+${r?.points ?? role.energy_rule.points} 绿色能量（已到账当前钱包）`,
-    )
+    const got = Number(r?.points ?? role.energy_rule.points ?? 0)
     energyDlg.value = false
     await loadBalances()
+    // 到账必须看得见：只报「发放成功」不核余额，就会出现「提示成功但钱包没变」的现场
+    const after = greenEnergyBalance.value
+    if (!greenEnergyKnown.value) {
+      ElMessage.warning(`${role.icon} ${role.name} 已发放 +${got} 绿色能量，但余额刷新失败，请手动重试查看`)
+    } else if (beforeKnown && after - before !== got) {
+      ElMessage.warning(
+        `${role.icon} 已记账 +${got} 绿色能量，但余额从 ${before} 变为 ${after}，与预期不符，` +
+        '请到【联盟链】页执行一次能量对账',
+      )
+    } else {
+      ElMessage.success(`${role.icon} ${role.name} 发放成功：+${got} 绿色能量，当前余额 ${after}`)
+    }
   } catch (e: any) {
     ElMessage.error(e?.response?.data?.detail || e?.message || '能量发放失败')
   } finally {
@@ -891,6 +928,9 @@ onActivated(loadAllAndRoles)
   &:hover { border-color: var(--dq-border-2); }
   .b-name { color: var(--dq-text); font-weight: 600; font-size: 13px; }
   .b-val { color: var(--dq-primary); font-size: 17px; font-weight: 800; }
+  /* 余额旁的口径注释：链上待同步（中性）/ 查询失败（警告）——不把读不到当成 0 */
+  .b-note { font-size: 11px; margin-top: 2px; text-align: right; color: var(--dq-text-dim); }
+  .b-note.warn { color: var(--dq-warn); }
   .addr { font-size: 11px; margin-top: 2px; }
 }
 .link { color: var(--dq-primary); cursor: pointer; }

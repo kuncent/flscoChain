@@ -85,6 +85,7 @@ from ..energy_ledger import (
     backfill_energy_flows as _backfill_energy_flows,
     ensure_flow as _ensure_flow,
     flow_balance as _flow_balance,
+    ledger_balances as _ledger_balances,
     record_exchange_cost as _record_exchange_cost,
     treasury_stats as _treasury_stats,
 )
@@ -439,67 +440,170 @@ def _get_energy_ledger_balance(wallet: str) -> int:
         return max(0, _flow_balance(conn, w))
 
 
+def _chain_energy_balance(wallet: str, *, addr: str = "", abi: Any = None) -> tuple:
+    """只读链上 GreenEnergy.balanceOf，返回 (余额 或 None, 错误原文)。
+
+    `None` 与 `0` 必须分开：0 = 链上确实是 0，None = 当前链上取不到可信数值
+    （合约无代码 / 调用 revert / mock 链返回非数值）。旧实现把两者一律吞成 0，
+    于是「查询失败」在钱包页显示成「能量凭空消失」，在兑换页变成一句英文 revert。
+    """
+    if not addr:
+        addr, abi = _find_contract("GreenEnergy")
+    if not addr:
+        return None, "GreenEnergy 合约在当前链上不可用（链已重置或尚未部署）"
+    c = get_chain_client()
+    try:
+        r = c.call_contract(addr, "balanceOf", [c.resolve_account(wallet)], wallet, abi or [])
+    except Exception as e:  # 链不可用 / 客户端异常
+        return None, f"链上余额查询异常: {e}"
+    if not r.get("ok"):
+        return None, f"链上余额查询失败: {r.get('error') or r.get('status') or 'reverted'}"
+    try:
+        return _to_int(r.get("result", "0")), ""
+    except (TypeError, ValueError):
+        return None, f"链上余额返回值非数值: {r.get('result')!r}"
+
+
+def _energy_balance_view(wallet: str) -> dict:
+    """绿色能量余额的**全平台唯一视图**（钱包页 / 联盟页 / 兑换校验同一口径）。
+
+    - balance：对外余额 = 账本净额（余额的唯一事实源），账本无记录时退回链上；
+    - ledger_balance / chain_balance：两侧原值，供前端展示「链上待同步」差额；
+    - needs_sync / sync_gap：账本 > 链上（沙盒链重启后链上还没追平账本的历史差额）；
+    - chain_known：链上数值是否可信（False = 取不到，不做任何同步判定）。
+
+    纯读、无链上写副作用；回填只在写路径（_require_chain_balance）与启动对账里做。
+    """
+    w = _norm_wallet(wallet)
+    ledger = _get_energy_ledger_balance(w)
+    chain_raw, err = _chain_energy_balance(w)
+    chain_known = chain_raw is not None
+    chain = int(chain_raw or 0) if chain_known else 0
+    if ledger > 0:
+        balance, source = ledger, "ledger"
+    else:
+        balance, source = chain, "chain"
+    return {
+        "wallet": w,
+        "balance": int(balance),
+        "source": source,
+        "ledger_balance": int(ledger),
+        "chain_balance": int(chain),
+        "chain_known": chain_known,
+        "needs_sync": bool(chain_known and ledger > chain),
+        "sync_gap": max(0, int(ledger) - int(chain)) if chain_known else 0,
+        "chain_error": err,
+    }
+
+
 def _get_energy_balance(wallet: str) -> str:
     """查询钱包绿色能量余额（纯读，不产生任何链上写副作用）。
 
-    口径：账本余额（持久化业务账本）优先，链上余额只读回退：
-    - 账本有记录时直接返回账本净额（沙盒链重启重置后仍能正确展示历史余额）；
-    - 账本无记录时只读查询链上 GreenEnergy.balanceOf（不 mint、不回填）；
-    - 合约未部署 / 链上调用异常时返回 0。
-
-    链上回填（_sync_chain_balance，差额>0 时由 0xadmin 真实发起 GreenEnergy.mint）
-    仅保留在写路径（兑换 / 能量回收 / 挂牌购买等已有调用点）：
-    GET /energy/balance、画像等读接口不再触发链上交易，
-    避免页面加载污染块高与交易流、并发首访重复 mint。
+    口径实现见 `_energy_balance_view`：账本净额优先、链上余额只读回退；
+    GET /energy/balance 与画像等读接口不再触发链上交易，避免页面加载污染块高。
     """
-    ledger = _get_energy_ledger_balance(wallet)
-    if ledger > 0:
-        return str(ledger)
-    addr, abi = _find_contract("GreenEnergy")
-    if not addr:
-        return "0"
-    c = get_chain_client()
-    try:
-        r = c.call_contract(addr, "balanceOf", [c.resolve_account(wallet)], wallet, abi)
-        if r.get("ok"):
-            return str(_to_int(r.get("result", "0")))
-    except Exception:
-        pass
-    return "0"
+    return str(_energy_balance_view(wallet)["balance"])
 
 
-def _sync_chain_balance(wallet: str) -> None:
+def _sync_chain_balance(wallet: str) -> dict:
     """把持久化业务账本余额回填到链上（账本 > 链上时由管理员 mint 差额）。
 
     本地沙盒链（py-evm）在服务重启后会重置，为保证「兑换 / 挂牌购买」的链上转账
     能够真实执行，需要将账本与链上余额对齐。回填通过 GreenEnergy.mint 由管理员
     钱包发出；差额本身已在账本中，故不重复写 eco_energy_records。
+
+    返回 {"ok", "diff", "ledger_balance", "chain_balance", "chain_balance_after",
+    "chain_known", "detail"}。**失败必须让调用方看得见**：旧实现在 mint 失败时
+    `if not r.get("ok"): return` 静默放弃，链上余额永远追不上账本，居民兑换只能
+    吃到 `GE: insufficient balance` 这类合约 revert 原文（勋章 / 骑行券全部报错）。
+    mint 因缺链上发行权失败时，先补授白名单（_try_repair_issuer）再重试一次。
     """
     ledger = _get_energy_ledger_balance(wallet)
+    res = {"ok": True, "diff": 0, "ledger_balance": int(ledger), "chain_balance": 0,
+           "chain_balance_after": 0, "chain_known": False, "detail": ""}
     if ledger <= 0:
-        return
+        return res
     addr, abi = _find_contract("GreenEnergy")
     if not addr:
-        return
+        res.update(ok=False, diff=int(ledger), detail=(
+            "GreenEnergy 合约在当前链上不可用（链已重置或尚未部署），无法把账本能量补给链上。"
+            "请联盟管理员在「联盟链」页重新部署 GreenEnergy 后重试。"))
+        return res
     c = get_chain_client()
-    try:
-        r = c.call_contract(addr, "balanceOf", [c.resolve_account(wallet)], wallet, abi)
-        chain_bal = _to_int(r.get("result", "0")) if r.get("ok") else 0
-    except Exception:
-        chain_bal = 0
+    before_raw, err = _chain_energy_balance(wallet, addr=addr, abi=abi)
+    res["chain_known"] = before_raw is not None
+    chain_bal = int(before_raw or 0)
+    res["chain_balance"] = chain_bal
     diff = ledger - chain_bal
+    if before_raw is None:
+        # 链上读不到可信数值（mock 链 / 非 EVM 模式）：仍按账本全额补发，但事后无法复核
+        diff = ledger
     if diff <= 0:
-        return
-    r = c.call_contract(
-        addr, "mint",
-        [c.resolve_account(wallet), diff, "账本回填"],
-        ADMIN_ALIAS, abi,
-    )
-    if not r.get("ok"):
-        return
-    # 回填不入账本（账本本来就有这笔余额），仅记录链上补给痕迹到能量记录表会虚增账本，
-    # 因此不写 eco_energy_records，只打印日志。
-    print(f"[eco] 账本回填 {wallet}: +{diff} 能量 (mint by 0xadmin)")
+        res["chain_balance_after"] = chain_bal
+        res["detail"] = err
+        return res
+    args = [c.resolve_account(wallet), diff, "账本回填"]
+    r = c.call_contract(addr, "mint", args, ADMIN_ALIAS, abi)
+    if not r.get("ok") and _try_repair_issuer(c, addr, abi, "GreenEnergy", ADMIN_ALIAS):
+        r = c.call_contract(addr, "mint", args, ADMIN_ALIAS, abi)   # 补授发行权后重试一次
+    after_raw, err2 = _chain_energy_balance(wallet, addr=addr, abi=abi)
+    res["chain_balance_after"] = int(after_raw or 0)
+    res["diff"] = int(diff)
+    if after_raw is None:                    # 无法复核：以本次 mint 的结果为准
+        res["chain_known"] = False
+        res["ok"] = bool(r.get("ok"))
+        res["detail"] = "" if res["ok"] else str(r.get("error") or err2 or "链上未返回成功")
+    elif res["chain_balance_after"] >= ledger:
+        # 回填不入账本（账本本来就有这笔余额），只打印链上补给痕迹
+        print(f"[eco] 账本回填 {wallet}: +{diff} 能量 (mint by {ADMIN_ALIAS})")
+        res["detail"] = f"已向链上补发 {diff} 点能量"
+    elif not r.get("ok"):
+        res["ok"] = False
+        res["detail"] = (
+            f"链上能量补发失败：账本 {ledger} 点 / 链上 {chain_bal} 点，需补 {diff} 点；"
+            f"失败原因：{r.get('error') or err or '合约未返回成功'}。"
+            "通常是当前链实例上的 GreenEnergy 未授予管理员发行权（onlyIssuer），"
+            "请联盟管理员在「联盟链」页执行一次能量对账，或重新部署 GreenEnergy。")
+    else:
+        res["ok"] = False
+        res["detail"] = (
+            f"链上能量补发后仍与账本不一致：账本 {ledger} 点 / 链上 {res['chain_balance_after']} 点。"
+            "请联盟管理员在「联盟链」页执行一次能量对账后重试。")
+    return res
+
+
+def _require_chain_balance(wallet: str, cost: int, action: str) -> None:
+    """扣能动作前的统一能量保障：余额校验 → 账本回填链上 → 链上硬校验。
+
+    任一道关卡不过都抛**可诊断中文 400**（说清账本 / 链上 / 缺口 / 处理指引），
+    不再让合约 revert 英文原文冒到前端。链上数值不可信时（mock / legacy）
+    退化为「只做账本校验 + 尽力回填」，与既有 mock 测试与沙盒模式口径一致。
+    """
+    view = _energy_balance_view(wallet)
+    if view["balance"] < cost:
+        raise HTTPException(
+            400,
+            f"绿色能量不足：{action}需要 {cost}，当前 {view['balance']}"
+            + (f"（账本 {view['ledger_balance']} / 链上 {view['chain_balance']}）"
+               if view["chain_known"] else ""),
+        )
+    sync = _sync_chain_balance(wallet)
+    if not sync["ok"]:
+        raise HTTPException(400, sync["detail"])
+    if sync["chain_known"] and int(sync["chain_balance_after"]) < cost:
+        raise HTTPException(
+            400,
+            f"链上能量余额不足，无法{action}扣款：账本 {view['ledger_balance']} 点 / "
+            f"链上 {sync['chain_balance_after']} 点，需要 {cost} 点。"
+            "请联盟管理员在「联盟链」页执行一次能量对账后重试。")
+
+
+def _chain_deduct_hint(wallet: str, cost: int, r: dict) -> str:
+    """链上扣款失败时的可诊断文案：合约 revert 原文 + 当前账本 / 链上实际数字。"""
+    view = _energy_balance_view(wallet)
+    tail = (f"（账本 {view['ledger_balance']} / 链上 {view['chain_balance']}，本次需 {cost}）"
+            if view["chain_known"] else f"（当前链实例读不到可信余额，本次需 {cost}）")
+    return f"{r.get('error') or r.get('status') or '转账未成功'}{tail}"
 
 
 def _compensate_energy(c, ge_addr: str, ge_abi, from_wallet: str, to_addr: str, amount: int) -> bool:
@@ -1452,9 +1556,35 @@ def energy_flows(wallet: str, limit: int = 100, user: dict = Depends(get_current
 
 @router.get("/energy/balance")
 def energy_balance(wallet: str, user: dict = Depends(get_current_user)):
-    """查询钱包绿色能量余额（账本流水净额，与链上 GreenEnergy.balanceOf 对账一致）。"""
+    """查询钱包绿色能量余额（统一视图：账本为事实源 + 链上余额与待同步差额）。
+
+    旧返回体只有 balance 一个数字，钱包页与联盟页各自另取口径（一个读链上、一个读
+    账本），同一个人在两个页面看到两个余额。现在两侧共用 `_energy_balance_view`，
+    额外带上 ledger_balance / chain_balance / needs_sync，前端只渲染不再自行取数。
+    """
     wallet = _ensure_viewable_wallet(user, wallet, "wallet")
-    return {"wallet": wallet, "balance": _get_energy_balance(wallet)}
+    view = _energy_balance_view(wallet)
+    return {"wallet": view["wallet"], "balance": str(view["balance"]), **view}
+
+
+class ReconcileChainReq(BaseModel):
+    """能量对账请求体（治理动作）。wallet 只是办事身份，缺省用国库账户。"""
+    wallet: str = ""
+
+
+@router.post("/energy/reconcile-chain")
+def reconcile_chain_balance(req: ReconcileChainReq, user: dict = Depends(get_current_user)):
+    """能量对账：把账本余额全量补齐到链上（联盟治理动作，仅教师 / 平台管理员）。
+
+    背景：本地沙盒链（py-evm）每次重启后链上余额全清零，而能量账本在 SQLite 里
+    是持久的；不重建就会出现「联盟页有能量、钱包页是 0、兑换报 GE: insufficient
+    balance」。启动时会自动对一次（见 main.lifespan），本端点供管理员手动触发并
+    查看逐钱包结果（只补差额，不改账本、不重复计入发行量）。
+    """
+    req.wallet = assert_actor_wallet(user, req.wallet or TREASURY_WALLET)
+    _ensure_governor(user, "能量国库对账")
+    ensure_capability(_identity_role(req.wallet), CAP_TREASURY_MANAGE)
+    return align_chain_balances()
 
 
 # ===========================================================================
@@ -1598,19 +1728,17 @@ def exchange_certificate(req: CertExchangeReq, user: dict = Depends(get_current_
             )
 
     try:
-        # 2. 查找 GreenEnergy 合约，检查余额
+        # 2. 查找 GreenEnergy 合约（取址唯一口径：latest_deployed）
         ge_addr, ge_abi = _find_contract("GreenEnergy")
         if not ge_addr:
-            raise HTTPException(400, "GreenEnergy 合约未部署")
-        balance = _to_int(_get_energy_balance(req.wallet))
-        if balance < cost:
-            raise HTTPException(400, f"绿色能量不足，需要 {cost}，当前 {balance}")
+            raise HTTPException(400, "GreenEnergy 合约在当前链上不可用（链已重置或尚未部署），"
+                                     "请联盟管理员重新部署后重试")
 
         c = get_chain_client()
         admin_addr = c.resolve_account(ADMIN_ALIAS)
 
-        # 2.5 账本 → 链上余额回填（重启后沙盒链余额归零，回填后转账才能真实执行）
-        _sync_chain_balance(req.wallet)
+        # 2.5 扣能前的能量保障：账本余额校验 + 回填链上 + 硬校验（失败给可诊断中文）
+        _require_chain_balance(req.wallet, cost, "兑换植树证书")
 
         # 3. 调用 GreenEnergy.transfer(admin, cost) 从 wallet 转给能量国库
         r_transfer = c.call_contract(
@@ -1619,7 +1747,8 @@ def exchange_certificate(req: CertExchangeReq, user: dict = Depends(get_current_
             req.wallet, ge_abi,
         )
         if not r_transfer.get("ok"):
-            raise HTTPException(400, "能量扣除失败: " + str(r_transfer.get("error", "")))
+            raise HTTPException(400, "能量扣除失败: "
+                                     + _chain_deduct_hint(req.wallet, cost, r_transfer))
 
         # 4. 查找 PlantCertificate 合约
         pc_addr, pc_abi = _find_contract("PlantCertificate")
@@ -1730,19 +1859,17 @@ def exchange_badge(req: BadgeExchangeReq, user: dict = Depends(get_current_user)
         )
 
     try:
-        # 1. 查找 GreenEnergy 合约，检查余额
+        # 1. 查找 GreenEnergy 合约（取址唯一口径：latest_deployed）
         ge_addr, ge_abi = _find_contract("GreenEnergy")
         if not ge_addr:
-            raise HTTPException(400, "GreenEnergy 合约未部署")
-        balance = _to_int(_get_energy_balance(req.wallet))
-        if balance < cost:
-            raise HTTPException(400, f"绿色能量不足，需要 {cost}，当前 {balance}")
+            raise HTTPException(400, "GreenEnergy 合约在当前链上不可用（链已重置或尚未部署），"
+                                     "请联盟管理员重新部署后重试")
 
         c = get_chain_client()
         admin_addr = c.resolve_account(ADMIN_ALIAS)
 
-        # 1.5 账本 → 链上余额回填（重启后沙盒链余额归零，回填后转账才能真实执行）
-        _sync_chain_balance(req.wallet)
+        # 1.5 扣能前的能量保障：账本余额校验 + 回填链上 + 硬校验（失败给可诊断中文）
+        _require_chain_balance(req.wallet, cost, f"兑换「{badge_name}」")
 
         # 2. 能量回收：调用 GreenEnergy.transfer(国库, cost) 从 wallet 转出
         r_transfer = c.call_contract(
@@ -1751,7 +1878,8 @@ def exchange_badge(req: BadgeExchangeReq, user: dict = Depends(get_current_user)
             req.wallet, ge_abi,
         )
         if not r_transfer.get("ok"):
-            raise HTTPException(400, "能量扣除失败: " + str(r_transfer.get("error", "")))
+            raise HTTPException(400, "能量扣除失败: "
+                                     + _chain_deduct_hint(req.wallet, cost, r_transfer))
 
         # 3. 查找 EcoBadge 合约，由该类型的发行方节点 mint 到居民钱包（amount = 份数）
         eb_addr, eb_abi = _find_contract("EcoBadge")
@@ -2437,31 +2565,24 @@ def market_buy(req: MarketBuyReq, user: dict = Depends(get_current_user)):
     ge_addr, ge_abi = _find_contract("GreenEnergy")
     if not ge_addr:
         _release_listing(req.listing_id)
-        raise HTTPException(400, "GreenEnergy 合约未部署")
+        raise HTTPException(400, "GreenEnergy 合约在当前链上不可用（链已重置或尚未部署），"
+                                 "请联盟管理员重新部署后重试")
     c = get_chain_client()
     buyer_addr = c.resolve_account(buyer)
     seller_addr = c.resolve_account(seller)
-    # 余额口径：先同步账本→链上，再以链上 balanceOf 为唯一事实源校验购买力
-    _sync_chain_balance(buyer)
-    bal_r = c.call_contract(ge_addr, "balanceOf", [buyer_addr], buyer, ge_abi)
-    if not bal_r.get("ok"):
-        _release_listing(req.listing_id)
-        raise HTTPException(400, "余额查询失败")
+    # 余额口径：与证书 / 勋章兑换同一事实源（账本为准，扣款前把差额回填到链上），
+    # 失败要把刚抢到的挂牌还回去，否则一次余额不足就把挂牌永久锁死。
     try:
-        bal = _to_int(bal_r.get("result", "0"))
-    except (TypeError, ValueError):
-        # 链上返回非数值（mock 链 / 异常节点）→ 回落账本净额：与证书 / 勋章兑换同一余额口径，
-        # 否则同一笔能量在兑换页「余额充足」、到市场页变成 500 或「余额不足」。
-        bal = _get_energy_ledger_balance(buyer)
-    if bal < price:
+        _require_chain_balance(buyer, price, "市场购买")
+    except HTTPException:
         _release_listing(req.listing_id)
-        raise HTTPException(400, f"绿色能量不足：需要 {price}，当前 {bal}")
+        raise
 
     # 2. GreenEnergy 转账：买方 → 卖方
     r_pay = c.call_contract(ge_addr, "transfer", [seller_addr, price], buyer, ge_abi)
     if not r_pay.get("ok"):
         _release_listing(req.listing_id)
-        raise HTTPException(400, "能量支付失败: " + str(r_pay.get("error", "")))
+        raise HTTPException(400, "能量支付失败: " + _chain_deduct_hint(buyer, price, r_pay))
     pay_tx = r_pay.get("tx_hash", "")
 
     # 3. 资产交割：卖方 → 买方（失败则尽力退款，不让买方白付）
@@ -2668,11 +2789,14 @@ def treasury_burn(req: TreasuryBurnReq, user: dict = Depends(get_current_user)):
                                  "请重新部署 contracts/GreenEnergy.sol 后再执行销毁")
 
     c = get_chain_client()
-    # 国库链上余额可能因沙盒链重置而低于账本（与居民同一回填口径）
-    _sync_chain_balance(TREASURY_WALLET)
+    # 国库链上余额可能因沙盒链重置而低于账本（与居民同一回填口径，失败不再静默）
+    sync = _sync_chain_balance(TREASURY_WALLET)
+    if not sync["ok"]:
+        raise HTTPException(400, sync["detail"])
     r = c.call_contract(ge_addr, "burn", [int(req.amount)], TREASURY_WALLET, ge_abi)
     if not r.get("ok"):
-        raise HTTPException(400, "链上销毁失败: " + str(r.get("error", "")))
+        raise HTTPException(400, "链上销毁失败: "
+                                 + _chain_deduct_hint(TREASURY_WALLET, int(req.amount), r))
 
     note = (req.note or "").strip() or "国库能量销毁"
     with get_conn() as conn:
@@ -3079,3 +3203,55 @@ def reconcile_energy_flows() -> int:
     except Exception as e:  # pragma: no cover - 启动兜底
         logger.warning("能量流水对账跳过：%s", e)
         return 0
+
+
+def align_chain_balances() -> dict:
+    """启动收尾对账（链上侧）：把全量账本余额补齐到链上 GreenEnergy。
+
+    为什么必须在启动时做：本地沙盒链是**进程内内存链**，后端每重启一次，链上
+    余额与合约状态全部清零，而能量账本（SQLite）保留全量历史。只靠兑换路径里的
+    逐个回填，用户会先看到「钱包页能量为 0 / 不增长」，并在首次兑换时拿到一句
+    合约 revert 原文。本函数在 seed（内置合约已部署）之后跑一遍，使链上余额从启动
+    那一刻起就与账本一致；已一致或读不到链的钱包不会发任何交易。
+
+    返回 {"total", "aligned", "skipped", "failed", "minted_total", "items": [...]}。
+    """
+    report = {"total": 0, "aligned": 0, "skipped": 0, "failed": 0,
+              "minted_total": 0, "items": []}
+    try:
+        wallets = _ledger_balances()
+    except Exception as e:  # pragma: no cover - 启动兜底
+        logger.warning("链上能量对账跳过（读账本失败）：%s", e)
+        return report
+    report["total"] = len(wallets)
+    if not wallets:
+        return report
+    if not latest_deployed("GreenEnergy")[0]:
+        report["skipped"] = len(wallets)
+        logger.info("链上能量对账跳过：当前链实例上没有可用的 GreenEnergy")
+        return report
+    for wallet, ledger in wallets:
+        sync = _sync_chain_balance(wallet)
+        item = {
+            "wallet": wallet,
+            "ledger_balance": int(ledger),
+            "chain_balance": int(sync.get("chain_balance") or 0),
+            "chain_balance_after": int(sync.get("chain_balance_after") or 0),
+            "minted": int(sync.get("diff") or 0) if sync.get("ok") else 0,
+            "ok": bool(sync.get("ok")),
+            "detail": sync.get("detail") or "",
+        }
+        report["items"].append(item)
+        if not sync.get("ok"):
+            report["failed"] += 1
+            logger.warning("[eco] 链上能量对账失败 %s: %s", wallet, sync.get("detail"))
+            continue
+        if item["minted"] > 0:
+            report["aligned"] += 1
+            report["minted_total"] += item["minted"]
+        else:
+            report["skipped"] += 1
+    if report["aligned"]:
+        print(f"[eco] 启动能量对账：{report['aligned']} 个钱包补发 {report['minted_total']} 点"
+              f"（失败 {report['failed']}）")
+    return report

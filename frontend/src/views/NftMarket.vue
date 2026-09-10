@@ -120,10 +120,10 @@
             <el-button
               size="small"
               type="primary"
-              :disabled="isSelfHeld(n) || Number(n.price || 0) > greenBalance"
+              :disabled="isSelfHeld(n) || greenShort(Number(n.price || 0))"
               @click="openBuy(n)"
             >
-              {{ isSelfHeld(n) ? '我持有' : Number(n.price || 0) > greenBalance ? `需 ${n.price} 能量` : '购买' }}
+              {{ isSelfHeld(n) ? '我持有' : greenShort(Number(n.price || 0)) ? `需 ${n.price} 能量` : '购买' }}
             </el-button>
             <a v-if="n.image_url" :href="n.image_url" download target="_blank">
               <el-button size="small">下载</el-button>
@@ -170,7 +170,7 @@
               v-if="!isMine(g)"
               size="small"
               type="primary"
-              :disabled="!canGreenTrade || greenBalance < g.price_energy"
+              :disabled="!canGreenTrade || greenShort(g.price_energy)"
               :title="canGreenTrade ? '' : '仅居民（需求方）可在二级市场购买'"
               :loading="buyingId === g.id"
               @click="buyGreen(g)"
@@ -217,11 +217,11 @@
       </div>
       <div class="dq-tip" style="margin-top:10px">
         <span class="dt-label">说明:</span>支付货币统一为绿色能量（GreenEnergy ERC20）：执行「能量转账(买家→卖家) + NFT 转移(卖家→买家)」两笔交易。
-        能量来自业务角色凭证发放（见「绿色低碳联盟链」）；当前钱包余额 {{ greenBalance }} ⚡。
+        能量来自业务角色凭证发放（见「绿色低碳联盟链」）；当前钱包余额 {{ greenKnown ? greenBalance : '—' }} ⚡。
       </div>
       <template #footer>
         <el-button @click="buyDlg = false">取消</el-button>
-        <el-button type="primary" :disabled="Number(buy.price || 0) > greenBalance" @click="doBuy">确认购买</el-button>
+        <el-button type="primary" :disabled="greenShort(Number(buy.price || 0))" @click="doBuy">确认购买</el-button>
       </template>
     </el-dialog>
 
@@ -395,6 +395,12 @@ const txRecords = ref<any[]>([])  // 本地持久化的交易流水
 const buyingId = ref<number | null>(null)
 const delistingId = ref<number | null>(null)
 const greenBalance = ref(0)  // 当前钱包绿色能量余额（用于购买按钮可用性判断）
+/** 余额是否读到了可信数值：查询失败时不能当成「0 点」，否则整页购买按钮
+ *  都会变成「需 N 能量」，把一次接口故障伪装成用户能量不够。*/
+const greenKnown = ref(true)
+/** 余额不足与否的唯一口径 */
+const greenShort = (cost: number): boolean =>
+  greenKnown.value && greenBalance.value < Number(cost || 0)
 /** 当前钱包的职能能力位（唯一口径 = 后端 /roles/duties，前端不自写角色名单）：
  *  绿色资产市场的挂牌 / 购买是**居民之间**的二级市场流转，
  *  联盟发行节点与能量国库不得下场做市（否则发行方既能增发又能回收）。 */
@@ -414,7 +420,7 @@ const loadIdentity = async () => {
 /** 购买按钮文案：先按职能判定再按余额判定（不给出可点但必 403 的按钮） */
 const greenBuyText = (g: any): string => {
   if (!canGreenTrade.value) return '仅居民可购买'
-  if (greenBalance.value < g.price_energy) return `需 ${g.price_energy} 能量`
+  if (greenShort(g.price_energy)) return `需 ${g.price_energy} 能量`
   return (g.quantity || 1) > 1 ? `购买 ${g.quantity} 份` : '购买'
 }
 /** 两个数据源首次加载完成标记：静默加载时 loading 恒为 false，
@@ -565,12 +571,17 @@ const load = async (silent = false) => {
   } finally { if (!silent) loading.value = false }
 }
 
-/** 加载当前钱包绿色能量余额（购买按钮可用性判断） */
+/** 加载当前钱包绿色能量余额（购买按钮可用性判断）：后端统一按能量台账净额返回 */
 const loadGreenBalance = async () => {
   try {
     const r: any = await ecoApi.energyBalance(opWallet.value)
     greenBalance.value = Number(r?.balance ?? r ?? 0)
-  } catch { greenBalance.value = 0 }
+    greenKnown.value = true
+  } catch (e: any) {
+    greenBalance.value = 0
+    greenKnown.value = false
+    ElMessage.error(`绿色能量余额获取失败：${e?.response?.data?.detail || e?.message || '请稍后重试'}`)
+  }
 }
 
 /** 购买绿色资产：GreenEnergy 转账 + NFT 转移（仅具备市场职能的居民） */
@@ -579,7 +590,7 @@ const buyGreen = async (g: any) => {
     ElMessage.warning('二级市场买卖是居民职能：联盟发行节点与国库账户不参与做市')
     return
   }
-  if (greenBalance.value < g.price_energy) {
+  if (greenShort(g.price_energy)) {
     ElMessage.warning(`绿色能量不足：需要 ${g.price_energy}，当前 ${greenBalance.value}`)
     return
   }

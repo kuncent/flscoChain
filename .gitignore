@@ -61,6 +61,9 @@ backend/verify_business.py
 _tools/
 _*.py
 _*.txt
+# 取证与真机验证留下的临时截图、探针产物
+_*.png
+scripts/_*.json
 
 # Bug / 反馈抽取产物（本地临时分析数据）
 scripts/_*.txt
