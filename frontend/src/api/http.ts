@@ -11,7 +11,23 @@ const http = axios.create({
 })
 
 /**
+ * SSO 兑换闸门（由 router/index.ts 的守卫在等外部 SSO 往返时置位）。
+ *
+ * 为什么需要它：URL 带 token 进入时，守卫要在页面组件挂载前把 token 换成 JWT，
+ * 这段真空期里已经发出的鉴权请求必然不带凭据 → 必定 401；若把它们当成
+ * 「当前凭据过期」，就会抹掉守卫刚下发的 JWT 并把用户踢回登录页（并且踢回时
+ * 还会把 URL 上的 token 一并丢光）。这就是“退出登录后再带 token 进来必跳登录页”
+ * 的最后一公里：只把兑换上提到守卫仍不够，旧的残留 401 还是能误杀新会话。
+ */
+let ssoRedeeming = false
+export function setSsoRedeeming(value: boolean): void {
+  ssoRedeeming = value
+}
+
+/**
  * 401 统一处理（防弹窗轰炸 + 防跨标签页误杀）：
+ * - SSO 兑换进行中 → 一律当成真空期噪声，静默忽略（新会话即将落地）；
+ * - 请求未带凭据但现在已有凭据 → 该 401 发生在登录之前，不是当前凭据过期；
  * - 请求注入的 token 与当前 localStorage 中的 token 不一致 → 该 401 来自旧凭据请求，
  *   说明本标签页或其他标签页已重新登录，静默忽略、绝不动新凭据；
  * - 否则当前凭据确已失效：清除 token + 登录态，只提示一次并跳转登录页；
@@ -29,6 +45,10 @@ function handleAuthExpired(config: any) {
     /* ignore */
   }
   const sentToken = String(config?.headers?.Authorization || '').replace(/^Bearer\s+/i, '')
+  // SSO 正在把 URL 上的 token 换成会话：此时所有 401 都是登录前的残留请求
+  if (ssoRedeeming) return
+  // 发出时根本没带凭据、而现在已有凭据：新会话已落地，不能当成“过期”误杀
+  if (!sentToken && currentToken) return
   // 旧请求（其他标签页/登录前的残留请求）触发的 401：不碰当前新凭据、不提示、不跳转
   if (sentToken && currentToken && sentToken !== currentToken) return
   if (authExpiredHandled) return

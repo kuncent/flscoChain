@@ -814,43 +814,14 @@ async function refreshCompleted() {
 onMounted(refreshCompleted)
 onActivated(refreshCompleted)
 
-/* ---------- SSO Token 自动登录 ----------
- * 适用于智云 SSO 回调，URL 形如：
- *   - http://domain/?token=xxx（URL 级参数，位于 hash 之前）
- *   - http://domain/#/dashboard?token=xxx（hash 级参数）
- * 无论是否已登录，URL 带 token 就重新登录（覆盖旧会话 / 刷新会话）。
- *
- * 设计：不阻塞 Dashboard 渲染 — 页面首访时 Vite 异步编译组件 + SSO 网络往返
- * 叠加会导致长时间空白。改为后台静默登录，登录完成后刷新数据，用户无感。
- *
- * 安全（P1-27）：JWT 出现在 URL 上就会进浏览器历史 / Referer / 反向代理访问日志，
- * 所以 **读到就立刻抹掉**（放在登录请求之前），而不是等成功后才清；
- * 登录失败时也不能把 token 留在地址栏里。服务端侧另有 nginx 日志脱敏兜底。
- */
-onMounted(async () => {
-  const ssoToken =
-    new URLSearchParams(window.location.search).get('token') ||
-    (route.query.token as string) ||
-    ''
-  if (!ssoToken) return
-  // 先清 URL（search + hash 两处），再做网络请求
-  try {
-    const cleanUrl = window.location.origin + window.location.pathname + window.location.hash.split('?')[0]
-    window.history.replaceState(null, '', cleanUrl)
-  } catch {
-    /* 某些沙箱环境禁止改历史，忽略即可，不影响登录 */
-  }
-  try {
-    const u = await auth.loginByToken(ssoToken)
-    ElMessage.success(`欢迎回来，${u.name || u.username}`)
-    // 登录成功后静默刷新数据（用新身份重新拉取 overview / platformProgress）
-    await loadOverview()
-    refreshCompleted()
-  } catch {
-    // SSO 失败，回退到登录页（http 拦截器已提示错误原因）
-    router.replace('/login')
-  }
-})
+/* ---------- SSO Token 自动登录：已上移到全局路由守卫 ----------
+ * URL 带 token（http://domain/?token=xxx 或 http://domain/#/dashboard?token=xxx）时，
+ * 由 router.beforeEach 在**任何页面组件挂载前**把它换成平台 JWT（见
+ * src/router/index.ts 的 redeemSsoToken）。
+ * 旧实现在本组件 onMounted 里兑换：异步 chunk 加载 + 外部 SSO 往返的窗口里，
+ * MainLayout / 本页已发出无凭据的鉴权请求并 401，被 http 拦截器当成「凭据过期」
+ * → 清掉刚下发的 JWT + 跳 /login（顺带把 URL 上的 token 丢光），表现为
+ * 「退出登录后再带 token 进来必定回到登录页」。 */
 
 /* 单步是否完成（独立判断，不要求前缀连续；额外条件走 EXTRA_DONE 映射） */
 function isStepDone(s: PathStep): boolean {
